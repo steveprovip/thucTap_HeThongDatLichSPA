@@ -1,44 +1,154 @@
-# Hệ Thống Đặt Lịch SPA (thucTap_HeThongDatLichSPA)
+# Hệ thống đặt lịch Salon - Spa
 
-Dự án phát triển Hệ thống đặt lịch hẹn dịch vụ SPA phục vụ cho kỳ thực tập tốt nghiệp.
+Ứng dụng web quản lý lịch hẹn và vận hành ca làm cho một salon quy mô vừa (6–8 thợ).
+Khách tự đặt lịch trên trang công khai theo đúng khung giờ thợ còn rảnh; tiệm theo dõi trọn
+vòng đời lịch hẹn từ lúc đặt đến lúc thu tiền và nhận đánh giá.
 
----
-
-## 🌳 Chiến Lược Phân Nhánh (Git Flow Branching Model)
-
-Dự án tuân thủ mô hình Git Flow tiêu chuẩn với 5 nhánh chính:
-
-| Nhánh (Branch) | Loại nhánh | Mục đích & Vai trò |
-| :--- | :--- | :--- |
-| `main` | **Nhánh chính** | Chứa mã nguồn chính thức, ổn định và sẵn sàng đưa lên môi trường chạy thực tế (Production). |
-| `develop` | **Nhánh phát triển** | Tích hợp mã nguồn từ các tính năng trước khi đưa vào nhánh chính. |
-| `feature/init` | **Nhánh tính năng** (`feature/*`) | Dùng để viết code cho từng tính năng mới riêng biệt. |
-| `release/v1.0.0` | **Nhánh phát hành** (`release/*`) | Chuẩn bị cho bản phát hành mới, kiểm thử và sửa lỗi nhỏ trước khi gộp vào `main`. |
-| `hotfix/v1.0.1` | **Nhánh sửa lỗi khẩn cấp** (`hotfix/*`) | Sửa lỗi khẩn cấp trực tiếp từ bản chạy thực tế (`main`). |
+Toàn bộ 39 user story / 6 epic / 165 point trong Product Backlog đều đã được cài đặt —
+xem bảng đối chiếu tại [`docs/BACKLOG-MAPPING.md`](docs/BACKLOG-MAPPING.md).
 
 ---
 
-## 🛠️ Quy trình làm việc đề xuất (Workflow)
+## Chạy dự án bằng MỘT lệnh
 
-1. **Phát triển tính năng mới:**
-   ```bash
-   git checkout develop
-   git checkout -b feature/<ten-tinh-nang>
-   # Thực hiện commit và push lên remote
-   git push -u origin feature/<ten-tinh-nang>
-   # Tạo Pull Request (PR) hợp nhất vào nhánh develop
-   ```
+**Windows**
 
-2. **Chuẩn bị phát hành:**
-   ```bash
-   git checkout develop
-   git checkout -b release/v1.0.0
-   # Kiểm thử, đóng gói phiên bản, sau đó merge vào cả main và develop
-   ```
+```bat
+run_project.bat
+```
 
-3. **Vá lỗi khẩn cấp trên Production:**
-   ```bash
-   git checkout main
-   git checkout -b hotfix/<ten-loi>
-   # Fix lỗi xong merge vào cả main và develop
-   ```
+**macOS / Linux**
+
+```bash
+./run_project.sh
+```
+
+Script sẽ: dựng PostgreSQL 15 + PgAdmin + Maildev bằng Docker → cài gói cho backend và
+frontend → nạp lược đồ và dữ liệu mẫu → chạy song song API và giao diện.
+
+| Thành phần | Địa chỉ |
+|---|---|
+| Giao diện | http://localhost:5173 |
+| API | http://localhost:3000/api |
+| Tài liệu API (Swagger) | http://localhost:3000/api/docs |
+| Hộp thư ảo (Maildev) | http://localhost:1080 |
+| PgAdmin | http://localhost:5050 |
+
+### Tài khoản mẫu
+
+| Vai trò | Email | Mật khẩu |
+|---|---|---|
+| Quản trị hệ thống | `admin@salon.vn` | `Admin@123` |
+| Chủ tiệm | `owner@salon.vn` | `Owner@123` |
+| Lễ tân | `reception@salon.vn` | `Reception@123` |
+| Thợ | `stylist1@salon.vn` … `stylist5@salon.vn` | `Stylist@123` |
+
+Khách hàng **không cần tài khoản** — đặt lịch và tra cứu bằng số điện thoại / mã 8 ký tự.
+
+---
+
+## Kiến trúc
+
+```
+du_an/
+├── docker-compose.yml          PostgreSQL 15 · PgAdmin · Maildev (SMTP thử nghiệm)
+├── run_project.bat / .sh       Khởi chạy một lệnh
+├── database/
+│   ├── schema.sql              DDL đầy đủ: ràng buộc EXCLUDE, CHECK, index, view, trigger
+│   └── seed.sql                5 thợ · 12 dịch vụ · 4 vai trò nội bộ · ~400 lịch hẹn mẫu
+├── backend/                    NestJS 10 + TypeORM + PostgreSQL
+│   └── src/
+│       ├── common/             Guard (JWT, RBAC), decorator, filter, interceptor ghi nhật ký, tiện ích
+│       ├── config/             Cấu hình ứng dụng, CSDL, JWT, SMTP
+│       ├── database/entities/  24 entity ánh xạ đúng lược đồ SQL
+│       └── modules/
+│           ├── auth/           Đăng nhập, JWT 30m/7d, khoá 15 phút sau 5 lần sai, quên mật khẩu
+│           ├── users/          Quản trị tài khoản nhân sự, 5 vai trò
+│           ├── services/       Nhóm dịch vụ, dịch vụ (15–240 phút, ≤ 20.000.000 đ)
+│           ├── stylists/       Hồ sơ thợ, kỹ năng, ca làm theo tuần, ngày nghỉ riêng
+│           ├── working-hours/  Giờ mở cửa theo thứ, ngày nghỉ của tiệm
+│           ├── booking-engine/ Bộ tính khung giờ trống + lá chắn chống đặt trùng
+│           ├── customers/      Hồ sơ khách gộp theo SĐT, lịch sử dịch vụ
+│           ├── invoices/       Phiếu tính tiền, mã giảm giá, phiếu điều chỉnh
+│           ├── reviews/        Đánh giá 1–5 sao bằng liên kết dùng một lần
+│           ├── notifications/  Hàng đợi email (3 lần thử) + thông báo trong ứng dụng
+│           ├── analytics/      Doanh thu theo thợ/dịch vụ, mật độ khung giờ, xuất CSV
+│           └── audit/          Nhật ký hoạt động chỉ đọc
+└── frontend/                   React 18 + TypeScript + Vite + TailwindCSS + Lucide + Recharts
+    └── src/
+        ├── api/                Axios client tự làm mới access token
+        ├── components/         Modal, Toast, Badge, StarRating, DateNav, chuông thông báo…
+        ├── contexts/           AuthContext, ToastContext, BookingContext
+        ├── layouts/            PublicLayout (mobile-first), AdminLayout (sidebar theo quyền)
+        └── pages/
+            ├── public/         Trang dịch vụ, Booking Wizard 4 bước, tra cứu, đánh giá
+            ├── auth/           Đăng nhập, quên / đặt lại / đổi mật khẩu
+            ├── reception/      Lịch ngày dạng cột, chờ xác nhận, khách vãng lai, phiếu tính tiền
+            ├── stylist/        Lịch cá nhân, bắt đầu/hoàn tất, ghi chú kỹ thuật
+            ├── owner/          Tổng quan hôm nay, doanh thu, mật độ khung giờ
+            └── admin/          Tài khoản, nhật ký, dịch vụ, thợ, ca làm, giờ mở cửa, mã giảm giá
+```
+
+---
+
+## Ba điểm kỹ thuật đáng chú ý
+
+### 1. Bộ tính khung giờ trống là hàm thuần
+
+`backend/src/modules/booking-engine/slot-calculator.ts` không phụ thuộc cơ sở dữ liệu hay
+múi giờ — chỉ làm việc với số phút kể từ 00:00. Nhờ vậy 35 ca kiểm thử đơn vị
+(`slot-calculator.spec.ts`) chạy trong vài giây và phủ được ca gãy, nghỉ giữa ca,
+ngày nghỉ, gói nhiều dịch vụ cộng dồn 30/60/120/150 phút.
+
+### 2. Lá chắn chống đặt trùng có ba lớp
+
+| Lớp | Vị trí | Vai trò |
+|---|---|---|
+| Giao dịch `SERIALIZABLE` | `booking.service.ts` | Cô lập hoàn toàn hai luồng đặt lịch |
+| `SELECT … FOR UPDATE` trên bản ghi thợ | `booking.service.ts` | Hai yêu cầu cùng một thợ buộc xếp hàng |
+| `EXCLUDE USING gist (stylist_id WITH =, tstzrange(start_at, end_at) WITH &&)` | `schema.sql` | Chốt chặn cuối ở tầng CSDL, đúng cả khi ghi thẳng vào bảng |
+
+Bộ kiểm thử `test/booking-concurrency.e2e-spec.ts` bắn 20 yêu cầu đồng thời vào một khung
+giờ và khẳng định **đúng 1 thành công, 19 nhận 409** kèm thông điệp tiếng Việt.
+
+### 3. Quy ước thời gian và tiền tệ
+
+Mọi mốc tuyệt đối lưu `TIMESTAMPTZ`, quy đổi sang `Asia/Ho_Chi_Minh` ở tầng hiển thị.
+Tiền hiển thị dạng `250.000 đ`, giờ dạng `14:30`. Chi tiết: [`docs/TIMEZONE.md`](docs/TIMEZONE.md).
+
+---
+
+## Lệnh thường dùng
+
+```bash
+npm run install:all      # cài gói cho backend + frontend
+npm run db:up            # chỉ dựng docker (postgres, pgadmin, maildev)
+npm run db:reset         # xoá volume và dựng lại từ đầu
+npm run db:seed          # nạp lại dữ liệu mẫu (chạy lại nhiều lần vẫn an toàn)
+npm run start:all        # chạy song song API + giao diện
+npm run build            # build backend và frontend cho môi trường thật
+npm test                 # 35 kiểm thử đơn vị bộ tính khung giờ
+npm run test:e2e         # 25 kiểm thử end-to-end (cần CSDL đang chạy)
+npm run lint             # ESLint cho cả hai phía
+```
+
+---
+
+## Kiểm thử
+
+| Bộ | Lệnh | Nội dung |
+|---|---|---|
+| Đơn vị | `npm test` | 35 ca cho bộ tính khung giờ trống |
+| Phân quyền | `npm run test:e2e` | Đối chiếu 17 endpoint × 4 vai trò, khoá 15 phút sau 5 lần sai |
+| Chống đặt trùng | `npm run test:e2e` | 20 yêu cầu đồng thời → đúng 1 thành công |
+| End-to-end | `npm run test:e2e` | Đặt → xác nhận → check-in → hoàn tất → tính tiền → đánh giá → báo cáo |
+
+---
+
+## Tài liệu kèm theo
+
+- [`docs/STAGING.md`](docs/STAGING.md) — môi trường staging và tài khoản mẫu (một trang)
+- [`docs/DEMO-SCRIPT.md`](docs/DEMO-SCRIPT.md) — kịch bản demo nghiệm thu theo từng bước
+- [`docs/TIMEZONE.md`](docs/TIMEZONE.md) — quy ước múi giờ và định dạng
+- [`docs/BACKLOG-MAPPING.md`](docs/BACKLOG-MAPPING.md) — 39 user story ↔ mã nguồn
+- [`docs/API.md`](docs/API.md) — danh mục endpoint theo module
