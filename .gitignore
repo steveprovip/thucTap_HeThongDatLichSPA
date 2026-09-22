@@ -9,3 +9,5 @@ coverage/
 backend/uploads/*
 !backend/uploads/.gitkeep
 frontend/.vite/
+
+Claude outputs/
