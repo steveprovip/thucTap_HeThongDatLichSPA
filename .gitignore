@@ -11,3 +11,5 @@ backend/uploads/*
 frontend/.vite/
 
 Claude outputs/
+
+*.tsbuildinfo

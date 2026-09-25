@@ -3,9 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { CalendarSearch, Search } from 'lucide-react';
 import { appointmentsApi, getErrorMessage } from '@/api';
 import type { Appointment, AppointmentStatus } from '@/types';
-import {
-  Button, EmptyState, Input, Pagination, SectionTitle, Select, Spinner, StatusBadge,
-} from '@/components';
+import { Button, EmptyState, Input, Pagination, SectionTitle, Select, StatusBadge, TableSkeleton } from '@/components';
 import { STATUS_LABELS } from '@/utils/constants';
 import { addDaysISO, formatDuration, todayISO } from '@/utils/format';
 import { useToast } from '@/contexts/ToastContext';
@@ -68,7 +66,7 @@ export function AppointmentsListPage() {
         </div>
       </div>
 
-      {loading ? <Spinner /> : !data || data.items.length === 0 ? (
+      {loading ? <TableSkeleton cols={6} /> : !data || data.items.length === 0 ? (
         <EmptyState icon={<CalendarSearch size={30} />} title="Không có lịch hẹn nào khớp bộ lọc" />
       ) : (
         <>

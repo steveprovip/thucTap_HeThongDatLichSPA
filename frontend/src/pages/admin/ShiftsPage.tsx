@@ -3,7 +3,7 @@ import { CalendarPlus, Copy, Plus, Trash2 } from 'lucide-react';
 import { getErrorMessage, stylistsApi } from '@/api';
 import type { Shift, Stylist, TimeOff } from '@/types';
 import {
-  Button, Card, ConfirmDialog, Field, Input, Modal, SectionTitle, Select, Spinner,
+  Button, ConfirmDialog, Field, Input, Modal, SectionTitle, Select, Spinner,
 } from '@/components';
 import { addDaysISO, formatDate, startOfWeekISO, todayISO } from '@/utils/format';
 import { DOW_LABELS } from '@/utils/constants';
@@ -214,7 +214,7 @@ export function ShiftsPage() {
             </Field>
           </div>
           <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" className="h-4 w-4 rounded border-brand-300"
+            <input type="checkbox" className="h-4 w-4 rounded border-slate-300"
                    checked={hasBreak} onChange={(e) => setHasBreak(e.target.checked)} />
             Có nghỉ giữa ca
           </label>
@@ -243,7 +243,7 @@ export function ShiftsPage() {
           {formatDate(`${addDaysISO(weekStart, 7)}T00:00:00+07:00`)}.
         </p>
         <label className="mt-3 flex items-start gap-2 text-sm">
-          <input type="checkbox" className="mt-0.5 h-4 w-4 rounded border-brand-300"
+          <input type="checkbox" className="mt-0.5 h-4 w-4 rounded border-slate-300"
                  checked={copyOverwrite} onChange={(e) => setCopyOverwrite(e.target.checked)} />
           <span>
             Ghi đè các ngày đã có ca ở tuần đích.
@@ -272,7 +272,7 @@ export function ShiftsPage() {
             <input type="date" className="field-input" value={offDate} onChange={(e) => setOffDate(e.target.value)} />
           </Field>
           <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" className="h-4 w-4 rounded border-brand-300"
+            <input type="checkbox" className="h-4 w-4 rounded border-slate-300"
                    checked={offAllDay} onChange={(e) => setOffAllDay(e.target.checked)} />
             Nghỉ cả ngày
           </label>

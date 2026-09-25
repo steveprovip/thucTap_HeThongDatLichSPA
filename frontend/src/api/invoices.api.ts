@@ -48,6 +48,9 @@ export const invoicesApi = {
   async createVoucher(payload: Omit<Voucher, 'id' | 'usedCount'>): Promise<Voucher> {
     return unwrap<Voucher>(await api.post('/vouchers', payload));
   },
+  async updateVoucher(id: string, payload: Partial<Omit<Voucher, 'id' | 'usedCount'>>): Promise<Voucher> {
+    return unwrap<Voucher>(await api.patch(`/vouchers/${id}`, payload));
+  },
   async removeVoucher(id: string): Promise<void> {
     await api.delete(`/vouchers/${id}`);
   },

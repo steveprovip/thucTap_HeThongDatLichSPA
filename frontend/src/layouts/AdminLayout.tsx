@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   BarChart3, CalendarClock, CalendarDays, ClipboardList, Clock, FileText, Gauge, Home,
   LogOut, Menu, Receipt, ScrollText, Scissors, Settings, Ticket, UserCircle2, Users, X,
@@ -69,6 +69,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
 export function AdminLayout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const groups = useMemo(
@@ -87,7 +88,7 @@ export function AdminLayout() {
     <nav className="flex h-full flex-col gap-5 overflow-y-auto px-3 py-4">
       {groups.map((g) => (
         <div key={g.group}>
-          <p className="px-3 pb-1.5 text-[11px] font-bold uppercase tracking-wider text-ink-muted">{g.group}</p>
+          <p className="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">{g.group}</p>
           <ul className="space-y-0.5">
             {g.items.map((item) => (
               <li key={item.to}>
@@ -97,7 +98,7 @@ export function AdminLayout() {
                   onClick={() => setMobileOpen(false)}
                   className={({ isActive }) =>
                     `flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors
-                     ${isActive ? 'bg-brand-700 text-white' : 'text-ink-soft hover:bg-brand-50 hover:text-brand-800'}`
+                     ${isActive ? 'bg-teal-50 text-teal-800 font-semibold' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`
                   }
                 >
                   {item.icon}
@@ -114,10 +115,10 @@ export function AdminLayout() {
   return (
     <div className="flex min-h-screen bg-surface-page">
       {/* Sidebar cố định trên màn hình rộng */}
-      <aside className="hidden w-64 shrink-0 border-r border-brand-100 bg-white lg:block">
-        <div className="flex h-14 items-center gap-2.5 border-b border-brand-100 px-4">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-700 text-xs font-bold text-white">HS</span>
-          <span className="text-sm font-bold">Quản lý tiệm</span>
+      <aside className="hidden w-64 shrink-0 border-r border-slate-200 bg-white lg:block">
+        <div className="flex h-14 items-center gap-2.5 border-b border-slate-200 px-4">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-600 text-xs font-bold text-white shadow-sm">HS</span>
+          <span className="text-sm font-semibold text-slate-900">Quản lý tiệm</span>
         </div>
         {sidebar}
       </aside>
@@ -125,9 +126,9 @@ export function AdminLayout() {
       {/* Ngăn kéo trên điện thoại / máy tính bảng */}
       {mobileOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setMobileOpen(false)} aria-hidden />
-          <aside className="relative z-10 flex h-full w-72 flex-col bg-white shadow-pop">
-            <div className="flex h-14 items-center justify-between border-b border-brand-100 px-4">
+          <div className="animate-fade absolute inset-0 bg-slate-900/30 backdrop-blur-[2px]" onClick={() => setMobileOpen(false)} aria-hidden />
+          <aside className="relative z-10 flex h-full w-72 flex-col bg-white shadow-pop animate-slide-in-left">
+            <div className="flex h-14 items-center justify-between border-b border-slate-200 px-4">
               <span className="text-sm font-bold">Quản lý tiệm</span>
               <button onClick={() => setMobileOpen(false)} aria-label="Đóng menu" className="p-1.5">
                 <X size={18} />
@@ -140,9 +141,9 @@ export function AdminLayout() {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-3
-                           border-b border-brand-100 bg-white px-3 sm:px-5">
+                           border-b border-slate-200 bg-white/90 px-3 backdrop-blur-md sm:px-5">
           <div className="flex items-center gap-2">
-            <button className="rounded-xl p-2 text-ink-soft hover:bg-brand-50 lg:hidden"
+            <button className="rounded-xl p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900 lg:hidden"
                     onClick={() => setMobileOpen(true)} aria-label="Mở menu">
               <Menu size={20} />
             </button>
@@ -157,19 +158,21 @@ export function AdminLayout() {
               <p className="text-sm font-semibold leading-tight">{user?.fullName}</p>
               <p className="text-xs text-ink-muted">{user ? ROLE_LABELS[user.role] : ''}</p>
             </div>
-            <Link to="/quan-ly/doi-mat-khau" className="rounded-xl p-2 text-ink-soft hover:bg-brand-50"
+            <Link to="/quan-ly/doi-mat-khau" className="rounded-xl p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
                   aria-label="Đổi mật khẩu">
               <UserCircle2 size={20} />
             </Link>
-            <button onClick={handleLogout} className="rounded-xl p-2 text-ink-soft hover:bg-brand-50"
+            <button onClick={handleLogout} className="rounded-xl p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
                     aria-label="Đăng xuất" title="Đăng xuất">
               <LogOut size={20} />
             </button>
           </div>
         </header>
 
-        <main className="min-w-0 flex-1 p-3 sm:p-5">
-          <Outlet />
+        <main className="min-w-0 flex-1 p-3 sm:p-6">
+          <div key={location.pathname} className="animate-fade">
+            <Outlet />
+          </div>
         </main>
       </div>
     </div>
