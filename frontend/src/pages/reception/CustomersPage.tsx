@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { History, Search, Users } from 'lucide-react';
 import { customersApi, getErrorMessage } from '@/api';
 import type { Customer, VisitHistoryItem } from '@/types';
-import { Button, Card, EmptyState, Field, Input, Modal, Pagination, SectionTitle, Spinner, Textarea } from '@/components';
+import { Button, EmptyState, Field, Input, Modal, Pagination, SectionTitle, Textarea, TableSkeleton } from '@/components';
 import { formatDate } from '@/utils/format';
 import { STATUS_LABELS } from '@/utils/constants';
 import { useToast } from '@/contexts/ToastContext';
@@ -59,7 +59,7 @@ export function CustomersPage() {
                placeholder="Tìm theo tên hoặc số điện thoại" className="pl-11" />
       </div>
 
-      {loading ? <Spinner /> : !data || data.items.length === 0 ? (
+      {loading ? <TableSkeleton cols={5} /> : !data || data.items.length === 0 ? (
         <EmptyState icon={<Users size={30} />} title="Không tìm thấy hồ sơ khách" />
       ) : (
         <>

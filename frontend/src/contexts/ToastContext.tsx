@@ -29,7 +29,7 @@ const STYLES: Record<ToastKind, string> = {
   success: 'bg-green-600 text-white',
   error: 'bg-red-600 text-white',
   warning: 'bg-amber-500 text-white',
-  info: 'bg-brand-700 text-white',
+  info: 'bg-slate-900 text-white',
 };
 
 export function ToastProvider({ children }: { children: ReactNode }) {
@@ -70,7 +70,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         {toasts.map((t) => (
           <div
             key={t.id}
-            className={`flex items-start gap-2.5 rounded-xl px-4 py-3 shadow-pop ${STYLES[t.kind]}`}
+            className={`animate-toast-in flex items-start gap-2.5 rounded-xl px-4 py-3 shadow-pop ${STYLES[t.kind]}`}
           >
             {ICONS[t.kind]}
             <p className="flex-1 text-sm leading-snug">{t.message}</p>

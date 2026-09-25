@@ -1,5 +1,9 @@
 import { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes, forwardRef } from 'react';
 import { Loader2 } from 'lucide-react';
+import { ContentSkeleton } from './Skeleton';
+import type { AppointmentStatus } from '@/types';
+import { STATUS_STYLES, STATUS_LABELS } from '@/utils/constants';
+export { formatVND } from '@/utils/format';
 
 type Variant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger';
 
@@ -100,21 +104,17 @@ export function Card({ className = '', children }: { className?: string; childre
   return <div className={`card ${className}`}>{children}</div>;
 }
 
+/** Trạng thái đang tải: khung skeleton có shimmer (thay cho vòng xoay). */
 export function Spinner({ label = 'Đang tải…' }: { label?: string }) {
-  return (
-    <div className="flex items-center justify-center gap-2 py-10 text-ink-muted">
-      <Loader2 size={20} className="animate-spin" />
-      <span className="text-sm">{label}</span>
-    </div>
-  );
+  return <ContentSkeleton label={label} />;
 }
 
 export function EmptyState({ icon, title, description, action }: {
   icon?: ReactNode; title: string; description?: string; action?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-brand-200 bg-surface-alt px-6 py-12 text-center">
-      {icon && <div className="text-brand-400">{icon}</div>}
+    <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
+      {icon && <div className="flex h-12 w-12 items-center justify-center rounded-full bg-teal-50 text-teal-600">{icon}</div>}
       <p className="font-semibold text-ink">{title}</p>
       {description && <p className="max-w-md text-sm text-ink-muted">{description}</p>}
       {action}
@@ -122,8 +122,8 @@ export function EmptyState({ icon, title, description, action }: {
   );
 }
 
-export function Badge({ className = '', children }: { className?: string; children: ReactNode }) {
-  return <span className={`chip border ${className}`}>{children}</span>;
+export function Badge({ className = '', children, status }: { className?: string; children?: ReactNode; status?: AppointmentStatus }) {
+  return <span className={`chip border ${status ? STATUS_STYLES[status] : ''} ${className}`}>{children ?? (status ? STATUS_LABELS[status] : null)}</span>;
 }
 
 export function SectionTitle({ title, description, action }: {
@@ -132,10 +132,61 @@ export function SectionTitle({ title, description, action }: {
   return (
     <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
       <div>
-        <h2 className="text-lg font-bold text-ink">{title}</h2>
+        <h2 className="text-xl font-semibold tracking-tight text-slate-900">{title}</h2>
         {description && <p className="mt-0.5 text-sm text-ink-muted">{description}</p>}
       </div>
       {action}
     </div>
+  );
+}
+
+type NoticeTone = 'info' | 'warning' | 'danger' | 'success';
+
+const NOTICE_TONES: Record<NoticeTone, string> = {
+  info: 'border-sky-200 bg-sky-50 text-sky-900',
+  warning: 'border-amber-200 bg-amber-50 text-amber-900',
+  danger: 'border-red-200 bg-red-50 text-red-800',
+  success: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+};
+
+/** Hộp thông báo nội tuyến theo tông sáng (pastel). */
+export function Notice({ tone = 'info', icon, title, children, className = '' }: {
+  tone?: NoticeTone; icon?: ReactNode; title?: ReactNode; children?: ReactNode; className?: string;
+}) {
+  return (
+    <div role={tone === 'danger' ? 'alert' : 'status'}
+         className={`flex items-start gap-2.5 rounded-xl border px-3.5 py-2.5 text-sm ${NOTICE_TONES[tone]} ${className}`}>
+      {icon && <span className="mt-0.5 shrink-0">{icon}</span>}
+      <div className="min-w-0 flex-1">
+        {title && <p className="font-semibold">{title}</p>}
+        {children && <div className={title ? 'mt-0.5 opacity-90' : ''}>{children}</div>}
+      </div>
+    </div>
+  );
+}
+
+/** Công tắc bật/tắt dạng switch, dùng cho trạng thái hoạt động. */
+export function Toggle({ checked, onChange, disabled, label, size = 'md' }: {
+  checked: boolean; onChange: (next: boolean) => void; disabled?: boolean; label?: string; size?: 'sm' | 'md';
+}) {
+  const track = size === 'sm' ? 'h-5 w-9' : 'h-6 w-11';
+  const knob = size === 'sm' ? 'h-4 w-4' : 'h-5 w-5';
+  const shift = size === 'sm' ? 'translate-x-4' : 'translate-x-5';
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={`relative inline-flex shrink-0 items-center rounded-full border transition-colors ${track}
+        ${checked ? 'border-teal-600 bg-teal-600' : 'border-slate-300 bg-slate-200'}
+        disabled:cursor-not-allowed disabled:opacity-50`}
+    >
+      <span className={`inline-block transform rounded-full bg-white shadow transition-transform ${knob}
+        ${checked ? shift : 'translate-x-0.5'}`} />
+    </button>
   );
 }

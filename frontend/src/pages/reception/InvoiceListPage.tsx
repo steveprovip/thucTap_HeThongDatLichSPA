@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Receipt } from 'lucide-react';
 import { getErrorMessage, invoicesApi } from '@/api';
 import type { Invoice } from '@/types';
-import { Button, Card, EmptyState, Pagination, SectionTitle, Spinner } from '@/components';
+import { Button, EmptyState, Pagination, SectionTitle, TableSkeleton } from '@/components';
 import { formatDateTime, todayISO, addDaysISO } from '@/utils/format';
 import { PAYMENT_LABELS } from '@/utils/constants';
 import { useToast } from '@/contexts/ToastContext';
@@ -45,7 +45,7 @@ export function InvoiceListPage() {
         </label>
       </div>
 
-      {loading ? <Spinner /> : !data || data.items.length === 0 ? (
+      {loading ? <TableSkeleton cols={6} /> : !data || data.items.length === 0 ? (
         <EmptyState icon={<Receipt size={30} />} title="Chưa có phiếu nào trong khoảng ngày này" />
       ) : (
         <>

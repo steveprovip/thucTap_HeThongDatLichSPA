@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Banknote, Landmark, Lock, Plus, Receipt, Trash2 } from 'lucide-react';
+import { Banknote, Landmark, Lock, Plus, Printer, Receipt, Trash2 } from 'lucide-react';
 import { appointmentsApi, getErrorMessage, invoicesApi } from '@/api';
 import type { Appointment, Invoice, PaymentMethod } from '@/types';
-import { Button, Card, ConfirmDialog, Field, Input, SectionTitle, Select, Spinner, StatusBadge } from '@/components';
+import { Button, Card, ConfirmDialog, Field, Input, SectionTitle, Spinner, StatusBadge } from '@/components';
 import { formatNumber, formatVnd, parseNumber } from '@/utils/format';
 import { useToast } from '@/contexts/ToastContext';
+import { SALON } from '@/utils/constants';
 
 interface Line {
   serviceId?: string;
@@ -130,7 +131,7 @@ export function InvoicePage() {
       <SectionTitle
         title={`Phiếu tính tiền ${invoice?.code ?? ''}`}
         description={`Lịch hẹn ${appointment.code} · ${appointment.startAtText}`}
-        action={<Button variant="ghost" size="sm" onClick={() => navigate('/quan-ly')}>Về lịch ngày</Button>}
+        action={<div className="flex gap-2"><Button variant="outline" size="sm" icon={<Printer size={15} />} onClick={() => window.print()} disabled={!invoice}>In hoá đơn</Button><Button variant="ghost" size="sm" onClick={() => navigate('/quan-ly')}>Về lịch ngày</Button></div>}
       />
 
       {appointment.status !== 'completed' && (
@@ -149,7 +150,7 @@ export function InvoicePage() {
           <div className="flex items-center gap-2">
             <StatusBadge status={appointment.status} />
             {invoice && (
-              <span className="chip border border-brand-200 bg-brand-50 text-brand-800">{invoice.statusLabel}</span>
+              <span className="chip border border-teal-200 bg-teal-50 text-teal-800">{invoice.statusLabel}</span>
             )}
           </div>
         </div>
@@ -210,13 +211,13 @@ export function InvoicePage() {
               <Button variant="outline" onClick={applyVoucher} disabled={locked}>Áp dụng</Button>
             </div>
           </Field>
-          <div className="rounded-xl bg-surface-alt p-3.5 text-sm">
+          <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 text-sm">
             <div className="flex justify-between"><span className="text-ink-muted">Tạm tính</span>
               <span>{formatVnd(subtotal)}</span></div>
             <div className="mt-1 flex justify-between"><span className="text-ink-muted">Giảm giá</span>
               <span className="text-red-600">− {formatVnd(discount)}</span></div>
-            <div className="mt-1.5 flex justify-between border-t border-brand-200 pt-1.5 text-base font-bold">
-              <span>Thực thu</span><span className="text-brand-800">{formatVnd(total)}</span></div>
+            <div className="mt-1.5 flex justify-between border-t border-slate-200 pt-1.5 text-base font-bold">
+              <span>Thực thu</span><span className="text-slate-900">{formatVnd(total)}</span></div>
           </div>
         </div>
       </Card>
@@ -226,10 +227,12 @@ export function InvoicePage() {
           <h3 className="mb-2 text-sm font-bold">Thanh toán</h3>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Hình thức">
-              <Select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}>
-                <option value="cash">Tiền mặt</option>
-                <option value="transfer">Chuyển khoản</option>
-              </Select>
+              <div className="grid grid-cols-2 gap-2" role="group" aria-label="Hình thức thanh toán">
+                {([['cash', 'Tiền mặt'], ['transfer', 'VietQR Banking']] as const).map(([value, label]) =>
+                  <button key={value} type="button" aria-pressed={paymentMethod === value} onClick={() => setPaymentMethod(value as PaymentMethod)}
+                    className={`min-h-11 rounded-xl border px-2 text-sm font-semibold ${paymentMethod === value
+                      ? 'border-teal-600 bg-teal-50 text-teal-800' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'}`}>{label}</button>)}
+              </div>
             </Field>
             {paymentMethod === 'transfer' && (
               <Field label="Ghi chú đối soát" required>
@@ -268,6 +271,24 @@ export function InvoicePage() {
           </p>
         </Card>
       )}
+
+      {invoice && <Card className="receipt-print p-5">
+        <div className="border-b border-slate-300 pb-3 text-center">
+          <h3 className="font-serif text-xl font-bold">{SALON.name}</h3>
+          <p className="text-xs text-ink-muted">{SALON.address} · {SALON.hotline}</p>
+          <p className="mt-2 text-sm font-semibold">HOÁ ĐƠN {invoice.code}</p>
+        </div>
+        <p className="mt-3 text-sm">Khách hàng: {invoice.customerName} · {invoice.customerPhone}</p>
+        <ul className="mt-3 divide-y divide-slate-100 text-sm">
+          {lines.map((line, index) => <li key={`${line.name}-${index}`} className="flex justify-between gap-2 py-2"><span>{line.name} × {line.quantity}</span><span>{formatVnd(line.unitPrice * line.quantity)}</span></li>)}
+        </ul>
+        <div className="mt-3 space-y-1 border-t border-slate-300 pt-3 text-sm">
+          <p className="flex justify-between"><span>Tạm tính</span><span>{formatVnd(subtotal)}</span></p>
+          <p className="flex justify-between"><span>Giảm giá</span><span>− {formatVnd(discount)}</span></p>
+          <p className="flex justify-between text-base font-bold"><span>Thực thu</span><span>{formatVnd(total)}</span></p>
+          <p>Thanh toán: {paymentMethod === 'cash' ? 'Tiền mặt' : 'VietQR Banking'}</p>
+        </div>
+      </Card>}
 
       <ConfirmDialog
         open={confirmClose}

@@ -6,3 +6,5 @@ export * from './StarRating';
 export * from './Pagination';
 export * from './DateNav';
 export * from './NotificationBell';
+export * from './Media';
+export * from './Skeleton';

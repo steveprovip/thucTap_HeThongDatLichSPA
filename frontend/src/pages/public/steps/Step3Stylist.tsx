@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Check, Shuffle, UserRound } from 'lucide-react';
+import { Check, Shuffle, Star } from 'lucide-react';
 import { getErrorMessage, publicApi } from '@/api';
 import type { Availability, PublicStylist } from '@/types';
-import { Spinner } from '@/components';
+import { ListSkeleton, StylistAvatar } from '@/components';
 import { useBooking } from '@/contexts/BookingContext';
 import { useToast } from '@/contexts/ToastContext';
 
@@ -29,7 +29,7 @@ export function Step3Stylist() {
     return () => { alive = false; };
   }, [selected, date, time, toast]);
 
-  if (loading) return <Spinner label="Đang tìm thợ rảnh ở khung giờ này…" />;
+  if (loading) return <ListSkeleton count={4} avatar label="Đang tìm thợ rảnh ở khung giờ này…" />;
 
   const free = stylists.filter((s) => availableIds.includes(s.id));
   const busy = stylists.filter((s) => !availableIds.includes(s.id));
@@ -41,9 +41,9 @@ export function Step3Stylist() {
         onClick={() => setStylistId(null)}
         aria-pressed={stylistId === null}
         className={`flex w-full items-center gap-3 rounded-2xl border p-3.5 text-left transition-colors
-          ${stylistId === null ? 'border-brand-600 bg-brand-50' : 'border-brand-100 bg-white hover:border-brand-300'}`}
+          ${stylistId === null ? 'border-teal-600 bg-teal-50/30 ring-1 ring-teal-600' : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-card'}`}
       >
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand-100 text-brand-700">
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-teal-50 text-teal-700">
           <Shuffle size={20} />
         </span>
         <span className="min-w-0 flex-1">
@@ -52,40 +52,35 @@ export function Step3Stylist() {
             Hệ thống chọn thợ rảnh và đang ít lịch nhất trong ngày — luôn đặt được kể cả khi thợ quen đã kín chỗ.
           </span>
         </span>
-        {stylistId === null && <Check size={20} className="shrink-0 text-brand-700" />}
+        {stylistId === null && <Check size={20} className="shrink-0 text-teal-600" />}
       </button>
 
       {free.length > 0 && (
         <>
-          <p className="pt-1 text-sm font-bold text-brand-800">Thợ còn rảnh lúc {time}</p>
+          <p className="pt-1 text-xs font-semibold uppercase tracking-wider text-slate-500">Thợ còn rảnh lúc {time}</p>
           {free.map((s) => (
             <button
               key={s.id}
               type="button"
               onClick={() => setStylistId(s.id)}
               aria-pressed={stylistId === s.id}
-              className={`flex w-full items-center gap-3 rounded-2xl border p-3.5 text-left transition-colors
-                ${stylistId === s.id ? 'border-brand-600 bg-brand-50' : 'border-brand-100 bg-white hover:border-brand-300'}`}
+              className={`press flex w-full items-center gap-3 rounded-2xl border p-3.5 text-left transition-all duration-200
+                ${stylistId === s.id ? 'border-teal-600 bg-teal-50/30 ring-1 ring-teal-600' : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-card'}`}
             >
-              {s.avatarUrl ? (
-                <img src={s.avatarUrl} alt="" className="h-11 w-11 shrink-0 rounded-full object-cover" />
-              ) : (
-                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand-100 text-brand-700">
-                  <UserRound size={20} />
-                </span>
-              )}
+              <StylistAvatar id={s.id} name={s.fullName} url={s.avatarUrl} size="h-12 w-12" className="shadow-sm" />
               <span className="min-w-0 flex-1">
                 <span className="block font-semibold">{s.fullName}</span>
+                {s.avgRating != null && <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-600"><Star size={13} fill="currentColor" className="text-amber-400" /> {s.avgRating.toFixed(1)} / 5</span>}
                 {s.bio && <span className="block line-clamp-2 text-xs text-ink-muted">{s.bio}</span>}
               </span>
-              {stylistId === s.id && <Check size={20} className="shrink-0 text-brand-700" />}
+              {stylistId === s.id && <Check size={20} className="shrink-0 text-teal-600" />}
             </button>
           ))}
         </>
       )}
 
       {busy.length > 0 && (
-        <details className="rounded-2xl border border-brand-100 bg-surface-alt p-3.5">
+        <details className="rounded-2xl border border-slate-200 bg-slate-50 p-3.5">
           <summary className="cursor-pointer text-sm font-medium text-ink-soft">
             {busy.length} thợ khác làm được dịch vụ này nhưng đã kín lúc {time}
           </summary>

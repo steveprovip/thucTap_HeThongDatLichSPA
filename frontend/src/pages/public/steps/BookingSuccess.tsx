@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { CalendarCheck, Copy, PartyPopper } from 'lucide-react';
+import { CalendarCheck, Copy, PartyPopper, Printer } from 'lucide-react';
 import type { BookingResult } from '@/types';
 import { Button, Card } from '@/components';
 import { formatDuration, formatVnd } from '@/utils/format';
@@ -20,8 +20,8 @@ export function BookingSuccess({ result, onBookAgain }: { result: BookingResult;
 
   return (
     <div className="space-y-4">
-      <Card className="overflow-hidden">
-        <div className="bg-green-600 px-5 py-6 text-center text-white">
+      <Card className="ticket-print overflow-hidden">
+        <div className="bg-gradient-to-br from-emerald-500 to-teal-600 px-5 py-7 text-center text-white">
           <PartyPopper size={34} className="mx-auto" />
           <h2 className="mt-2 text-xl font-bold">Tiệm đã nhận lịch của bạn</h2>
           <p className="mt-1 text-sm text-white/85">
@@ -32,9 +32,9 @@ export function BookingSuccess({ result, onBookAgain }: { result: BookingResult;
         </div>
 
         <div className="space-y-4 p-5">
-          <div className="rounded-2xl border-2 border-dashed border-brand-300 bg-brand-50 px-4 py-4 text-center">
+          <div className="rounded-2xl border-2 border-dashed border-teal-200 bg-teal-50/50 px-4 py-4 text-center">
             <p className="text-xs font-medium uppercase tracking-wide text-brand-700">Mã tra cứu</p>
-            <p className="mt-1 text-3xl font-bold tracking-[0.2em] text-brand-900">{result.code}</p>
+            <p className="mt-1 text-3xl font-bold tracking-[0.2em] text-slate-900">{result.code}</p>
             <Button variant="ghost" size="sm" className="mt-1.5" onClick={copyCode} icon={<Copy size={14} />}>
               Sao chép mã
             </Button>
@@ -59,16 +59,16 @@ export function BookingSuccess({ result, onBookAgain }: { result: BookingResult;
             </div>
           </dl>
 
-          <ul className="space-y-1 border-t border-brand-100 pt-3 text-sm">
+          <ul className="space-y-1 border-t border-slate-200 pt-3 text-sm">
             {result.services.map((s) => (
               <li key={s.name} className="flex justify-between gap-3">
                 <span className="min-w-0 truncate">{s.name}</span>
                 <span className="shrink-0">{formatVnd(s.price)}</span>
               </li>
             ))}
-            <li className="flex justify-between gap-3 border-t border-brand-100 pt-2 font-bold">
+            <li className="flex justify-between gap-3 border-t border-slate-200 pt-2 font-bold">
               <span>Tạm tính</span>
-              <span className="text-brand-800">{formatVnd(result.estimatedTotal)}</span>
+              <span className="text-slate-900">{formatVnd(result.estimatedTotal)}</span>
             </li>
           </ul>
 
@@ -88,6 +88,7 @@ export function BookingSuccess({ result, onBookAgain }: { result: BookingResult;
               <CalendarCheck size={17} /> Xem hoặc huỷ lịch
             </Link>
             <Button variant="outline" className="flex-1" onClick={onBookAgain}>Đặt thêm lịch khác</Button>
+            <Button variant="secondary" className="flex-1" icon={<Printer size={16} />} onClick={() => window.print()}>In phiếu hẹn</Button>
           </div>
 
           <p className="text-center text-xs text-ink-muted">

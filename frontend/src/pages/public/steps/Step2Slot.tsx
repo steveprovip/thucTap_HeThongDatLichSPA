@@ -2,8 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, CalendarX2, Info } from 'lucide-react';
 import { getErrorMessage, publicApi } from '@/api';
 import type { Availability } from '@/types';
-import { Button, Spinner } from '@/components';
-import { addDaysISO, formatDuration, formatWeekdayDate, todayISO, toISODate } from '@/utils/format';
+import { Button, Skeleton } from '@/components';
+import { addDaysISO, formatDuration, formatWeekdayDate, todayISO } from '@/utils/format';
 import { useBooking } from '@/contexts/BookingContext';
 import { useToast } from '@/contexts/ToastContext';
 
@@ -53,7 +53,7 @@ export function Step2Slot() {
                 key={d}
                 onClick={() => { setDate(d); setTime(''); }}
                 className={`min-w-[104px] snap-start rounded-xl border px-3 py-2.5 text-center transition-colors
-                  ${active ? 'border-brand-700 bg-brand-700 text-white' : 'border-brand-200 bg-white hover:border-brand-400'}`}
+                  ${active ? 'border-teal-600 bg-teal-50/30 text-teal-800 ring-1 ring-teal-600' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'}`}
               >
                 <span className="block text-[11px] opacity-80">{label.split(' ').slice(0, 2).join(' ')}</span>
                 <span className="block text-sm font-bold">{label.split(' ').slice(-1)[0]}</span>
@@ -74,7 +74,7 @@ export function Step2Slot() {
         </div>
       </div>
 
-      <div className="flex items-start gap-2 rounded-xl bg-brand-50 px-3.5 py-2.5 text-xs text-brand-900">
+      <div className="flex items-start gap-2 rounded-xl border border-teal-100 bg-teal-50/60 px-3.5 py-2.5 text-xs text-teal-900">
         <Info size={14} className="mt-0.5 shrink-0" />
         <p className="leading-relaxed">
           Tổng thời lượng bạn chọn: <strong>{formatDuration(totalDuration)}</strong>.
@@ -90,16 +90,22 @@ export function Step2Slot() {
       )}
 
       {loading ? (
-        <Spinner label="Đang tính khung giờ còn trống…" />
+        <div role="status" aria-busy="true" className="space-y-2">
+          <span className="sr-only">Đang tính khung giờ còn trống…</span>
+          <Skeleton className="h-3.5 w-40" />
+          <div className="grid grid-cols-3 gap-2 xs:grid-cols-4 sm:grid-cols-6">
+            {Array.from({ length: 12 }, (_, i) => <Skeleton key={i} className="h-11 rounded-xl" />)}
+          </div>
+        </div>
       ) : !data ? null : data.salonClosed ? (
-        <div className="rounded-2xl border border-dashed border-brand-200 bg-surface-alt px-4 py-8 text-center">
-          <CalendarX2 size={30} className="mx-auto text-brand-400" />
+        <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center">
+          <CalendarX2 size={30} className="mx-auto text-slate-400" />
           <p className="mt-2 font-semibold">Tiệm không hoạt động ngày này</p>
           <p className="mt-1 text-sm text-ink-muted">{data.closedReason ?? 'Vui lòng chọn ngày khác.'}</p>
         </div>
       ) : data.slots.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-brand-200 bg-surface-alt px-4 py-8 text-center">
-          <CalendarX2 size={30} className="mx-auto text-brand-400" />
+        <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center">
+          <CalendarX2 size={30} className="mx-auto text-slate-400" />
           <p className="mt-2 font-semibold">Ngày này đã kín chỗ cho gói dịch vụ bạn chọn</p>
           {data.suggestedDates.length > 0 ? (
             <>
@@ -129,8 +135,8 @@ export function Step2Slot() {
                 aria-pressed={time === s.time}
                 className={`min-h-[44px] rounded-xl border text-sm font-semibold transition-colors
                   ${time === s.time
-                    ? 'border-brand-700 bg-brand-700 text-white'
-                    : 'border-brand-200 bg-white text-ink hover:border-brand-400'}`}
+                    ? 'border-teal-600 bg-teal-600 text-white shadow-sm'
+                    : 'border-slate-200 bg-white text-slate-800 hover:border-teal-600 hover:text-teal-700'}`}
               >
                 {s.time}
               </button>
