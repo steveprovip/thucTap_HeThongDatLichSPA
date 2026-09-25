@@ -65,8 +65,8 @@ export function NotificationBell() {
       </button>
 
       {open && (
-        <div className="absolute right-0 z-40 mt-2 w-[min(92vw,380px)] overflow-hidden rounded-2xl bg-white shadow-pop">
-          <div className="border-b border-brand-100 px-4 py-2.5 text-sm font-semibold">Thông báo</div>
+        <div className="animate-fade-in-scale absolute right-0 z-40 mt-2 w-[min(92vw,380px)] origin-top-right overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-pop">
+          <div className="border-b border-slate-200 px-4 py-2.5 text-sm font-semibold">Thông báo</div>
           <div className="max-h-[60vh] overflow-y-auto">
             {loading && <p className="px-4 py-6 text-center text-sm text-ink-muted">Đang tải…</p>}
             {!loading && items.length === 0 && (
@@ -79,7 +79,7 @@ export function NotificationBell() {
                   setOpen(false);
                   if (n.appointmentId) navigate(`/quan-ly/lich-hen/${n.appointmentId}`);
                 }}
-                className="block w-full border-b border-brand-50 px-4 py-3 text-left hover:bg-brand-50/60"
+                className="block w-full border-b border-slate-100 px-4 py-3 text-left hover:bg-brand-50/60"
               >
                 <p className="text-sm font-semibold text-ink">{n.title}</p>
                 <p className="mt-0.5 text-xs leading-snug text-ink-soft">{n.body}</p>

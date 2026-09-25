@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import { Download, TrendingUp } from 'lucide-react';
 import { analyticsApi, getErrorMessage, reviewsApi } from '@/api';
 import type { RevenueReport, StylistRating } from '@/types';
-import { Button, Card, EmptyState, SectionTitle, Spinner } from '@/components';
+import { Button, Card, EmptyState, SectionTitle, Skeleton, StatGridSkeleton } from '@/components';
 import { formatVnd, formatVndShort } from '@/utils/format';
 import { useToast } from '@/contexts/ToastContext';
 
@@ -16,7 +16,10 @@ const firstOfMonth = () => {
 const todayStr = () => new Date().toISOString().slice(0, 10);
 
 /** Một chuỗi số liệu dùng MỘT màu — màu khác nhau chỉ dành cho các nhóm khác nhau. */
-const BAR_COLOR = '#8c5a3c';
+const BAR_COLOR = '#0D9488';
+const GRID = '#E2E8F0';
+const AXIS_TICK = { fontSize: 11, fill: '#64748B' };
+const TOOLTIP_STYLE = { borderRadius: 12, border: '1px solid #E2E8F0', boxShadow: '0 8px 24px -8px rgba(15,23,42,0.15)', fontSize: 12 };
 
 /** S4-07: doanh thu theo thợ và theo dịch vụ, xuất CSV UTF-8. */
 export function RevenuePage() {
@@ -84,59 +87,60 @@ export function RevenuePage() {
         </div>
       </Card>
 
-      {loading ? <Spinner /> : !data ? null : (
+      {loading ? <div className="space-y-4"><StatGridSkeleton /><Skeleton className="h-72 rounded-2xl" /></div> : !data ? null : (
         <>
-          <div className="grid gap-3 sm:grid-cols-4">
-            <Card className="p-4">
-              <p className="text-xs uppercase tracking-wide text-ink-muted">Thực thu</p>
-              <p className="mt-1 text-xl font-bold text-brand-800">{data.summary.totalText}</p>
+          <div className="stagger grid gap-3 sm:grid-cols-4">
+            <Card className="p-5">
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Thực thu</p>
+              <p className="mt-1 text-2xl font-bold tracking-tight text-teal-700">{data.summary.totalText}</p>
             </Card>
-            <Card className="p-4">
-              <p className="text-xs uppercase tracking-wide text-ink-muted">Trước giảm giá</p>
-              <p className="mt-1 text-xl font-bold">{data.summary.subtotalText}</p>
+            <Card className="p-5">
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Trước giảm giá</p>
+              <p className="mt-1 text-2xl font-bold tracking-tight">{data.summary.subtotalText}</p>
             </Card>
-            <Card className="p-4">
-              <p className="text-xs uppercase tracking-wide text-ink-muted">Đã giảm</p>
-              <p className="mt-1 text-xl font-bold text-red-600">− {data.summary.discountText}</p>
+            <Card className="p-5">
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Đã giảm</p>
+              <p className="mt-1 text-2xl font-bold tracking-tight text-red-600">− {data.summary.discountText}</p>
             </Card>
-            <Card className="p-4">
-              <p className="text-xs uppercase tracking-wide text-ink-muted">Số phiếu</p>
-              <p className="mt-1 text-xl font-bold">{data.summary.invoiceCount}</p>
+            <Card className="p-5">
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Số phiếu</p>
+              <p className="mt-1 text-2xl font-bold tracking-tight">{data.summary.invoiceCount}</p>
             </Card>
           </div>
 
           <Card className="p-4">
-            <p className="mb-3 flex items-center gap-2 text-sm font-bold">
+            <p className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-900">
               <TrendingUp size={16} /> Doanh thu theo ngày
             </p>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={data.byDay} margin={{ top: 4, right: 8, bottom: 4, left: 8 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e9d1bc" />
-                  <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={(d: string) => d.slice(8)} />
-                  <YAxis tick={{ fontSize: 11 }} tickFormatter={formatVndShort} width={56} />
-                  <Tooltip
+                <AreaChart data={data.byDay} margin={{ top: 4, right: 8, bottom: 4, left: 8 }}>
+                  <defs><linearGradient id="revenueFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#0D9488" stopOpacity={0.35} /><stop offset="100%" stopColor="#0D9488" stopOpacity={0.02} /></linearGradient></defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke={GRID} />
+                  <XAxis dataKey="date" tick={AXIS_TICK} axisLine={false} tickLine={false} tickFormatter={(d: string) => d.slice(8)} />
+                  <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} tickFormatter={formatVndShort} width={56} />
+                  <Tooltip contentStyle={TOOLTIP_STYLE}
                     formatter={(v: number) => [formatVnd(v), 'Doanh thu']}
                     labelFormatter={(d: string) => `Ngày ${d}`}
                   />
-                  <Line type="monotone" dataKey="revenue" stroke="#8c5a3c" strokeWidth={2} dot={false} name="Doanh thu" />
-                </LineChart>
+                  <Area type="monotone" dataKey="revenue" stroke="#0D9488" strokeWidth={2.5} fill="url(#revenueFill)" name="Doanh thu" />
+                </AreaChart>
               </ResponsiveContainer>
             </div>
           </Card>
 
           <div className="grid gap-4 lg:grid-cols-2">
             <Card className="p-4">
-              <p className="mb-3 text-sm font-bold">Doanh thu theo thợ</p>
+              <p className="mb-3 text-sm font-semibold text-slate-900">Doanh thu theo thợ</p>
               {data.byStylist.length === 0 ? <EmptyState title="Chưa có dữ liệu" /> : (
                 <>
                   <div className="h-56">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={data.byStylist} layout="vertical" margin={{ left: 8, right: 16 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#e9d1bc" horizontal={false} />
-                        <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={formatVndShort} />
-                        <YAxis type="category" dataKey="stylistName" width={110} tick={{ fontSize: 11 }} />
-                        <Tooltip formatter={(v: number) => [formatVnd(v), 'Doanh thu']} />
+                        <CartesianGrid strokeDasharray="3 3" stroke={GRID} horizontal={false} />
+                        <XAxis type="number" tick={AXIS_TICK} axisLine={false} tickLine={false} tickFormatter={formatVndShort} />
+                        <YAxis type="category" dataKey="stylistName" width={110} tick={AXIS_TICK} axisLine={false} tickLine={false} />
+                        <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: '#F1F5F9' }} formatter={(v: number) => [formatVnd(v), 'Doanh thu']} />
                         <Bar dataKey="revenue" fill={BAR_COLOR} radius={[0, 6, 6, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
@@ -169,9 +173,21 @@ export function RevenuePage() {
             </Card>
 
             <Card className="p-4">
-              <p className="mb-3 text-sm font-bold">Doanh thu theo dịch vụ</p>
+              <p className="mb-3 text-sm font-semibold text-slate-900">Doanh thu theo dịch vụ</p>
               {data.byService.length === 0 ? <EmptyState title="Chưa có dữ liệu" /> : (
-                <div className="table-wrap">
+                <>
+                <div className="h-56">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={data.byService} layout="vertical" margin={{ left: 8, right: 16 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={GRID} horizontal={false} />
+                      <XAxis type="number" tick={AXIS_TICK} axisLine={false} tickLine={false} tickFormatter={formatVndShort} />
+                      <YAxis type="category" dataKey="serviceName" width={130} tick={AXIS_TICK} axisLine={false} tickLine={false} />
+                      <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: '#F1F5F9' }} formatter={(v: number) => [formatVnd(v), 'Doanh thu']} />
+                      <Bar dataKey="revenue" fill="#F43F5E" radius={[0, 6, 6, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="table-wrap mt-3">
                   <table className="table">
                     <thead><tr><th>Dịch vụ</th><th className="text-right">Số lượt</th><th className="text-right">Doanh thu</th></tr></thead>
                     <tbody>
@@ -185,6 +201,7 @@ export function RevenuePage() {
                     </tbody>
                   </table>
                 </div>
+                </>
               )}
             </Card>
           </div>

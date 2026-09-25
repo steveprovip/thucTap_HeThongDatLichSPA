@@ -10,6 +10,8 @@ export const formatVnd = (value: number | string | null | undefined): string => 
   return `${sign}${Math.abs(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.')} đ`;
 };
 
+export const formatVND = (amount: number): string => formatVnd(amount);
+
 /** "250.000" khi nhập liệu (không kèm đơn vị) */
 export const formatNumber = (value: number | string | null | undefined): string => {
   const n = Math.round(Number(value ?? 0));

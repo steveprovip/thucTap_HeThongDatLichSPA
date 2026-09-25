@@ -1,5 +1,6 @@
 import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import type { ApiError } from '@/types';
+import { DEMO_MODE, mockAdapter } from './mockBackend';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
@@ -27,6 +28,7 @@ export const api: AxiosInstance = axios.create({
   baseURL: BASE_URL,
   timeout: 30_000,
   headers: { 'Content-Type': 'application/json' },
+  ...(DEMO_MODE ? { adapter: mockAdapter } : {}),
 });
 
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {

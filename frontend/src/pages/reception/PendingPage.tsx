@@ -28,6 +28,10 @@ export function PendingPage() {
   useEffect(() => { void load(); }, [load]);
 
   const overdue = items.filter((i) => i.pendingOverdue);
+  const confirm = async (a: Appointment) => {
+    try { await appointmentsApi.confirm(a.id); toast.success(`Đã xác nhận lịch ${a.code}`); void load(); }
+    catch (e) { toast.error(getErrorMessage(e)); }
+  };
 
   return (
     <div className="space-y-3">
@@ -52,7 +56,20 @@ export function PendingPage() {
           description="Mọi lịch đặt online đã được xử lý."
         />
       ) : (
-        <div className="grid gap-2.5 md:grid-cols-2">
+        <>
+        <div className="table-wrap hidden md:block">
+          <table className="table">
+            <thead><tr><th>Mã / thời gian</th><th>Khách hàng</th><th>Dịch vụ</th><th>Chuyên viên</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+            <tbody>{items.map(a => <tr key={a.id}>
+              <td><span className="block font-semibold">{a.code}</span><span className="text-xs text-ink-muted">{a.startAtText}</span></td>
+              <td>{a.customer.fullName}<span className="block text-xs text-ink-muted">{a.customer.phone}</span></td>
+              <td>{a.services.map(s => s.name).join(', ')}<span className="block text-xs text-ink-muted">{formatDuration(a.totalDurationMinutes)}</span></td>
+              <td>{a.stylist.fullName}</td><td><StatusBadge status={a.status} /></td>
+              <td><div className="flex gap-1"><Button size="sm" onClick={() => setSelected(a)}>Xử lý</Button><Button size="sm" variant="outline" onClick={() => confirm(a)}>Xác nhận</Button></div></td>
+            </tr>)}</tbody>
+          </table>
+        </div>
+        <div className="grid gap-2.5 md:hidden">
           {items.map((a) => (
             <Card key={a.id} className={`p-4 ${a.pendingOverdue ? 'ring-2 ring-amber-300' : ''}`}>
               <div className="flex items-start justify-between gap-2">
@@ -72,13 +89,7 @@ export function PendingPage() {
                 <Button size="sm" onClick={() => setSelected(a)}>Xử lý</Button>
                 <Button
                   size="sm" variant="outline"
-                  onClick={async () => {
-                    try {
-                      await appointmentsApi.confirm(a.id);
-                      toast.success(`Đã xác nhận lịch ${a.code}`);
-                      void load();
-                    } catch (e) { toast.error(getErrorMessage(e)); }
-                  }}
+                  onClick={() => confirm(a)}
                 >
                   Xác nhận nhanh
                 </Button>
@@ -86,6 +97,7 @@ export function PendingPage() {
             </Card>
           ))}
         </div>
+        </>
       )}
 
       <AppointmentDrawer appointment={selected} onClose={() => setSelected(null)} onChanged={load} />

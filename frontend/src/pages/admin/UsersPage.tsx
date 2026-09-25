@@ -2,9 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { KeyRound, Lock, Plus, Search, Unlock, UserCog } from 'lucide-react';
 import { getErrorMessage, usersApi } from '@/api';
 import type { Role, UserRow } from '@/types';
-import {
-  Button, Card, ConfirmDialog, EmptyState, Field, Input, Modal, Pagination, SectionTitle, Select, Spinner,
-} from '@/components';
+import { Button, ConfirmDialog, EmptyState, Field, Input, Modal, Pagination, SectionTitle, Select, TableSkeleton } from '@/components';
 import { ROLE_LABELS } from '@/utils/constants';
 import { formatDateTime, VN_PHONE_REGEX } from '@/utils/format';
 import { useAuth } from '@/contexts/AuthContext';
@@ -104,7 +102,7 @@ export function UsersPage() {
                placeholder="Tìm theo tên, email hoặc số điện thoại" className="pl-11" />
       </div>
 
-      {loading ? <Spinner /> : !data || data.items.length === 0 ? (
+      {loading ? <TableSkeleton cols={6} /> : !data || data.items.length === 0 ? (
         <EmptyState icon={<UserCog size={30} />} title="Không có tài khoản nào" />
       ) : (
         <>
@@ -142,6 +140,11 @@ export function UsersPage() {
                       {!readOnly && (
                         <div className="flex justify-end gap-1">
                           <Button size="sm" variant="ghost" onClick={() => openEdit(u)}>Sửa</Button>
+                          <Button size="sm" variant="ghost" onClick={async () => {
+                            try { await usersApi.update(u.id, { isActive: !u.isActive });
+                              toast.success(u.isActive ? 'Đã khoá tài khoản' : 'Đã mở tài khoản'); void load(); }
+                            catch (e) { toast.error(getErrorMessage(e)); }
+                          }}>{u.isActive ? 'Khoá' : 'Mở'}</Button>
                           <Button size="sm" variant="ghost" onClick={() => setResetTarget(u)} title="Cấp lại mật khẩu tạm">
                             <KeyRound size={14} />
                           </Button>
@@ -196,7 +199,7 @@ export function UsersPage() {
           </Field>
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)}
-                   className="h-4 w-4 rounded border-brand-300" />
+                   className="h-4 w-4 rounded border-slate-300" />
             Tài khoản đang hoạt động
           </label>
           <p className="text-xs text-ink-muted">

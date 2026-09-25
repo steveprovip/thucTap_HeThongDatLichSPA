@@ -24,8 +24,8 @@ export function Step4Confirm({ errors }: { errors: Step4Errors }) {
 
   return (
     <div className="space-y-5">
-      <section className="rounded-2xl border border-brand-100 bg-surface-alt p-4">
-        <h3 className="text-sm font-bold text-brand-800">Tóm tắt lịch hẹn</h3>
+      <section className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 sm:p-5">
+        <h3 className="text-sm font-semibold text-slate-900">Tóm tắt lịch hẹn</h3>
         <dl className="mt-2.5 space-y-1.5 text-sm">
           <div className="flex justify-between gap-3">
             <dt className="text-ink-muted">Thời gian</dt>
@@ -38,7 +38,7 @@ export function Step4Confirm({ errors }: { errors: Step4Errors }) {
             <dd className="font-semibold">{formatDuration(totalDuration)}</dd>
           </div>
         </dl>
-        <ul className="mt-3 space-y-1 border-t border-brand-200 pt-2.5 text-sm">
+        <ul className="mt-3 space-y-1 border-t border-slate-200 pt-2.5 text-sm">
           {selected.map((s) => (
             <li key={s.id} className="flex justify-between gap-3">
               <span className="min-w-0 truncate">{s.name} <span className="text-ink-muted">({s.durationMinutes}′)</span></span>
@@ -46,9 +46,9 @@ export function Step4Confirm({ errors }: { errors: Step4Errors }) {
             </li>
           ))}
         </ul>
-        <div className="mt-2.5 flex items-baseline justify-between border-t border-brand-200 pt-2.5">
+        <div className="mt-2.5 flex items-baseline justify-between border-t border-slate-200 pt-2.5">
           <span className="text-sm font-semibold">Tạm tính</span>
-          <span className="text-lg font-bold text-brand-800">{formatVnd(totalPrice)}</span>
+          <span className="text-xl font-bold text-slate-900">{formatVnd(totalPrice)}</span>
         </div>
         <p className="mt-1.5 flex items-start gap-1.5 text-xs text-ink-muted">
           <Info size={13} className="mt-0.5 shrink-0" />

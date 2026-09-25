@@ -22,7 +22,7 @@ export const usersApi = {
 };
 
 export const auditApi = {
-  async list(params: { page?: number; limit?: number; from?: string; to?: string; actorId?: string; entityType?: string }) {
+  async list(params: { page?: number; limit?: number; from?: string; to?: string; actorId?: string; actor?: string; action?: string; entityType?: string }) {
     return unwrap<Paginated<AuditLogRow>>(await api.get('/audit-logs', { params }));
   },
 };
