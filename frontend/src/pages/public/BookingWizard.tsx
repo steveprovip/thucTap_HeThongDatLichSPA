@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Check, Clock, Wallet } from 'lucide-react';
 import { getErrorField, getErrorMessage, publicApi } from '@/api';
 import type { BookingResult } from '@/types';
@@ -27,6 +28,18 @@ export function BookingWizard() {
   const [result, setResult] = useState<BookingResult | null>(null);
   const [errors, setErrors] = useState<Step4Errors>({});
   const toast = useToast();
+  const [searchParams] = useSearchParams();
+  const preselected = useRef(false);
+
+  useEffect(() => {
+    const serviceId = searchParams.get('service');
+    if (!serviceId || preselected.current) return;
+    preselected.current = true;
+    void publicApi.catalog().then(groups => {
+      const service = groups.flatMap(group => group.services).find(item => item.id === serviceId);
+      if (service && !selected.some(item => item.id === serviceId)) booking.toggleService(service);
+    }).catch(error => toast.error(getErrorMessage(error)));
+  }, [searchParams, booking, selected, toast]);
 
   const canNext = useMemo(() => {
     if (step === 1) return selected.length > 0;
@@ -102,14 +115,14 @@ export function BookingWizard() {
                 type="button"
                 onClick={() => booking.canGoToStep(s.n) && setStep(s.n)}
                 disabled={!booking.canGoToStep(s.n)}
-                className={`flex w-full min-w-0 flex-col items-center gap-1 rounded-xl px-1 py-2 text-[11px] font-semibold
+                className={`flex w-full min-w-0 flex-col items-center gap-1 rounded-xl border px-1 py-2 text-[11px] font-semibold
                   transition-colors sm:flex-row sm:gap-2 sm:px-3 sm:text-xs
-                  ${active ? 'bg-brand-700 text-white' : done ? 'bg-brand-100 text-brand-800' : 'bg-white text-ink-muted'}
+                  ${active ? 'border-teal-600 bg-teal-600 text-white shadow-sm' : done ? 'border-teal-200 bg-teal-50 text-teal-800' : 'border-slate-200 bg-white text-slate-500'}
                   ${booking.canGoToStep(s.n) ? '' : 'cursor-not-allowed opacity-60'}`}
                 aria-current={active ? 'step' : undefined}
               >
                 <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px]
-                  ${active ? 'bg-white text-brand-800' : done ? 'bg-brand-700 text-white' : 'bg-brand-100 text-brand-700'}`}>
+                  ${active ? 'bg-white text-teal-700' : done ? 'bg-teal-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
                   {done ? <Check size={12} strokeWidth={3} /> : s.n}
                 </span>
                 <span className="w-full truncate text-center sm:text-left">{s.label}</span>
@@ -119,7 +132,7 @@ export function BookingWizard() {
         })}
       </ol>
 
-      <div className="card p-4 sm:p-5">
+      <div key={step} className="card animate-fade-in p-4 sm:p-6">
         {step === 1 && <Step1Services />}
         {step === 2 && <Step2Slot />}
         {step === 3 && <Step3Stylist />}
@@ -127,15 +140,15 @@ export function BookingWizard() {
       </div>
 
       {/* Thanh tổng kết + điều hướng, dính đáy màn hình trên điện thoại */}
-      <div className="fixed inset-x-0 bottom-[58px] z-20 border-t border-brand-100 bg-white px-3 py-2.5
-                      sm:static sm:rounded-2xl sm:border sm:px-4 sm:py-3">
+      <div className="fixed inset-x-0 bottom-[58px] z-20 border-t border-slate-200 bg-white/95 px-3 py-2.5 shadow-[0_-8px_24px_-12px_rgba(15,23,42,0.12)] backdrop-blur
+                      sm:sticky sm:bottom-4 sm:rounded-2xl sm:border sm:px-5 sm:py-3.5 sm:shadow-card">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-3 text-xs">
-            <span className="inline-flex items-center gap-1 text-ink-soft">
+            <span className="inline-flex items-center gap-1 text-slate-600">
               <Clock size={14} /> {selected.length} dịch vụ · {formatDuration(totalDuration)}
             </span>
-            <span className="inline-flex items-center gap-1 font-bold text-brand-800">
-              <Wallet size={14} /> {formatVnd(totalPrice)}
+            <span className="inline-flex items-center gap-1 text-base font-bold text-slate-900">
+              <Wallet size={15} className="text-teal-600" /> <span key={totalPrice} className="animate-fade-in-scale inline-block">{formatVnd(totalPrice)}</span>
             </span>
           </div>
           <div className="flex items-center gap-2">

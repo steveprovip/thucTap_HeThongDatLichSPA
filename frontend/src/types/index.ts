@@ -106,6 +106,7 @@ export interface PublicStylist {
   fullName: string;
   avatarUrl: string | null;
   bio: string | null;
+  avgRating?: number | null;
 }
 
 export interface Shift {
@@ -360,6 +361,8 @@ export interface Voucher {
   startDate: string;
   endDate: string;
   maxUsage: number | null;
+  /** Giá trị đơn tối thiểu (đ) để áp mã; null = không giới hạn. */
+  minOrderValue?: number | null;
   usedCount: number;
   isActive: boolean;
 }
@@ -458,6 +461,7 @@ export interface SlotDensityReport {
   from: string;
   to: string;
   density: { hour: number; hourLabel: string; weekdayCount: number; weekendCount: number; totalCount: number }[];
+  weeklyDensity?: { weekday: number; hour: number; count: number }[];
   noShow: {
     total: number; noShow: number; cancelled: number; completed: number;
     noShowRate: number; cancelRate: number; completionRate: number;

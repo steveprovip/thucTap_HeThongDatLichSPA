@@ -27,6 +27,17 @@ export const STATUS_STYLES: Record<AppointmentStatus, string> = {
   no_show: 'bg-red-50 text-red-800 border-red-300',
 };
 
+/** Khối lịch hẹn trên lưới ngày: nền pastel + viền trái đậm. */
+export const STATUS_BLOCK: Record<AppointmentStatus, string> = {
+  pending: 'bg-amber-50 border-amber-500 text-amber-900',
+  confirmed: 'bg-blue-50 border-blue-500 text-blue-900',
+  arrived: 'bg-violet-50 border-violet-500 text-violet-900',
+  in_progress: 'bg-cyan-50 border-cyan-500 text-cyan-900',
+  completed: 'bg-emerald-50 border-emerald-500 text-emerald-900',
+  cancelled: 'bg-slate-100 border-slate-400 text-slate-600 line-through decoration-slate-400/60',
+  no_show: 'bg-rose-50 border-rose-500 text-rose-900',
+};
+
 export const STATUS_DOT: Record<AppointmentStatus, string> = {
   pending: 'bg-amber-500',
   confirmed: 'bg-blue-600',
@@ -55,3 +66,27 @@ export const PAYMENT_LABELS: Record<string, string> = {
 };
 
 export const MAX_SERVICES_PER_BOOKING = 5;
+
+/** Trang mặc định sau khi đăng nhập theo vai trò. */
+export const ROLE_LANDING: Record<string, string> = {
+  admin: '/quan-ly/tai-khoan',
+  owner: '/quan-ly/tong-quan',
+  receptionist: '/quan-ly',
+  stylist: '/quan-ly/lich-cua-toi',
+  customer: '/',
+};
+
+/** Tài khoản mẫu cho chế độ demo (khớp dữ liệu trong mockBackend). */
+export const DEMO_ACCOUNTS: { role: string; label: string; email: string; hint: string }[] = [
+  { role: 'admin', label: 'Quản trị', email: 'admin@lumi.vn', hint: 'Tài khoản, nhật ký, phân quyền' },
+  { role: 'owner', label: 'Chủ tiệm', email: 'owner@lumi.vn', hint: 'Báo cáo, bảng giá, mã giảm giá' },
+  { role: 'receptionist', label: 'Lễ tân', email: 'reception@lumi.vn', hint: 'Lịch ngày, khách vãng lai, thu ngân' },
+  { role: 'stylist', label: 'Thợ', email: 'minhanh@lumi.vn', hint: 'Lịch của tôi, ghi chú kỹ thuật' },
+];
+
+/** Quy tắc mật khẩu: tối thiểu 8 ký tự, có chữ và số. */
+export const PASSWORD_RULES: { id: string; label: string; test: (pw: string) => boolean }[] = [
+  { id: 'len', label: 'Tối thiểu 8 ký tự', test: (pw) => pw.length >= 8 },
+  { id: 'letter', label: 'Có ít nhất một chữ cái', test: (pw) => /[A-Za-z]/.test(pw) },
+  { id: 'digit', label: 'Có ít nhất một chữ số', test: (pw) => /\d/.test(pw) },
+];

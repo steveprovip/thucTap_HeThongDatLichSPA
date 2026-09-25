@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Check, Clock, Search } from 'lucide-react';
 import { getErrorMessage, publicApi } from '@/api';
 import type { PublicCatalogGroup } from '@/types';
-import { EmptyState, Input, Spinner } from '@/components';
+import { EmptyState, Input, ListSkeleton, SmartImage } from '@/components';
+import { assignServiceImages } from '@/utils/images';
 import { formatDuration } from '@/utils/format';
 import { MAX_SERVICES_PER_BOOKING } from '@/utils/constants';
 import { useBooking } from '@/contexts/BookingContext';
@@ -31,6 +32,10 @@ export function Step1Services() {
 
   const selectedIds = useMemo(() => new Set(selected.map((s) => s.id)), [selected]);
   const atLimit = selected.length >= MAX_SERVICES_PER_BOOKING;
+  const photos = useMemo(
+    () => assignServiceImages(groups.flatMap((g) => g.services.map((s) => ({ id: s.id, name: s.name, categoryId: g.categoryId })))),
+    [groups],
+  );
 
   return (
     <div className="space-y-4">
@@ -51,20 +56,20 @@ export function Step1Services() {
         </p>
       )}
 
-      {loading ? (
-        <Spinner />
+      {loading && groups.length === 0 ? (
+        <ListSkeleton count={5} label="Đang tải dịch vụ…" />
       ) : groups.length === 0 ? (
         <EmptyState title="Không có dịch vụ phù hợp" description="Thử từ khoá khác nhé." />
       ) : (
         groups.map((group) => (
           <section key={group.categoryId} className="space-y-2">
-            <h3 className="text-sm font-bold uppercase tracking-wide text-brand-700">{group.categoryName}</h3>
-            <ul className="space-y-2">
-              {group.services.map((s) => {
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">{group.categoryName}</h3>
+            <ul className="stagger space-y-2">
+              {group.services.map((s, index) => {
                 const isOn = selectedIds.has(s.id);
                 const disabled = !isOn && atLimit;
                 return (
-                  <li key={s.id}>
+                  <li key={s.id} style={{ '--i': index } as React.CSSProperties}>
                     <button
                       type="button"
                       disabled={disabled}
@@ -73,16 +78,17 @@ export function Step1Services() {
                         const r = toggleService(s);
                         if (!r.ok && r.reason) toast.warning(r.reason);
                       }}
-                      className={`flex w-full items-start gap-3 rounded-2xl border p-3.5 text-left transition-colors
-                        ${isOn ? 'border-brand-600 bg-brand-50' : 'border-brand-100 bg-white hover:border-brand-300'}
+                      className={`press flex w-full items-start gap-3 rounded-2xl border p-3 text-left transition-all duration-200
+                        ${isOn ? 'border-teal-600 bg-teal-50/30 ring-1 ring-teal-600' : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-card'}
                         ${disabled ? 'cursor-not-allowed opacity-50' : ''}`}
                     >
                       <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2
-                        ${isOn ? 'border-brand-700 bg-brand-700 text-white' : 'border-brand-300'}`}>
-                        {isOn && <Check size={14} strokeWidth={3} />}
+                        ${isOn ? 'border-teal-600 bg-teal-600 text-white' : 'border-slate-300 bg-white'}`}>
+                        {isOn && <Check size={14} strokeWidth={3} className="animate-fade-in-scale" />}
                       </span>
+                      <SmartImage src={photos[s.id]} alt="" loading="lazy" className="hidden h-16 w-16 shrink-0 rounded-xl xs:block" />
                       <span className="min-w-0 flex-1">
-                        <span className="block font-semibold text-ink">{s.name}</span>
+                        <span className="block font-semibold text-slate-900">{s.name}</span>
                         {s.description && (
                           <span className="mt-0.5 block line-clamp-2 text-xs text-ink-muted">{s.description}</span>
                         )}
@@ -90,7 +96,7 @@ export function Step1Services() {
                           <Clock size={13} /> {formatDuration(s.durationMinutes)}
                         </span>
                       </span>
-                      <span className="shrink-0 font-bold text-brand-800">{s.priceText}</span>
+                      <span className="shrink-0 font-bold text-teal-700">{s.priceText}</span>
                     </button>
                   </li>
                 );

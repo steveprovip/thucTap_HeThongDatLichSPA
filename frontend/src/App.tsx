@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { ToastProvider } from '@/contexts/ToastContext';
 import { BookingProvider } from '@/contexts/BookingContext';
 import { Spinner } from '@/components';
+import { RoleSwitcher } from '@/components/RoleSwitcher';
 import { PublicLayout } from '@/layouts/PublicLayout';
 import { AdminLayout } from '@/layouts/AdminLayout';
 import type { Role } from '@/types';
@@ -85,6 +86,7 @@ export default function App() {
   return (
     <ToastProvider>
       <AuthProvider>
+        <RoleSwitcher />
         <Routes>
           {/* ---------------- Trang công khai cho khách ---------------- */}
           <Route element={<PublicLayout />}>

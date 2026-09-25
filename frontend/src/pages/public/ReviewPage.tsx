@@ -3,19 +3,23 @@ import { useParams, useSearchParams } from 'react-router-dom';
 import { CheckCircle2, Star } from 'lucide-react';
 import { getErrorMessage, reviewsApi } from '@/api';
 import type { ReviewForm } from '@/types';
-import { Button, Card, Spinner, StarRating, Textarea } from '@/components';
+import { Button, Card, Input, Spinner, StarRating, Textarea } from '@/components';
 import { useToast } from '@/contexts/ToastContext';
+
+const QUICK_TAGS = ['Thợ nhiệt tình', 'Cắt đẹp', 'Đúng giờ', 'Không gian thư giãn'];
 
 /** S4-04: biểu mẫu đánh giá 1-5 sao, liên kết dùng một lần trong 7 ngày. */
 export function ReviewPage() {
   const { token } = useParams();
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const code = params.get('code');
 
   const [form, setForm] = useState<ReviewForm | null>(null);
   const [loading, setLoading] = useState(true);
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState('');
+  const [lookupCode, setLookupCode] = useState('');
+  const [tags, setTags] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const toast = useToast();
@@ -24,7 +28,6 @@ export function ReviewPage() {
     let alive = true;
     const loader = token ? reviewsApi.byToken(token) : code ? reviewsApi.byCode(code) : null;
     if (!loader) {
-      setError('Thiếu mã lịch hẹn hoặc liên kết đánh giá');
       setLoading(false);
       return;
     }
@@ -45,7 +48,8 @@ export function ReviewPage() {
     if (rating < 1) return toast.warning('Vui lòng chọn số sao trước khi gửi');
     setSubmitting(true);
     try {
-      const updated = await reviewsApi.submit(form.token, rating, comment.trim() || undefined);
+      const feedback = [...tags, comment.trim()].filter(Boolean).join(' · ');
+      const updated = await reviewsApi.submit(form.token, rating, feedback || undefined);
       setForm(updated);
       toast.success('Cảm ơn bạn đã chấm điểm!');
     } catch (e) {
@@ -60,9 +64,17 @@ export function ReviewPage() {
   if (error || !form) {
     return (
       <Card className="p-8 text-center">
-        <Star size={30} className="mx-auto text-brand-400" />
-        <p className="mt-2 font-semibold">Không mở được biểu mẫu đánh giá</p>
-        <p className="mt-1 text-sm text-ink-muted">{error}</p>
+        <Star size={30} className="mx-auto fill-amber-400 text-amber-400" />
+        <p className="mt-2 font-semibold">Đánh giá trải nghiệm của bạn</p>
+        <p className="mt-1 text-sm text-ink-muted">Nhập mã lịch hẹn trên phiếu đặt lịch để mở biểu mẫu.</p>
+        {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+        <form className="mx-auto mt-4 flex max-w-sm gap-2" onSubmit={event => {
+          event.preventDefault(); if (!lookupCode.trim()) return;
+          setError(null); setLoading(true); setParams({ code: lookupCode.trim().toUpperCase() });
+        }}>
+          <Input aria-label="Mã lịch hẹn" value={lookupCode} onChange={event => setLookupCode(event.target.value)} placeholder="SL-XXXXXX" />
+          <Button type="submit">Tra cứu</Button>
+        </form>
       </Card>
     );
   }
@@ -97,6 +109,15 @@ export function ReviewPage() {
       </div>
 
       <div className="mt-4">
+        <p className="field-label">Chọn nhận xét nhanh</p>
+        <div className="mb-4 flex flex-wrap gap-2">
+          {QUICK_TAGS.map(tag => <button key={tag} type="button" aria-pressed={tags.includes(tag)}
+            onClick={() => setTags(current => current.includes(tag) ? current.filter(item => item !== tag) : [...current, tag])}
+            className={`min-h-10 rounded-full border px-3 text-sm ${tags.includes(tag)
+              ? 'border-teal-600 bg-teal-50 text-teal-800' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'}`}>
+            {tag}
+          </button>)}
+        </div>
         <label className="field-label" htmlFor="rv-comment">Nhận xét (không bắt buộc)</label>
         <Textarea
           id="rv-comment"

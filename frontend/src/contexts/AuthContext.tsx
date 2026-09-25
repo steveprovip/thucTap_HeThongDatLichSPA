@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, ReactNode } from 'react';
 import { authApi, onUnauthorized, tokenStore } from '@/api';
 import type { AuthUser, Role } from '@/types';
+import { DEMO_MODE, demoRole } from '@/api/mockBackend';
 
 interface AuthContextValue {
   user: AuthUser | null;
@@ -9,15 +10,19 @@ interface AuthContextValue {
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
   hasRole: (...roles: Role[]) => boolean;
+  setDemoRole: (role: Role) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<AuthUser | null>(DEMO_MODE ? demoRole.user() : null);
+  const [loading, setLoading] = useState(!DEMO_MODE);
 
   const refreshUser = useCallback(async () => {
+    if (DEMO_MODE) {
+      setUser(demoRole.user()); setLoading(false); return;
+    }
     if (!tokenStore.access) {
       setUser(null);
       setLoading(false);
@@ -52,6 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     await authApi.logout();
+    if (DEMO_MODE) demoRole.set('customer');
     setUser(null);
   }, []);
 
@@ -60,9 +66,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [user],
   );
 
+  const setDemoRole = useCallback((role: Role) => {
+    demoRole.set(role);
+    setUser(demoRole.user());
+  }, []);
+
   const value = useMemo<AuthContextValue>(
-    () => ({ user, loading, login, logout, refreshUser, hasRole }),
-    [user, loading, login, logout, refreshUser, hasRole],
+    () => ({ user, loading, login, logout, refreshUser, hasRole, setDemoRole }),
+    [user, loading, login, logout, refreshUser, hasRole, setDemoRole],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

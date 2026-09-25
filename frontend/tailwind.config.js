@@ -4,25 +4,31 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Bảng màu ấm của salon, tương phản đạt chuẩn AA
+        // Fresha-style light luxury: airy slate surfaces, teal spa accent.
         brand: {
-          50: '#fbf6f2', 100: '#f5e9de', 200: '#e9d1bc', 300: '#d9b191',
-          400: '#c68d66', 500: '#b57249', 600: '#a25c3d', 700: '#8c5a3c',
-          800: '#6d4530', 900: '#573829',
+          DEFAULT: '#0D9488',
+          primary: '#0D9488',
+          light: '#F0FDFA',
+          50: '#F0FDFA', 100: '#CCFBF1', 200: '#99F6E4', 300: '#5EEAD4',
+          400: '#2DD4BF', 500: '#14B8A6', 600: '#0D9488', 700: '#0F766E',
+          800: '#115E59', 900: '#134E4A',
         },
-        ink: { DEFAULT: '#2b2b2b', soft: '#5b5148', muted: '#7a6a5f' },
-        surface: { DEFAULT: '#ffffff', alt: '#faf7f4', page: '#f5f3f0' },
+        accent: { gold: '#D97706', bright: '#F59E0B', glow: '#FEF3C7' },
+        ink: { DEFAULT: '#0F172A', soft: '#475569', muted: '#64748B' },
+        surface: { DEFAULT: '#FFFFFF', card: '#FFFFFF', alt: '#F8FAFC', page: '#F8FAFC' },
+        border: { subtle: '#E2E8F0' },
         status: {
-          pending: '#d97706', confirmed: '#2563eb', arrived: '#7c3aed',
-          progress: '#0891b2', completed: '#16a34a', cancelled: '#6b7280', noshow: '#dc2626',
+          pending: '#D97706', confirmed: '#2563EB', arrived: '#7C3AED',
+          progress: '#0891B2', completed: '#16A34A', cancelled: '#64748B', noshow: '#DC2626',
         },
       },
       fontFamily: {
         sans: ['Inter', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
       },
       boxShadow: {
-        card: '0 1px 3px rgba(43,43,43,.08), 0 1px 2px rgba(43,43,43,.04)',
-        pop: '0 10px 30px rgba(43,43,43,.14)',
+        card: '0 4px 20px -2px rgba(0, 0, 0, 0.05), 0 2px 6px -1px rgba(0, 0, 0, 0.02)',
+        'card-hover': '0 12px 32px -6px rgba(15, 23, 42, 0.10), 0 4px 10px -2px rgba(15, 23, 42, 0.04)',
+        pop: '0 24px 48px -12px rgba(15, 23, 42, 0.18)',
       },
       screens: { xs: '360px' },
     },
