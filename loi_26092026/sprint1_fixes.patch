@@ -1,0 +1,1235 @@
+diff --git a/backend/src/common/guards/jwt-auth.guard.ts b/backend/src/common/guards/jwt-auth.guard.ts
+index d7d17e9..c065058 100644
+--- a/backend/src/common/guards/jwt-auth.guard.ts
++++ b/backend/src/common/guards/jwt-auth.guard.ts
+@@ -21,6 +21,8 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
+   }
+ 
+   handleRequest<TUser>(err: unknown, user: TUser, info: unknown): TUser {
++    // Giữ nguyên thông điệp cụ thể từ JwtStrategy (vd. tài khoản đã ngưng hoạt động)
++    if (err instanceof UnauthorizedException) throw err;
+     if (err || !user) {
+       const message =
+         info && (info as Error).name === 'TokenExpiredError' ? MSG.TOKEN_EXPIRED : MSG.TOKEN_INVALID;
+diff --git a/backend/src/modules/services/dto/service.dto.ts b/backend/src/modules/services/dto/service.dto.ts
+index 9a8391c..dd47c4c 100644
+--- a/backend/src/modules/services/dto/service.dto.ts
++++ b/backend/src/modules/services/dto/service.dto.ts
+@@ -1,4 +1,4 @@
+-import { Type } from 'class-transformer';
++import { Transform, Type } from 'class-transformer';
+ import {
+   IsBoolean, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Max, MaxLength, Min,
+ } from 'class-validator';
+@@ -57,6 +57,9 @@ export class UpdateServiceDto {
+ export class ListServicesQuery {
+   @IsOptional() @IsUUID('4') categoryId?: string;
+   @IsOptional() @IsString() @MaxLength(120) search?: string;
+-  @IsOptional() @Type(() => Boolean) @IsBoolean() isActive?: boolean;
+-  @IsOptional() @Type(() => Boolean) @IsBoolean() onlyWithStylist?: boolean;
++  // Boolean('false') === true, nên phải đọc chuỗi query một cách tường minh
++  @IsOptional() @Transform(({ value }) => (value === undefined ? undefined : value === true || value === 'true'))
++  @IsBoolean() isActive?: boolean;
++  @IsOptional() @Transform(({ value }) => (value === undefined ? undefined : value === true || value === 'true'))
++  @IsBoolean() onlyWithStylist?: boolean;
+ }
+diff --git a/backend/src/modules/stylists/dto/stylist.dto.ts b/backend/src/modules/stylists/dto/stylist.dto.ts
+index 77a7930..a0109aa 100644
+--- a/backend/src/modules/stylists/dto/stylist.dto.ts
++++ b/backend/src/modules/stylists/dto/stylist.dto.ts
+@@ -1,6 +1,6 @@
+ import { Type } from 'class-transformer';
+ import {
+-  ArrayMaxSize, IsArray, IsBoolean, IsNotEmpty, IsOptional, IsString, IsUUID,
++  ArrayMaxSize, IsArray, IsBoolean, IsEmail, IsNotEmpty, IsOptional, IsString, IsUUID,
+   Matches, MaxLength, MinLength, ValidateNested,
+ } from 'class-validator';
+ import { VN_PHONE_REGEX } from '../../../common/utils/phone.util';
+@@ -19,6 +19,10 @@ export class CreateStylistDto {
+   @IsOptional() @IsBoolean() isActive?: boolean;
+   @IsOptional() @IsUUID('4', { message: 'Tài khoản liên kết không hợp lệ' }) userId?: string;
+ 
++  /** Có email -> tự tạo tài khoản vai trò Thợ gắn với hồ sơ (mật khẩu tạm gửi qua email). */
++  @IsOptional() @IsEmail({}, { message: 'Email không đúng định dạng' }) @MaxLength(160)
++  email?: string;
++
+   @IsOptional() @IsArray() @ArrayMaxSize(50)
+   serviceIds?: string[];
+ }
+diff --git a/backend/src/modules/stylists/stylists.service.ts b/backend/src/modules/stylists/stylists.service.ts
+index 620dd77..898ed56 100644
+--- a/backend/src/modules/stylists/stylists.service.ts
++++ b/backend/src/modules/stylists/stylists.service.ts
+@@ -1,6 +1,8 @@
+ import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
++import { ConfigService } from '@nestjs/config';
+ import { InjectRepository } from '@nestjs/typeorm';
+ import { Between, DataSource, In, Repository } from 'typeorm';
++import * as bcrypt from 'bcryptjs';
+ import { Stylist } from '../../database/entities/stylist.entity';
+ import { StylistService as StylistServiceLink } from '../../database/entities/stylist-service.entity';
+ import { StylistShift } from '../../database/entities/stylist-shift.entity';
+@@ -8,7 +10,12 @@ import { StylistTimeOff } from '../../database/entities/stylist-time-off.entity'
+ import { ServiceItem } from '../../database/entities/service.entity';
+ import { Appointment, ACTIVE_STATUSES } from '../../database/entities/appointment.entity';
+ import { User } from '../../database/entities/user.entity';
++import { EmailKind } from '../../database/entities/email-queue.entity';
++import { Role } from '../../common/constants/roles.constant';
+ import { MSG } from '../../common/constants/messages.constant';
++import { generateTempPassword } from '../../common/utils/code.util';
++import { MailService } from '../notifications/mail.service';
++import { MailTemplates } from '../notifications/mail-templates';
+ import {
+   addDays, combine, dayOfWeek, DOW_LABELS, endOfDay, startOfDay, timeToMinutes, trimSeconds,
+ } from '../../common/utils/time.util';
+@@ -21,6 +28,8 @@ import {
+ export interface StylistView {
+   id: string;
+   userId: string | null;
++  /** Email đăng nhập của tài khoản nhân sự gắn với hồ sơ (null nếu chưa có tài khoản). */
++  email: string | null;
+   fullName: string;
+   phone: string | null;
+   avatarUrl: string | null;
+@@ -49,6 +58,8 @@ export interface ShiftView {
+ export class StylistsService {
+   constructor(
+     private readonly dataSource: DataSource,
++    private readonly config: ConfigService,
++    private readonly mail: MailService,
+     private readonly workingHours: WorkingHoursService,
+     @InjectRepository(Stylist) private readonly stylistRepo: Repository<Stylist>,
+     @InjectRepository(StylistServiceLink) private readonly linkRepo: Repository<StylistServiceLink>,
+@@ -66,6 +77,9 @@ export class StylistsService {
+     const links = await this.linkRepo.find({ where: { stylistId: In(ids) } });
+     const services = await this.serviceRepo.find();
+     const serviceMap = new Map(services.map((s) => [s.id, s.name]));
++    const userIds = stylists.map((s) => s.userId).filter((v): v is string => !!v);
++    const users = userIds.length ? await this.userRepo.find({ where: { id: In(userIds) } }) : [];
++    const emailMap = new Map(users.map((u) => [u.id, u.email]));
+ 
+     const ratings = await this.dataSource.query(
+       `SELECT stylist_id, COUNT(*)::int AS cnt, ROUND(AVG(rating)::numeric, 2)::float AS avg
+@@ -85,6 +99,7 @@ export class StylistsService {
+       return {
+         id: s.id,
+         userId: s.userId,
++        email: s.userId ? emailMap.get(s.userId) ?? null : null,
+         fullName: s.fullName,
+         phone: s.phone,
+         avatarUrl: s.avatarUrl,
+@@ -124,14 +139,35 @@ export class StylistsService {
+       const taken = await this.stylistRepo.findOne({ where: { userId: dto.userId } });
+       if (taken) throw new ConflictException('Tài khoản này đã gắn với một hồ sơ thợ khác');
+     }
++    // Có email mà chưa gắn tài khoản -> tạo luôn tài khoản vai trò Thợ để hồ sơ và tài khoản khớp nhau
++    const email = !dto.userId && dto.email ? dto.email.trim().toLowerCase() : null;
++    if (email) {
++      const existed = await this.userRepo
++        .createQueryBuilder('u').where('lower(u.email) = :email', { email }).getOne();
++      if (existed) throw new ConflictException({ message: MSG.EMAIL_DUPLICATED, field: 'email' });
++    }
++    const tempPassword = email ? generateTempPassword() : null;
+     const saved = await this.dataSource.transaction(async (manager) => {
++      let userId = dto.userId ?? null;
++      if (email && tempPassword) {
++        const user = await manager.save(manager.create(User, {
++          fullName: dto.fullName.trim(),
++          email,
++          phone: dto.phone ?? null,
++          role: Role.STYLIST,
++          isActive: dto.isActive ?? true,
++          mustChangePassword: true,
++          passwordHash: await bcrypt.hash(tempPassword, this.config.get<number>('security.bcryptRounds')!),
++        }));
++        userId = user.id;
++      }
+       const stylist = await manager.save(
+         manager.create(Stylist, {
+           fullName: dto.fullName.trim(),
+           phone: dto.phone ?? null,
+           bio: dto.bio ?? null,
+           isActive: dto.isActive ?? true,
+-          userId: dto.userId ?? null,
++          userId,
+         }),
+       );
+       if (dto.serviceIds?.length) {
+@@ -143,6 +179,12 @@ export class StylistsService {
+       }
+       return stylist;
+     });
++    if (email && tempPassword) {
++      const tpl = MailTemplates.accountCreated(this.mail.salonInfo, saved.fullName, email, tempPassword);
++      await this.mail.enqueue({
++        kind: EmailKind.ACCOUNT_CREATED, toEmail: email, toName: saved.fullName, subject: tpl.subject, html: tpl.html,
++      });
++    }
+     return this.findOne(saved.id);
+   }
+ 
+@@ -155,8 +197,20 @@ export class StylistsService {
+     if (dto.bio !== undefined) stylist.bio = dto.bio;
+     if (dto.isActive !== undefined) stylist.isActive = dto.isActive;
+ 
++    // Đồng bộ ngược sang tài khoản nhân sự: thợ nghỉ việc mất quyền truy cập ngay (S1-02, S1-07)
++    const user = stylist.userId ? await this.userRepo.findOne({ where: { id: stylist.userId } }) : null;
++    if (user) {
++      if (dto.fullName !== undefined) user.fullName = stylist.fullName;
++      if (dto.phone !== undefined) user.phone = stylist.phone;
++      if (dto.isActive !== undefined && user.isActive !== dto.isActive) {
++        user.isActive = dto.isActive;
++        if (!dto.isActive) user.sessionsValidFrom = new Date();
++      }
++    }
++
+     await this.dataSource.transaction(async (manager) => {
+       await manager.save(Stylist, stylist);
++      if (user) await manager.save(User, user);
+       if (dto.serviceIds) {
+         await manager.delete(StylistServiceLink, { stylistId: id });
+         if (dto.serviceIds.length) {
+diff --git a/backend/src/modules/users/dto/user.dto.ts b/backend/src/modules/users/dto/user.dto.ts
+index b6fd585..621f151 100644
+--- a/backend/src/modules/users/dto/user.dto.ts
++++ b/backend/src/modules/users/dto/user.dto.ts
+@@ -1,4 +1,4 @@
+-import { Type } from 'class-transformer';
++import { Transform, Type } from 'class-transformer';
+ import {
+   IsBoolean, IsEmail, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength,
+ } from 'class-validator';
+@@ -44,6 +44,8 @@ export class ListUsersQuery {
+   @IsOptional() @Type(() => Number) @IsInt() @Min(1) page = 1;
+   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(200) limit = 20;
+   @IsOptional() @IsEnum(Role) role?: Role;
+-  @IsOptional() @Type(() => Boolean) @IsBoolean() isActive?: boolean;
++  // Boolean('false') === true, nên phải đọc chuỗi query một cách tường minh
++  @IsOptional() @Transform(({ value }) => (value === undefined ? undefined : value === true || value === 'true'))
++  @IsBoolean() isActive?: boolean;
+   @IsOptional() @IsString() @MaxLength(120) search?: string;
+ }
+diff --git a/backend/src/modules/users/users.service.ts b/backend/src/modules/users/users.service.ts
+index e5ed924..c56f026 100644
+--- a/backend/src/modules/users/users.service.ts
++++ b/backend/src/modules/users/users.service.ts
+@@ -163,17 +163,27 @@ export class UsersService {
+ 
+     const saved = await this.userRepo.save(user);
+ 
+-    // Đồng bộ trạng thái sang hồ sơ thợ
+-    const stylist = await this.stylistRepo.findOne({ where: { userId: id } });
++    // Đồng bộ họ tên / SĐT / trạng thái sang hồ sơ thợ để hai màn hình luôn khớp nhau
++    let stylist = await this.stylistRepo.findOne({ where: { userId: id } });
+     if (stylist) {
+       let dirty = false;
+       if (dto.fullName !== undefined && stylist.fullName !== saved.fullName) {
+         stylist.fullName = saved.fullName; dirty = true;
+       }
+-      if (dto.isActive !== undefined && stylist.isActive !== saved.isActive) {
+-        stylist.isActive = saved.isActive; dirty = true;
++      if (dto.phone !== undefined && stylist.phone !== saved.phone) {
++        stylist.phone = saved.phone; dirty = true;
++      }
++      // Thợ còn hoạt động chỉ khi tài khoản còn hoạt động VÀ vẫn giữ vai trò Thợ
++      const shouldBeActive = saved.isActive && saved.role === Role.STYLIST;
++      if ((dto.isActive !== undefined || dto.role !== undefined) && stylist.isActive !== shouldBeActive) {
++        stylist.isActive = shouldBeActive; dirty = true;
+       }
+       if (dirty) await this.stylistRepo.save(stylist);
++    } else if (saved.role === Role.STYLIST) {
++      // Đổi vai trò sang Thợ mà chưa có hồ sơ -> tạo hồ sơ tương ứng
++      stylist = await this.stylistRepo.save(this.stylistRepo.create({
++        userId: saved.id, fullName: saved.fullName, phone: saved.phone, isActive: saved.isActive,
++      }));
+     }
+ 
+     return this.toView(saved, stylist?.id ?? null);
+diff --git a/frontend/.env.example b/frontend/.env.example
+index 7f7ab13..bbe1549 100644
+--- a/frontend/.env.example
++++ b/frontend/.env.example
+@@ -1,3 +1,5 @@
++# false = Full-Stack API Mode (gọi NestJS thật qua proxy /api). Bản demo không cần server: npm run dev:demo
++VITE_DEMO_MODE=false
+ VITE_API_BASE_URL=/api
+ VITE_SALON_NAME=Salon & Spa Hương Sen
+ VITE_SALON_ADDRESS=128 Nguyễn Văn Cừ, Quận 5, TP. Hồ Chí Minh
+diff --git a/frontend/package.json b/frontend/package.json
+index 3d592a5..c92caf7 100644
+--- a/frontend/package.json
++++ b/frontend/package.json
+@@ -5,6 +5,7 @@
+   "type": "module",
+   "scripts": {
+     "dev": "vite",
++    "dev:demo": "vite --mode demo",
+     "build": "tsc -b && vite build",
+     "preview": "vite preview",
+     "typecheck": "tsc --noEmit",
+diff --git a/frontend/src/api/mockBackend.ts b/frontend/src/api/mockBackend.ts
+index 1a49682..ae57ca6 100644
+--- a/frontend/src/api/mockBackend.ts
++++ b/frontend/src/api/mockBackend.ts
+@@ -7,9 +7,34 @@ import type {
+ } from '@/types';
+ 
+ /** Persisted in the browser so the whole UI can be explored without a server. */
+-const KEY = 'salon.demo.v3';
++const KEY = 'salon.demo.v4';
+ export const DEMO_MODE = import.meta.env.VITE_DEMO_MODE !== 'false';
+-const ROLE_KEY = 'salon.demoRole';
++/** Phiên demo lưu MÃ tài khoản (không phải vai trò) để mọi kiểm tra quyền dựa trên đúng người đăng nhập. */
++const SESSION_KEY = 'salon.demoUserId';
++/** Mật khẩu của mọi tài khoản mẫu và mật khẩu tạm của tài khoản mới trong bản demo. */
++export const DEMO_PASSWORD = 'demo1234';
++const MAX_FAILED_LOGINS = 5;
++const LOCK_MINUTES = 15;
++const MSG = {
++  LOGIN_FAILED: 'Email hoặc mật khẩu không đúng',
++  ACCOUNT_LOCKED: (m: number) => `Tài khoản đã bị khoá do nhập sai mật khẩu quá nhiều lần. Vui lòng thử lại sau ${m} phút`,
++  ACCOUNT_INACTIVE: 'Tài khoản đang ngưng hoạt động. Vui lòng liên hệ quản trị viên',
++  UNAUTHORIZED: 'Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại',
++  FORBIDDEN: 'Bạn không có quyền thực hiện thao tác này',
++  EMAIL_DUPLICATED: 'Email này đã được sử dụng cho một tài khoản khác',
++  LAST_ADMIN: 'Không thể ngưng hoạt động tài khoản quản trị cuối cùng của hệ thống',
++  CANNOT_DEACTIVATE_SELF: 'Không thể tự ngưng hoạt động tài khoản đang đăng nhập',
++  SERVICE_IN_USE: 'Dịch vụ đã có lịch hẹn tham chiếu nên không xoá được, hãy chuyển sang trạng thái ngừng bán',
++  SERVICE_DURATION_INVALID: 'Thời lượng phải là bội số của 15 phút và nằm trong khoảng 15 đến 240 phút',
++  SERVICE_PRICE_INVALID: 'Giá phải là số nguyên dương và không vượt quá 20.000.000 đ',
++  SERVICE_NAME_DUPLICATED: 'Tên dịch vụ đã tồn tại',
++  CATEGORY_HAS_SERVICES: (n: number) => `Nhóm này còn ${n} dịch vụ nên không xoá được`,
++  WORKING_HOURS_MIN_60: 'Giờ đóng cửa phải sau giờ mở cửa ít nhất 60 phút',
++  CURRENT_PASSWORD_WRONG: 'Mật khẩu hiện tại không đúng',
++  PASSWORD_WEAK: 'Mật khẩu phải có tối thiểu 8 ký tự, gồm cả chữ và số',
++  PASSWORD_SAME_AS_OLD: 'Mật khẩu mới phải khác mật khẩu hiện tại',
++};
++const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+ const money = (value: number) => `${new Intl.NumberFormat('vi-VN').format(value)} đ`;
+ const iso = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+ const day = (offset = 0) => { const date = new Date(); date.setDate(date.getDate() + offset); return iso(date); };
+@@ -55,7 +80,8 @@ const stylistSeed: Stylist[] = [
+   ['st3', 'Lê Hoàng Phúc', '0908765432', 4.9, 52],
+   ['st4', 'Phạm Thanh Hà', '0934567890', 4.7, 41],
+ ].map(([id, fullName, phone, avgRating, reviewCount], index) => ({
+-  id: String(id), userId: String(id), fullName: String(fullName), phone: String(phone),
++  // Mỗi hồ sơ thợ mẫu gắn với đúng một tài khoản nhân sự (usersSeed bên dưới)
++  id: String(id), userId: `u-${String(id)}`, fullName: String(fullName), phone: String(phone),
+   avatarUrl: [
+     STYLIST_PHOTOS.stylist_1, STYLIST_PHOTOS.stylist_5, STYLIST_PHOTOS.stylist_2, STYLIST_PHOTOS.stylist_3,
+   ][index], bio: 'Chuyên viên giàu kinh nghiệm, tận tâm với từng khách hàng.', isActive: true,
+@@ -65,10 +91,13 @@ const stylistSeed: Stylist[] = [
+ const usersSeed: UserRow[] = [
+   { id: 'u1', fullName: 'Linh Nguyễn', email: 'owner@lumi.vn', phone: '0901111222', role: 'owner', stylistId: null },
+   { id: 'u2', fullName: 'Mai Phương', email: 'reception@lumi.vn', phone: '0902222333', role: 'receptionist', stylistId: null },
+-  { id: 'u3', fullName: 'Nguyễn Minh Anh', email: 'minhanh@lumi.vn', phone: '0987654321', role: 'stylist', stylistId: 'st1' },
++  { id: 'u-st1', fullName: 'Nguyễn Minh Anh', email: 'minhanh@lumi.vn', phone: '0987654321', role: 'stylist', stylistId: 'st1' },
+   { id: 'u4', fullName: 'Quản trị viên', email: 'admin@lumi.vn', phone: '0903333444', role: 'admin', stylistId: null },
++  { id: 'u-st2', fullName: 'Trần Bảo Ngọc', email: 'baongoc@lumi.vn', phone: '0912345678', role: 'stylist', stylistId: 'st2' },
++  { id: 'u-st3', fullName: 'Lê Hoàng Phúc', email: 'hoangphuc@lumi.vn', phone: '0908765432', role: 'stylist', stylistId: 'st3' },
++  { id: 'u-st4', fullName: 'Phạm Thanh Hà', email: 'thanhha@lumi.vn', phone: '0934567890', role: 'stylist', stylistId: 'st4' },
+ ].map(u => ({ ...u, role: u.role as UserRow['role'], isActive: true, mustChangePassword: false, lockedUntil: null,
+-  lastLoginAt: new Date().toISOString(), createdAt: new Date().toISOString() }));
++  lastLoginAt: null, createdAt: new Date().toISOString() }));
+ 
+ interface DemoDb {
+   categories: ServiceCategory[]; services: ServiceItem[]; stylists: Stylist[]; users: UserRow[];
+@@ -76,6 +105,8 @@ interface DemoDb {
+   workingHours: WorkingHour[]; holidays: Holiday[]; vouchers: Voucher[];
+   notes: Record<string, string>; reviews: Record<string, { rating: number; comment: string }>;
+   audit: AuditLogRow[]; notifications: AppNotification[];
++  /** Mật khẩu + số lần đăng nhập sai liên tiếp theo mã tài khoản (chỉ dùng cho bản demo). */
++  auth: Record<string, { password: string; failed: number }>;
+ }
+ function makeAppointment(id: string, offset: number, time: string, status: AppointmentStatus,
+   customerName: string, phone: string, stylistId: string, serviceIds: string[]): Appointment {
+@@ -136,6 +167,7 @@ function seed(): DemoDb {
+       startTime: index < 2 ? '08:00' : '12:00', endTime: index < 2 ? '17:00' : '21:00',
+       breakStart: index < 2 ? '12:00' : '16:00', breakEnd: index < 2 ? '13:00' : '17:00', note: null })));
+   return {
++    auth: Object.fromEntries(usersSeed.map(u => [u.id, { password: DEMO_PASSWORD, failed: 0 }])),
+     categories: categoriesSeed, services: serviceSeed, stylists: stylistSeed, users: usersSeed, appointments,
+     invoices, shifts, timeOff: [], holidays: [], vouchers: [
+       { id: 'v1', code: 'WELCOME10', description: 'Ưu đãi khách mới 10%', discountType: 'percent', discountValue: 10,
+@@ -165,27 +197,96 @@ function seed(): DemoDb {
+ let db: DemoDb;
+ try { db = JSON.parse(localStorage.getItem(KEY) || 'null') as DemoDb || seed(); }
+ catch { db = seed(); }
++db.auth ??= {};
++try { localStorage.removeItem('salon.demo.v3'); localStorage.removeItem('salon.demoRole'); } catch { /* bỏ qua */ }
++recomputeLinks();
+ const save = () => localStorage.setItem(KEY, JSON.stringify(db));
+ const paginate = <T,>(items: T[], params: Record<string, unknown>) => {
+   const page = Number(params.page) || 1; const limit = Number(params.limit) || 20;
+   return { items: items.slice((page - 1) * limit, page * limit), total: items.length, page, limit,
+     totalPages: Math.max(1, Math.ceil(items.length / limit)) };
+ };
+-const bad = (message: string, field?: string): never => {
+-  throw { response: { data: { success: false, message, field } } };
++const bad = (message: string, field?: string, status = 400): never => {
++  throw { response: { status, data: { success: false, message, field } } };
+ };
++/** Người dùng của phiên hiện tại; tài khoản bị ngưng hoạt động thì phiên hết hiệu lực ngay (S1-02). */
+ const getUser = (): AuthUser | null => {
+-  const role = localStorage.getItem(ROLE_KEY);
+-  if (!role || role === 'customer') return null;
+-  const user = db.users.find(u => u.role === role && u.isActive);
+-  return user ? { id: user.id, email: user.email, fullName: user.fullName, role: user.role,
+-    stylistId: user.stylistId, mustChangePassword: false } : null;
++  const id = localStorage.getItem(SESSION_KEY);
++  const user = id ? db.users.find(u => u.id === id) : undefined;
++  if (!user || !user.isActive) return null;
++  return { id: user.id, email: user.email, fullName: user.fullName, role: user.role,
++    stylistId: db.stylists.find(s => s.userId === user.id)?.id ?? null, mustChangePassword: user.mustChangePassword };
++};
++const startSession = (userId: string | null) => {
++  if (userId) localStorage.setItem(SESSION_KEY, userId); else localStorage.removeItem(SESSION_KEY);
+ };
+ export const demoRole = {
+-  get: () => localStorage.getItem(ROLE_KEY) || 'customer',
+-  set: (role: string) => localStorage.setItem(ROLE_KEY, role),
++  get: () => getUser()?.role ?? 'customer',
++  /** Công cụ "Xem vai trò" của bản demo: chỉ nhập vai một tài khoản ĐANG HOẠT ĐỘNG của vai trò đó. */
++  set: (role: string) => {
++    if (getUser()?.role === role) return;
++    startSession(role === 'customer' ? null : db.users.find(u => u.role === role && u.isActive)?.id ?? null);
++  },
+   user: getUser,
+ };
++
++/** Quyền theo vai trò, mô phỏng RolesGuard của backend (S1-03). Luật đầu tiên khớp được áp dụng. */
++const PUBLIC_PATH = /^\/(public\/|auth\/(login|logout|refresh|forgot-password|reset-password)$|reviews\/(by-code$|token\/))/;
++const ROLE_RULES: [string[], RegExp, string[]][] = [
++  [['get'], /^\/users(\/|$)/, ['admin', 'owner']],
++  [['post', 'patch', 'put', 'delete'], /^\/users(\/|$)/, ['admin']],
++  [['get'], /^\/audit-logs/, ['admin', 'owner']],
++  [['post', 'patch', 'put', 'delete'], /^\/(services|service-categories)(\/|$)/, ['owner']],
++  [['post', 'patch'], /^\/stylists(\/[^/]+)?(\/avatar)?$/, ['owner']],
++  [['post'], /^\/stylists\/[^/]+\/shifts$/, ['owner']],
++  [['put'], /^\/working-hours$/, ['owner']],
++  [['post', 'delete'], /^\/holidays(\/|$)/, ['owner']],
++];
++const authorize = (method: string, path: string) => {
++  if (PUBLIC_PATH.test(path)) return;
++  const me = getUser() ?? bad(MSG.UNAUTHORIZED, undefined, 401);
++  const rule = ROLE_RULES.find(([methods, re]) => methods.includes(method) && re.test(path));
++  if (rule && !rule[2].includes(me.role)) bad(MSG.FORBIDDEN, undefined, 403);
++};
++
++/**
++ * Nguồn sự thật duy nhất của phân công thợ ↔ dịch vụ là services[].stylistIds;
++ * stylists[].serviceIds/serviceNames được suy ra lại sau mỗi thay đổi (S1-07, đồng bộ hai chiều).
++ */
++function recomputeLinks() {
++  db.services.forEach(s => {
++    s.stylistIds = [...new Set(s.stylistIds ?? [])].filter(id => db.stylists.some(st => st.id === id));
++    s.stylistCount = s.stylistIds.length; s.hasNoStylist = s.stylistCount === 0;
++    s.categoryName = db.categories.find(c => c.id === s.categoryId)?.name ?? ''; s.priceText = money(s.price);
++  });
++  db.stylists.forEach(st => {
++    const owned = db.services.filter(s => s.stylistIds.includes(st.id));
++    st.serviceIds = owned.map(s => s.id); st.serviceNames = owned.map(s => s.name);
++  });
++}
++const setStylistServices = (stylistId: string, serviceIds: string[]) => {
++  db.services.forEach(s => {
++    const want = serviceIds.includes(s.id); const has = s.stylistIds.includes(stylistId);
++    if (want && !has) s.stylistIds = [...s.stylistIds, stylistId];
++    if (!want && has) s.stylistIds = s.stylistIds.filter(id => id !== stylistId);
++  });
++  recomputeLinks();
++};
++const withEmail = (s: Stylist): Stylist => ({ ...s, email: db.users.find(u => u.id === s.userId)?.email ?? null });
++const emailTaken = (email: string, exceptId?: string) =>
++  db.users.some(u => u.id !== exceptId && u.email.toLowerCase() === email.trim().toLowerCase());
++const validateService = (duration?: unknown, price?: unknown) => {
++  if (duration !== undefined) {
++    const d = Number(duration);
++    if (!Number.isInteger(d) || d % 15 || d < 15 || d > 240) bad(MSG.SERVICE_DURATION_INVALID, 'durationMinutes');
++  }
++  if (price !== undefined) {
++    const v = Number(price);
++    if (!Number.isInteger(v) || v <= 0 || v > 20000000) bad(MSG.SERVICE_PRICE_INVALID, 'price');
++  }
++};
++const pick = (p: Record<string, unknown>, keys: string[]) =>
++  Object.fromEntries(Object.entries(p).filter(([k, v]) => keys.includes(k) && v !== undefined));
+ const findAppointment = (id: string) => db.appointments.find(a => a.id === id) ?? bad('Không tìm thấy lịch hẹn');
+ const forCurrentRole = (a: Appointment): Appointment => getUser()?.role === 'stylist'
+   ? { ...a, customer: { ...a.customer, phone: `${a.customer.phone.slice(0, 3)}****${a.customer.phone.slice(-3)}`, phoneMasked: true } }
+@@ -211,6 +312,7 @@ const availability = (date: string, serviceIds: string[], stylistId?: string, ex
+     const time = addMinutes('00:00', m);
+     if (date === day() && m <= new Date().getHours() * 60 + new Date().getMinutes() + 60) continue;
+     const ids = db.stylists.filter(s => s.isActive && (!stylistId || s.id === stylistId) &&
++      serviceIds.every(id => s.serviceIds.includes(id)) &&
+       (() => { const shifts = db.shifts.filter(shift => shift.stylistId === s.id && shift.workDate === date);
+         return !shifts.length || shifts.some(shift => m >= minute(shift.startTime) && m + duration <= minute(shift.endTime) &&
+           (!shift.breakStart || !shift.breakEnd || m + duration <= minute(shift.breakStart) || m >= minute(shift.breakEnd))); })() &&
+@@ -311,26 +413,56 @@ const dayTimeline = (date: string, stylistId?: string) => {
+ };
+ 
+ function handle(method: string, path: string, p: Record<string, unknown>, q: Record<string, unknown>): unknown {
+-  if (path === '/auth/me') return getUser() ?? bad('Chưa đăng nhập');
++  authorize(method, path);
++  if (path === '/auth/me') return getUser() ?? bad(MSG.UNAUTHORIZED, undefined, 401);
+   if (path === '/auth/login') {
+-    const user = db.users.find(u => u.email === p.email && u.isActive) ?? db.users[0];
+-    demoRole.set(user.role);
+-    return { accessToken: 'demo-token', refreshToken: 'demo-refresh', expiresIn: 3600,
+-      user: { id: user.id, email: user.email, fullName: user.fullName, role: user.role,
+-        stylistId: user.stylistId, mustChangePassword: false } };
+-  }
+-  if (path === '/auth/logout' || path === '/auth/change-password' || path === '/auth/reset-password') return {};
++    // S1-01: thông báo chung, không tiết lộ email có tồn tại; sai 5 lần liên tiếp khoá 15 phút
++    const user = db.users.find(u => u.email.toLowerCase() === String(p.email ?? '').trim().toLowerCase());
++    if (!user) return bad(MSG.LOGIN_FAILED, undefined, 401);
++    const cred = (db.auth[user.id] ??= { password: DEMO_PASSWORD, failed: 0 });
++    if (user.lockedUntil && new Date(user.lockedUntil).getTime() > Date.now()) {
++      return bad(MSG.ACCOUNT_LOCKED(Math.max(1, Math.ceil((new Date(user.lockedUntil).getTime() - Date.now()) / 60000))), undefined, 401);
++    }
++    if (String(p.password ?? '') !== cred.password) {
++      cred.failed += 1;
++      if (cred.failed >= MAX_FAILED_LOGINS) {
++        cred.failed = 0; user.lockedUntil = new Date(Date.now() + LOCK_MINUTES * 60000).toISOString();
++        record('LOGIN', 'user', `Khoá ${user.email} ${LOCK_MINUTES} phút do nhập sai mật khẩu ${MAX_FAILED_LOGINS} lần`);
++        return bad(MSG.ACCOUNT_LOCKED(LOCK_MINUTES), undefined, 401);
++      }
++      save(); return bad(MSG.LOGIN_FAILED, undefined, 401);
++    }
++    if (!user.isActive) return bad(MSG.ACCOUNT_INACTIVE, undefined, 403);
++    cred.failed = 0; user.lockedUntil = null; user.lastLoginAt = new Date().toISOString();
++    startSession(user.id); save();
++    return { accessToken: 'demo-token', refreshToken: 'demo-refresh', expiresIn: 1800, user: getUser() };
++  }
++  if (path === '/auth/logout') { startSession(null); return {}; }
++  if (path === '/auth/change-password') {
++    const me = getUser() ?? bad(MSG.UNAUTHORIZED, undefined, 401);
++    const cred = (db.auth[me.id] ??= { password: DEMO_PASSWORD, failed: 0 });
++    const next = String(p.newPassword ?? '');
++    if (String(p.currentPassword ?? '') !== cred.password) bad(MSG.CURRENT_PASSWORD_WRONG, 'currentPassword');
++    if (next.length < 8 || !/[A-Za-z]/.test(next) || !/\d/.test(next)) bad(MSG.PASSWORD_WEAK, 'newPassword');
++    if (next === cred.password) bad(MSG.PASSWORD_SAME_AS_OLD, 'newPassword');
++    cred.password = next;
++    const row = db.users.find(u => u.id === me.id); if (row) row.mustChangePassword = false;
++    save(); return { success: true };
++  }
++  if (path === '/auth/reset-password') return {};
+   if (path === '/auth/forgot-password') return { message: 'Liên kết đặt lại mật khẩu đã được gửi (bản demo).' };
+   if (path === '/auth/permission-matrix') return {
++    // Bản sao của PERMISSION_MATRIX ở backend (roles.constant.ts)
+     roles: { customer: 'Khách', stylist: 'Thợ', receptionist: 'Lễ tân', owner: 'Chủ tiệm', admin: 'Quản trị' },
+     matrix: {
+-      'Đặt lịch công khai': { customer: 'W', stylist: 'R', receptionist: 'F', owner: 'F', admin: 'R' },
+-      'Lịch hẹn': { customer: 'R', stylist: 'W', receptionist: 'F', owner: 'F', admin: 'R' },
+-      'Thanh toán': { customer: '-', stylist: '-', receptionist: 'F', owner: 'F', admin: 'R' },
+-      'Khách hàng': { customer: '-', stylist: 'R', receptionist: 'W', owner: 'F', admin: 'R' },
+-      'Báo cáo': { customer: '-', stylist: '-', receptionist: 'R', owner: 'F', admin: 'F' },
+-      'Danh mục & ca làm': { customer: 'R', stylist: 'R', receptionist: 'R', owner: 'F', admin: 'F' },
+-      'Tài khoản & nhật ký': { customer: '-', stylist: '-', receptionist: '-', owner: 'R', admin: 'F' },
++      'Tài khoản và phân quyền': { customer: '-', stylist: '-', receptionist: '-', owner: 'R', admin: 'F' },
++      'Danh mục dịch vụ và giá': { customer: 'R', stylist: 'R', receptionist: 'R', owner: 'F', admin: 'R' },
++      'Hồ sơ thợ và ca làm việc': { customer: 'R', stylist: 'R', receptionist: 'W', owner: 'F', admin: 'R' },
++      'Đặt lịch trên trang công khai': { customer: 'W', stylist: '-', receptionist: 'F', owner: 'F', admin: 'R' },
++      'Lịch hẹn hằng ngày và check-in': { customer: 'R', stylist: 'W', receptionist: 'F', owner: 'F', admin: 'R' },
++      'Phiếu tính tiền': { customer: 'R', stylist: 'R', receptionist: 'F', owner: 'F', admin: 'R' },
++      'Hồ sơ và lịch sử dịch vụ của khách': { customer: 'R', stylist: 'R', receptionist: 'W', owner: 'F', admin: 'R' },
++      'Báo cáo doanh thu và nhật ký hoạt động': { customer: '-', stylist: '-', receptionist: 'R', owner: 'F', admin: 'F' },
+     },
+   };
+ 
+@@ -348,7 +480,8 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
+     return { services, totalDurationMinutes: services.reduce((sum, s) => sum + s.durationMinutes, 0),
+       estimatedTotal: total, estimatedTotalText: money(total), note: 'Giá chưa bao gồm các dịch vụ phát sinh tại quầy.' };
+   }
+-  if (path === '/public/stylists') return db.stylists.filter(s => s.isActive)
++  if (path === '/public/stylists') return db.stylists.filter(s => s.isActive &&
++    String(q.serviceIds ?? '').split(',').filter(Boolean).every(id => s.serviceIds.includes(id)))
+     .map(({ id, fullName, avatarUrl, bio, avgRating }) => ({ id, fullName, avatarUrl, bio, avgRating }));
+   if (path === '/public/availability' || path === '/appointments/availability')
+     return availability(String(q.date), String(q.serviceIds ?? '').split(','), q.stylistId ? String(q.stylistId) : undefined,
+@@ -372,7 +505,7 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
+   }
+ 
+   if (path === '/appointments/timeline') return dayTimeline(String(q.date || day()), q.stylistId ? String(q.stylistId) : undefined);
+-  if (path === '/appointments/my-day') return db.appointments.filter(a => a.date === q.date && a.stylist.id === (getUser()?.stylistId ?? 'st1')).map(forCurrentRole);
++  if (path === '/appointments/my-day') return db.appointments.filter(a => a.date === q.date && a.stylist.id === getUser()?.stylistId).map(forCurrentRole);
+   if (path === '/appointments/pending') return db.appointments.filter(a => a.status === 'pending');
+   if (path === '/appointments/reject-reasons') return ['Khung giờ không còn chỗ', 'Dịch vụ chưa phù hợp', 'Không liên hệ được khách', 'Khác'];
+   if (path === '/appointments/today-summary') return summary(db.appointments.filter(a => a.date === (q.date || day())));
+@@ -447,46 +580,63 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
+   const categoryMatch = path.match(/^\/service-categories\/([^/]+)$/);
+   if (categoryMatch) {
+     const category = db.categories.find(c => c.id === categoryMatch[1]) ?? bad('Không tìm thấy danh mục');
+-    if (method === 'delete') { db.categories = db.categories.filter(c => c.id !== category.id); save(); return {}; }
+-    Object.assign(category, p); save(); return category;
++    if (method === 'delete') {
++      const count = db.services.filter(s => s.categoryId === category.id).length;
++      if (count) bad(MSG.CATEGORY_HAS_SERVICES(count), undefined, 409);
++      db.categories = db.categories.filter(c => c.id !== category.id); save(); return {};
++    }
++    Object.assign(category, pick(p, ['name', 'displayOrder'])); recomputeLinks(); save(); return category;
+   }
+   if (path === '/services' && method === 'get') return db.services.filter(s =>
+     (!q.categoryId || s.categoryId === q.categoryId) && (q.isActive === undefined || s.isActive === q.isActive) &&
+     (!q.search || `${s.name} ${s.description}`.toLowerCase().includes(String(q.search).toLowerCase())));
+   if (path === '/services' && method === 'post') {
+-    if (Number(p.durationMinutes) % 15 || Number(p.durationMinutes) < 15 || Number(p.durationMinutes) > 240)
+-      bad('Thời lượng phải chia hết cho 15, từ 15 đến 240 phút', 'durationMinutes');
+-    if (Number(p.price) > 20000000) bad('Giá tối đa 20.000.000 đ', 'price');
+-    const item: ServiceItem = { id: uid(), categoryId: String(p.categoryId),
+-      categoryName: db.categories.find(c => c.id === p.categoryId)?.name ?? '', name: String(p.name),
+-      durationMinutes: Number(p.durationMinutes), price: Number(p.price), priceText: money(Number(p.price)),
++    validateService(p.durationMinutes, p.price);
++    if (db.services.some(s => s.name.trim().toLowerCase() === String(p.name ?? '').trim().toLowerCase()))
++      bad(MSG.SERVICE_NAME_DUPLICATED, 'name', 409);
++    const item: ServiceItem = { id: uid(), categoryId: String(p.categoryId), categoryName: '', name: String(p.name).trim(),
++      durationMinutes: Number(p.durationMinutes), price: Number(p.price), priceText: '',
+       description: String(p.description || ''), isActive: p.isActive !== false,
+-      stylistIds: (p.stylistIds as string[]) ?? [], stylistCount: (p.stylistIds as string[])?.length ?? 0,
+-      hasNoStylist: !(p.stylistIds as string[])?.length };
+-    db.services.push(item); save(); record('CREATE', 'service', `Thêm dịch vụ ${item.name}`); return item;
++      stylistIds: (p.stylistIds as string[]) ?? [], stylistCount: 0, hasNoStylist: true };
++    db.services.push(item); recomputeLinks(); save(); record('CREATE', 'service', `Thêm dịch vụ ${item.name}`); return item;
+   }
+   const serviceMatch = path.match(/^\/services\/([^/]+)$/);
+   if (serviceMatch) {
+     const item = db.services.find(s => s.id === serviceMatch[1]) ?? bad('Không tìm thấy dịch vụ');
+-    if (method === 'delete') { db.services = db.services.filter(s => s.id !== item.id); save(); return {}; }
+-    if (p.durationMinutes !== undefined && (Number(p.durationMinutes) % 15 || Number(p.durationMinutes) < 15 || Number(p.durationMinutes) > 240))
+-      bad('Thời lượng phải chia hết cho 15, từ 15 đến 240 phút', 'durationMinutes');
+-    if (Number(p.price ?? 0) > 20000000) bad('Giá tối đa 20.000.000 đ', 'price');
+-    Object.assign(item, p); item.priceText = money(item.price);
+-    item.categoryName = db.categories.find(c => c.id === item.categoryId)?.name ?? '';
+-    item.stylistCount = item.stylistIds.length; item.hasNoStylist = !item.stylistCount;
+-    save(); record('UPDATE', 'service', `Cập nhật ${item.name}`); return item;
++    if (method === 'delete') {
++      // S1-05: dịch vụ đã có lịch hẹn tham chiếu thì chỉ được ngừng bán
++      if (db.appointments.some(a => a.services.some(s => s.serviceId === item.id))) bad(MSG.SERVICE_IN_USE, undefined, 409);
++      db.services = db.services.filter(s => s.id !== item.id); recomputeLinks(); save();
++      record('DELETE', 'service', `Xoá dịch vụ ${item.name}`); return {};
++    }
++    if (method !== 'patch') return item;
++    validateService(p.durationMinutes, p.price);
++    if (p.name !== undefined && db.services.some(s => s.id !== item.id &&
++      s.name.trim().toLowerCase() === String(p.name).trim().toLowerCase())) bad(MSG.SERVICE_NAME_DUPLICATED, 'name', 409);
++    Object.assign(item, pick(p, ['categoryId', 'name', 'durationMinutes', 'price', 'description', 'isActive', 'stylistIds']));
++    item.durationMinutes = Number(item.durationMinutes); item.price = Number(item.price);
++    recomputeLinks(); save(); record('UPDATE', 'service', `Cập nhật ${item.name}`); return item;
+   }
+ 
+   if (path === '/stylists' && method === 'get') return db.stylists.filter(s =>
+     (q.isActive === undefined || s.isActive === q.isActive) &&
+-    (!q.serviceId || s.serviceIds.includes(String(q.serviceId))));
++    (!q.serviceId || s.serviceIds.includes(String(q.serviceId)))).map(withEmail);
+   if (path === '/stylists' && method === 'post') {
+-    const item: Stylist = { id: uid(), userId: null, fullName: String(p.fullName), phone: String(p.phone || '') || null,
+-      avatarUrl: null, bio: String(p.bio || '') || null, isActive: true, serviceIds: (p.serviceIds as string[]) ?? [],
++    const email = String(p.email ?? '').trim().toLowerCase();
++    if (email && !EMAIL_RE.test(email)) bad('Email không đúng định dạng', 'email');
++    if (email && emailTaken(email)) bad(MSG.EMAIL_DUPLICATED, 'email', 409);
++    const item: Stylist = { id: uid(), userId: null, fullName: String(p.fullName).trim(), phone: String(p.phone || '') || null,
++      avatarUrl: null, bio: String(p.bio || '') || null, isActive: p.isActive !== false, serviceIds: [],
+       serviceNames: [], avgRating: null, reviewCount: 0 };
+-    item.serviceNames = db.services.filter(s => item.serviceIds.includes(s.id)).map(s => s.name);
+-    db.stylists.push(item); save(); record('CREATE', 'stylist', `Thêm ${item.fullName}`); return item;
++    if (email) {
++      // Hồ sơ thợ có email -> tạo luôn tài khoản vai trò Thợ, buộc đổi mật khẩu tạm ở lần đăng nhập đầu
++      const user: UserRow = { id: uid(), fullName: item.fullName, email, phone: item.phone, role: 'stylist',
++        isActive: item.isActive, mustChangePassword: true, lockedUntil: null, lastLoginAt: null, stylistId: item.id,
++        createdAt: new Date().toISOString() };
++      db.users.push(user); db.auth[user.id] = { password: DEMO_PASSWORD, failed: 0 }; item.userId = user.id;
++    }
++    db.stylists.push(item); setStylistServices(item.id, (p.serviceIds as string[]) ?? []);
++    save(); record('CREATE', 'stylist', `Thêm ${item.fullName}`); return withEmail(item);
+   }
+   const stylistMatch = path.match(/^\/stylists\/([^/]+)(?:\/(.+))?$/);
+   if (stylistMatch) {
+@@ -513,11 +663,20 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
+         reason: p.reason ? String(p.reason) : null };
+       db.timeOff.push(item); save(); return item;
+     }
+-    if (stylistMatch[2] === 'avatar') return stylist;
+-    if (method === 'patch') { Object.assign(stylist, p);
+-      stylist.serviceNames = db.services.filter(s => stylist.serviceIds.includes(s.id)).map(s => s.name);
+-      save(); return stylist; }
+-    return stylist;
++    if (stylistMatch[2] === 'avatar') return withEmail(stylist);
++    if (method === 'patch') {
++      Object.assign(stylist, pick(p, ['fullName', 'phone', 'bio', 'isActive', 'avatarUrl']));
++      if (p.serviceIds) setStylistServices(stylist.id, p.serviceIds as string[]);
++      // Đồng bộ sang tài khoản nhân sự: họ tên, SĐT, trạng thái (thợ nghỉ việc mất quyền truy cập ngay)
++      const user = db.users.find(u => u.id === stylist.userId);
++      if (user) {
++        user.fullName = stylist.fullName; user.phone = stylist.phone;
++        if (p.isActive !== undefined) user.isActive = stylist.isActive;
++      }
++      db.shifts.forEach(sh => { if (sh.stylistId === stylist.id) sh.stylistName = stylist.fullName; });
++      save(); record('UPDATE', 'stylist', `Cập nhật hồ sơ ${stylist.fullName}`); return withEmail(stylist);
++    }
++    return withEmail(stylist);
+   }
+   if (path === '/shifts' && method === 'get') return db.shifts.filter(s =>
+     (!q.from || s.workDate >= String(q.from)) && (!q.to || s.workDate <= String(q.to)) &&
+@@ -616,6 +775,10 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
+ 
+   if (path === '/working-hours' && method === 'get') return db.workingHours;
+   if (path === '/working-hours' && method === 'put') {
++    // S1-08: giờ đóng phải sau giờ mở ít nhất 60 phút
++    const invalid = (p.days as WorkingHour[]).find(d => !d.isClosed && minute(d.closeTime) - minute(d.openTime) < 60);
++    if (invalid) bad(`${db.workingHours.find(wh => wh.dayOfWeek === invalid.dayOfWeek)?.dayLabel ?? ''}: ${MSG.WORKING_HOURS_MIN_60}`,
++      `days.${invalid.dayOfWeek}.closeTime`);
+     db.workingHours = (p.days as WorkingHour[]).map((item, index) => ({ ...item, id: `wh${index}`,
+       dayLabel: db.workingHours.find(wh => wh.dayOfWeek === item.dayOfWeek)?.dayLabel ?? '' }));
+     save(); return db.workingHours;
+@@ -635,24 +798,56 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
+   }
+ 
+   if (path === '/users' && method === 'get') {
+-    let items = [...db.users];
+-    if (q.search) items = items.filter(u => `${u.fullName} ${u.email}`.toLowerCase().includes(String(q.search).toLowerCase()));
++    let items = db.users.map(u => ({ ...u, stylistId: db.stylists.find(s => s.userId === u.id)?.id ?? null }));
++    if (q.search) items = items.filter(u => `${u.fullName} ${u.email} ${u.phone ?? ''}`.toLowerCase().includes(String(q.search).toLowerCase()));
+     if (q.role) items = items.filter(u => u.role === q.role);
+     return paginate(items, q);
+   }
+   if (path === '/users' && method === 'post') {
+-    const user: UserRow = { id: uid(), fullName: String(p.fullName), email: String(p.email),
+-      phone: p.phone ? String(p.phone) : null, role: p.role as UserRow['role'], isActive: true,
+-      mustChangePassword: false, lockedUntil: null, lastLoginAt: null, stylistId: p.stylistId ? String(p.stylistId) : null,
++    const email = String(p.email ?? '').trim().toLowerCase();
++    if (!EMAIL_RE.test(email)) bad('Email không đúng định dạng', 'email');
++    // S1-02: email trùng bị từ chối kèm thông báo chỉ rõ trường bị trùng
++    if (emailTaken(email)) bad(MSG.EMAIL_DUPLICATED, 'email', 409);
++    const user: UserRow = { id: uid(), fullName: String(p.fullName).trim(), email,
++      phone: p.phone ? String(p.phone) : null, role: p.role as UserRow['role'], isActive: p.isActive !== false,
++      mustChangePassword: true, lockedUntil: null, lastLoginAt: null, stylistId: null,
+       createdAt: new Date().toISOString() };
+-    db.users.push(user); save(); record('CREATE', 'user', `Thêm ${user.fullName}`); return { ...user, tempPasswordSentTo: user.email };
++    db.users.push(user); db.auth[user.id] = { password: DEMO_PASSWORD, failed: 0 };
++    if (user.role === 'stylist' && p.createStylistProfile !== false) {
++      const profile: Stylist = { id: uid(), userId: user.id, fullName: user.fullName, phone: user.phone, avatarUrl: null,
++        bio: null, isActive: user.isActive, serviceIds: [], serviceNames: [], avgRating: null, reviewCount: 0 };
++      db.stylists.push(profile); user.stylistId = profile.id;
++    }
++    save(); record('CREATE', 'user', `Thêm ${user.fullName}`); return { ...user, tempPasswordSentTo: user.email };
+   }
+   const userMatch = path.match(/^\/users\/([^/]+)(?:\/(.+))?$/);
+   if (userMatch) {
+     const user = db.users.find(u => u.id === userMatch[1]) ?? bad('Không tìm thấy tài khoản');
+-    if (userMatch[2] === 'reset-password') return { success: true, sentTo: user.email };
+-    if (userMatch[2] === 'unlock') { user.lockedUntil = null; user.isActive = true; save(); return user; }
+-    Object.assign(user, p); save(); record('UPDATE', 'user', `Cập nhật ${user.fullName}`); return user;
++    const cred = (db.auth[user.id] ??= { password: DEMO_PASSWORD, failed: 0 });
++    if (userMatch[2] === 'reset-password') {
++      cred.password = DEMO_PASSWORD; cred.failed = 0; user.lockedUntil = null; user.mustChangePassword = true;
++      save(); return { success: true, sentTo: user.email };
++    }
++    if (userMatch[2] === 'unlock') { user.lockedUntil = null; cred.failed = 0; save(); return user; }
++    if (method !== 'patch') return user;
++    const changes = pick(p, ['fullName', 'phone', 'role', 'isActive']) as Partial<UserRow>;
++    const willDeactivate = changes.isActive === false && user.isActive;
++    const willLoseAdmin = changes.role !== undefined && changes.role !== 'admin' && user.role === 'admin';
++    // S1-02: không cho phép ngưng hoạt động / hạ quyền quản trị viên cuối cùng
++    if ((willDeactivate || willLoseAdmin) && user.role === 'admin' &&
++      db.users.filter(u => u.role === 'admin' && u.isActive).length <= 1) bad(MSG.LAST_ADMIN);
++    if (willDeactivate && user.id === getUser()?.id) bad(MSG.CANNOT_DEACTIVATE_SELF);
++    Object.assign(user, changes);
++    const profile = db.stylists.find(s => s.userId === user.id);
++    if (profile) {
++      profile.fullName = user.fullName; profile.phone = user.phone;
++      profile.isActive = user.isActive && user.role === 'stylist';
++    } else if (user.role === 'stylist') {
++      const created: Stylist = { id: uid(), userId: user.id, fullName: user.fullName, phone: user.phone, avatarUrl: null,
++        bio: null, isActive: user.isActive, serviceIds: [], serviceNames: [], avgRating: null, reviewCount: 0 };
++      db.stylists.push(created); user.stylistId = created.id;
++    }
++    save(); record('UPDATE', 'user', `Cập nhật ${user.fullName}`); return user;
+   }
+   if (path === '/audit-logs') {
+     let items = [...db.audit];
+diff --git a/frontend/src/components/Media.tsx b/frontend/src/components/Media.tsx
+index 33c1193..7c04a50 100644
+--- a/frontend/src/components/Media.tsx
++++ b/frontend/src/components/Media.tsx
+@@ -1,22 +1,35 @@
+-import { ImgHTMLAttributes, useEffect, useState } from 'react';
+-import { ImageOff } from 'lucide-react';
++import { ImgHTMLAttributes, useCallback, useState } from 'react';
++import { Sparkles } from 'lucide-react';
+ import { initials, stylistPhoto } from '@/utils/images';
+ 
+-/** Ảnh có khung shimmer khi đang tải, hiện dần khi xong, và nền dự phòng khi lỗi. */
++/**
++ * Ảnh đã nằm sẵn trong cache có thể bắn onLoad TRƯỚC khi useEffect chạy; nếu effect sau đó đặt lại
++ * trạng thái "loading" thì ảnh kẹt ở opacity-0 mãi mãi. Vì vậy chỉ reset khi src thật sự đổi
++ * (so sánh ngay khi render) và đọc img.complete lúc gắn phần tử.
++ */
++const readyState = (img: HTMLImageElement | null): 'ready' | 'error' | null =>
++  img?.complete ? (img.naturalWidth > 0 ? 'ready' : 'error') : null;
++
++/** Ảnh có khung shimmer khi đang tải, hiện dần khi xong, và nền dự phòng (không cần mạng) khi CDN lỗi/offline. */
+ export function SmartImage({ src, alt, className = '', imgClassName = '', ...rest }: ImgHTMLAttributes<HTMLImageElement> & {
+   imgClassName?: string;
+ }) {
+-  const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
+-  useEffect(() => setState(src ? 'loading' : 'error'), [src]);
++  const [state, setState] = useState<'loading' | 'ready' | 'error'>(src ? 'loading' : 'error');
++  const [trackedSrc, setTrackedSrc] = useState(src);
++  if (src !== trackedSrc) { setTrackedSrc(src); setState(src ? 'loading' : 'error'); }
++  const imgRef = useCallback((img: HTMLImageElement | null) => {
++    const s = readyState(img); if (s) setState(s);
++  }, []);
+   return (
+     <div className={`relative overflow-hidden ${state === 'loading' ? 'skeleton-shimmer' : 'bg-slate-100'} ${className}`}>
+       {state === 'error' ? (
+-        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-teal-50 via-white to-amber-50 text-teal-300">
+-          <ImageOff size={26} aria-hidden />
++        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-teal-100 via-teal-50 to-amber-50 text-teal-500/70">
++          <Sparkles size={24} aria-hidden />
+           <span className="sr-only">{alt}</span>
+         </div>
+       ) : (
+         <img
++          ref={imgRef}
+           src={src}
+           alt={alt}
+           onLoad={() => setState('ready')}
+@@ -37,7 +50,11 @@ export function StylistAvatar({ id, name, url, size = 'h-10 w-10', className = '
+   const src = stylistPhoto(id, url);
+   const [broken, setBroken] = useState(false);
+   const [loaded, setLoaded] = useState(false);
+-  useEffect(() => { setBroken(false); setLoaded(false); }, [src]);
++  const [trackedSrc, setTrackedSrc] = useState(src);
++  if (src !== trackedSrc) { setTrackedSrc(src); setBroken(false); setLoaded(false); }
++  const imgRef = useCallback((img: HTMLImageElement | null) => {
++    const s = readyState(img); if (s === 'ready') setLoaded(true); else if (s === 'error') setBroken(true);
++  }, []);
+   if (broken) {
+     return (
+       <span className={`${size} inline-flex shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-teal-100 to-teal-50 text-xs font-semibold text-teal-800 ring-2 ring-white ${className}`}
+@@ -48,7 +65,7 @@ export function StylistAvatar({ id, name, url, size = 'h-10 w-10', className = '
+   }
+   return (
+     <span className={`${size} relative inline-block shrink-0 overflow-hidden rounded-full ring-2 ring-white ${loaded ? 'bg-slate-100' : 'skeleton-shimmer'} ${className}`}>
+-      <img src={src} alt={name} loading="lazy" onLoad={() => setLoaded(true)} onError={() => setBroken(true)}
++      <img ref={imgRef} src={src} alt={name} loading="lazy" onLoad={() => setLoaded(true)} onError={() => setBroken(true)}
+            className={`h-full w-full object-cover transition-opacity duration-500 ${loaded ? 'opacity-100' : 'opacity-0'}`} />
+     </span>
+   );
+diff --git a/frontend/src/layouts/PublicLayout.tsx b/frontend/src/layouts/PublicLayout.tsx
+index 73bdc08..b33001a 100644
+--- a/frontend/src/layouts/PublicLayout.tsx
++++ b/frontend/src/layouts/PublicLayout.tsx
+@@ -23,8 +23,14 @@ export function PublicLayout() {
+             </span>
+           </Link>
+           <div className="flex items-center gap-1">
++            {/* Điều hướng cho màn rộng (thanh dưới cùng chỉ hiện trên điện thoại) */}
++            <nav className="mr-1 hidden items-center gap-1 sm:flex" aria-label="Điều hướng chính">
++              <NavLink to="/" end className="btn btn-ghost btn-sm"><Home size={15} /> Trang chủ</NavLink>
++              <NavLink to="/dat-lich" className="btn btn-ghost btn-sm"><CalendarCheck size={15} /> Đặt lịch</NavLink>
++              <NavLink to="/tra-cuu" className="btn btn-ghost btn-sm"><Search size={15} /> Tra cứu</NavLink>
++            </nav>
+             <a href={`tel:${SALON.hotline.replace(/\s/g, '')}`}
+-               className="btn btn-ghost btn-sm hidden sm:inline-flex">
++               className="btn btn-ghost btn-sm hidden lg:inline-flex">
+               <Phone size={15} /> {SALON.hotline}
+             </a>
+             <Link to="/dang-nhap" className="btn btn-outline btn-sm">
+diff --git a/frontend/src/pages/admin/ServicesPage.tsx b/frontend/src/pages/admin/ServicesPage.tsx
+index 0678fef..2b9c4d8 100644
+--- a/frontend/src/pages/admin/ServicesPage.tsx
++++ b/frontend/src/pages/admin/ServicesPage.tsx
+@@ -48,7 +48,7 @@ function validate(f: FormState): Partial<Record<keyof FormState, string>> {
+ /** S1-05 + S1-06: danh mục dịch vụ theo nhóm, thời lượng, giá và trạng thái bán. */
+ export function ServicesPage() {
+   const { user } = useAuth();
+-  const canEdit = user?.role === 'owner' || user?.role === 'admin';
++  const canEdit = user?.role === 'owner'; // khớp RolesGuard backend: Admin chỉ xem (PERMISSION_MATRIX)
+   const toast = useToast();
+ 
+   const [categories, setCategories] = useState<ServiceCategory[]>([]);
+@@ -220,7 +220,7 @@ export function ServicesPage() {
+         title="Dịch vụ & bảng giá"
+         description={canEdit
+           ? 'Thời lượng là bội số của 15 phút (15–240). Giá tối đa 20.000.000 đ. Đổi thời lượng không làm thay đổi lịch đã đặt.'
+-          : 'Bạn đang xem ở chế độ chỉ đọc. Chỉ Chủ tiệm và Quản trị mới sửa được bảng giá.'}
++          : 'Bạn đang xem ở chế độ chỉ đọc. Chỉ Chủ tiệm mới sửa được bảng giá.'}
+         action={canEdit && (
+           <div className="flex flex-wrap gap-2">
+             <Button size="sm" variant="outline" icon={<Tag size={15} />} onClick={openCategories}>Nhóm dịch vụ</Button>
+diff --git a/frontend/src/pages/admin/StylistsPage.tsx b/frontend/src/pages/admin/StylistsPage.tsx
+index 69fd970..c1b3d48 100644
+--- a/frontend/src/pages/admin/StylistsPage.tsx
++++ b/frontend/src/pages/admin/StylistsPage.tsx
+@@ -3,6 +3,7 @@ import {
+   CalendarRange, ImagePlus, LayoutGrid, List, Pencil, Plus, Search, Star, UserRound, X,
+ } from 'lucide-react';
+ import { appointmentsApi, catalogApi, getErrorMessage, stylistsApi } from '@/api';
++import { DEMO_MODE } from '@/api/mockBackend';
+ import type { Appointment, ServiceCategory, ServiceItem, Shift, Stylist } from '@/types';
+ import {
+   Button, Card, EmptyState, Field, Input, Modal, Notice, SectionTitle, Spinner, StylistAvatar, Textarea, Toggle,
+@@ -57,7 +58,8 @@ const hours = (m: number) => `${Math.round((m / 60) * 10) / 10}`.replace('.', ',
+ /** S1-07: hồ sơ thợ, kỹ năng (dịch vụ làm được) và công suất tuần. */
+ export function StylistsPage() {
+   const { user } = useAuth();
+-  const canEdit = user?.role === 'owner' || user?.role === 'admin';
++  // Khớp RolesGuard backend: chỉ Chủ tiệm ghi hồ sơ thợ, Admin chỉ xem (PERMISSION_MATRIX)
++  const canEdit = user?.role === 'owner';
+   const toast = useToast();
+ 
+   const [stylists, setStylists] = useState<Stylist[]>([]);
+@@ -73,10 +75,12 @@ export function StylistsPage() {
+   const [editing, setEditing] = useState<Stylist | null>(null);
+   const [fullName, setFullName] = useState('');
+   const [phone, setPhone] = useState('');
++  const [email, setEmail] = useState('');
+   const [bio, setBio] = useState('');
+   const [isActive, setIsActive] = useState(true);
+   const [serviceIds, setServiceIds] = useState<string[]>([]);
+   const [avatar, setAvatar] = useState<string | null>(null);
++  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+   const [skillQuery, setSkillQuery] = useState('');
+   const [touched, setTouched] = useState(false);
+   const [error, setError] = useState<string | null>(null);
+@@ -135,48 +139,57 @@ export function StylistsPage() {
+     !query.trim() || matchSearch(`${s.fullName} ${s.phone ?? ''} ${s.serviceNames.join(' ')}`, query));
+ 
+   const openCreate = () => {
+-    setEditing(null); setFullName(''); setPhone(''); setBio(''); setIsActive(true);
+-    setServiceIds([]); setAvatar(null); setSkillQuery(''); setTouched(false); setError(null); setOpen(true);
++    setEditing(null); setFullName(''); setPhone(''); setEmail(''); setBio(''); setIsActive(true);
++    setServiceIds([]); setAvatar(null); setAvatarFile(null); setSkillQuery(''); setTouched(false); setError(null); setOpen(true);
+   };
+   const openEdit = (s: Stylist) => {
+-    setEditing(s); setFullName(s.fullName); setPhone(s.phone ?? ''); setBio(s.bio ?? '');
+-    setIsActive(s.isActive); setServiceIds([...s.serviceIds]); setAvatar(s.avatarUrl); setSkillQuery('');
++    setEditing(s); setFullName(s.fullName); setPhone(s.phone ?? ''); setEmail(s.email ?? ''); setBio(s.bio ?? '');
++    setIsActive(s.isActive); setServiceIds([...s.serviceIds]); setAvatar(s.avatarUrl); setAvatarFile(null); setSkillQuery('');
+     setTouched(false); setError(null); setOpen(true);
+   };
+ 
+   const fieldErrors = {
+     fullName: !fullName.trim() ? 'Vui lòng nhập họ tên thợ' : undefined,
+     phone: phone && !VN_PHONE_REGEX.test(phone) ? 'Số điện thoại phải gồm đúng 10 chữ số, bắt đầu bằng 0' : undefined,
++    email: !editing && email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) ? 'Email không đúng định dạng' : undefined,
+     skills: serviceIds.length === 0 ? 'Chọn ít nhất một dịch vụ thợ làm được' : undefined,
+   };
+   const shown: Partial<typeof fieldErrors> = touched ? fieldErrors : {};
+ 
+   const pickAvatar = async (file: File) => {
+-    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+-      return toast.error('Chỉ chấp nhận ảnh JPG, PNG hoặc WEBP');
++    // S1-07: ảnh đại diện tối đa 2MB, định dạng JPG hoặc PNG (khớp fileFilter của backend)
++    if (!['image/jpeg', 'image/png'].includes(file.type)) {
++      return toast.error('Chỉ chấp nhận ảnh JPG hoặc PNG');
+     }
+     if (file.size > MAX_AVATAR_MB * 1024 * 1024) return toast.error(`Ảnh vượt quá ${MAX_AVATAR_MB}MB`);
+-    try { setAvatar(await resizeImage(file)); }
++    try { setAvatar(await resizeImage(file)); setAvatarFile(file); }
+     catch (e) { toast.error(e instanceof Error ? e.message : 'Không xử lý được ảnh'); }
+   };
+ 
+   const save = async () => {
+     setTouched(true);
+     setError(null);
+-    if (fieldErrors.fullName || fieldErrors.phone || fieldErrors.skills) return;
++    if (fieldErrors.fullName || fieldErrors.phone || fieldErrors.email || fieldErrors.skills) return;
+     setSaving(true);
+     try {
+       const payload = {
+         fullName: fullName.trim(), phone: phone || undefined, bio: bio.trim() || undefined, isActive, serviceIds,
+       };
++      let id: string;
+       if (editing) {
+-        await stylistsApi.update(editing.id, { ...payload, avatarUrl: avatar });
+-        toast.success('Đã cập nhật hồ sơ thợ');
++        // Bản demo lưu ảnh dạng data URL; backend thật nhận ảnh qua POST /stylists/:id/avatar
++        await stylistsApi.update(editing.id, DEMO_MODE ? { ...payload, avatarUrl: avatar } : payload);
++        id = editing.id;
++        toast.success('Đã cập nhật hồ sơ thợ và tài khoản nhân sự đi kèm');
+       } else {
+-        const created = await stylistsApi.create(payload);
+-        if (avatar) await stylistsApi.update(created.id, { avatarUrl: avatar });
+-        toast.success('Đã tạo hồ sơ thợ');
++        const created = await stylistsApi.create({ ...payload, email: email.trim() || undefined });
++        id = created.id;
++        if (DEMO_MODE && avatar) await stylistsApi.update(created.id, { avatarUrl: avatar });
++        toast.success(email.trim()
++          ? `Đã tạo hồ sơ thợ và tài khoản đăng nhập, mật khẩu tạm gửi tới ${email.trim()}`
++          : 'Đã tạo hồ sơ thợ (chưa có tài khoản đăng nhập)');
+       }
++      if (!DEMO_MODE && avatarFile) await stylistsApi.uploadAvatar(id, avatarFile);
+       setOpen(false);
+       void load();
+     } catch (e) {
+@@ -268,6 +281,7 @@ export function StylistsPage() {
+                   <div className="min-w-0 flex-1">
+                     <p className="truncate font-bold">{s.fullName}</p>
+                     <p className="text-xs text-ink-muted">{s.phone ?? 'Chưa có số điện thoại'}</p>
++                    <p className="truncate text-xs text-ink-muted">{s.email ?? 'Chưa có tài khoản đăng nhập'}</p>
+                     <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                       <ActiveChip active={s.isActive} />
+                       {s.avgRating !== null && (
+@@ -386,15 +400,15 @@ export function StylistsPage() {
+                   </span>}
+             </button>
+             <div className="min-w-0">
+-              <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
++              <input ref={fileRef} type="file" accept="image/jpeg,image/png" className="hidden"
+                      onChange={(e) => { const f = e.target.files?.[0]; if (f) void pickAvatar(f); e.target.value = ''; }} />
+               <div className="flex flex-wrap gap-2">
+                 <Button size="sm" variant="outline" icon={<ImagePlus size={14} />} onClick={() => fileRef.current?.click()}>
+                   {avatar ? 'Đổi ảnh' : 'Chọn ảnh'}
+                 </Button>
+-                {avatar && <Button size="sm" variant="ghost" onClick={() => setAvatar(null)}>Gỡ ảnh</Button>}
++                {avatar && DEMO_MODE && <Button size="sm" variant="ghost" onClick={() => setAvatar(null)}>Gỡ ảnh</Button>}
+               </div>
+-              <p className="mt-1 text-xs text-ink-muted">JPG/PNG/WEBP, tối đa {MAX_AVATAR_MB}MB · tự cắt vuông {AVATAR_PX}px</p>
++              <p className="mt-1 text-xs text-ink-muted">JPG/PNG, tối đa {MAX_AVATAR_MB}MB · tự cắt vuông {AVATAR_PX}px</p>
+             </div>
+           </div>
+ 
+@@ -407,6 +421,19 @@ export function StylistsPage() {
+                      onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))} />
+             </Field>
+           </div>
++          <div className="grid gap-3 sm:grid-cols-2">
++            <Field label={editing ? 'Email đăng nhập' : 'Email đăng nhập (tuỳ chọn)'} error={shown.email}
++                   hint={editing
++                     ? 'Đổi email hoặc vai trò ở mục “Tài khoản nhân sự”'
++                     : 'Có email: tự tạo tài khoản vai trò Thợ, mật khẩu tạm gửi qua email'}>
++              <Input type="email" value={email} disabled={!!editing} invalid={!!shown.email}
++                     placeholder={editing ? 'Chưa có tài khoản đăng nhập' : 'ten@salon.vn'}
++                     onChange={(e) => setEmail(e.target.value)} />
++            </Field>
++            <Field label="Vai trò">
++              <Input value={editing && !editing.userId ? 'Thợ (chưa có tài khoản)' : 'Thợ'} disabled />
++            </Field>
++          </div>
+           <Field label="Giới thiệu ngắn" hint={`${bio.length}/500`}>
+             <Textarea value={bio} maxLength={500} onChange={(e) => setBio(e.target.value)} />
+           </Field>
+diff --git a/frontend/src/pages/admin/WorkingHoursPage.tsx b/frontend/src/pages/admin/WorkingHoursPage.tsx
+index a6842d4..592a1eb 100644
+--- a/frontend/src/pages/admin/WorkingHoursPage.tsx
++++ b/frontend/src/pages/admin/WorkingHoursPage.tsx
+@@ -33,7 +33,7 @@ const vnDate = (iso: string) => formatDate(`${iso}T00:00:00+07:00`);
+ /** S1-08 + S2-02: giờ mở cửa theo thứ trong tuần và ngày nghỉ của tiệm. */
+ export function WorkingHoursPage() {
+   const { user } = useAuth();
+-  const canEdit = user?.role === 'owner' || user?.role === 'admin';
++  const canEdit = user?.role === 'owner'; // khớp RolesGuard backend: Admin chỉ xem (PERMISSION_MATRIX)
+   const toast = useToast();
+ 
+   const [rows, setRows] = useState<WorkingHour[]>([]);
+diff --git a/frontend/src/pages/auth/AuthShell.tsx b/frontend/src/pages/auth/AuthShell.tsx
+index 846ffd8..844762f 100644
+--- a/frontend/src/pages/auth/AuthShell.tsx
++++ b/frontend/src/pages/auth/AuthShell.tsx
+@@ -101,7 +101,7 @@ export function DemoRoleButtons({ onPick, busyRole, onCustomer }: {
+       <p className="flex items-center gap-2 text-sm font-semibold text-teal-700">
+         <UsersRound size={16} /> Đăng nhập nhanh (bản demo)
+       </p>
+-      <p className="mt-0.5 text-xs text-ink-muted">Dữ liệu mẫu lưu trong trình duyệt, mật khẩu bất kỳ.</p>
++      <p className="mt-0.5 text-xs text-ink-muted">Dữ liệu mẫu lưu trong trình duyệt. Mật khẩu mẫu và mật khẩu tạm của tài khoản mới: <strong>demo1234</strong>.</p>
+       <div className="mt-3 grid grid-cols-2 gap-2">
+         {DEMO_ACCOUNTS.map((acc) => (
+           <button key={acc.role} type="button" disabled={!!busyRole} onClick={() => onPick(acc.email, acc.role)}
+diff --git a/frontend/src/pages/auth/ChangePasswordPage.tsx b/frontend/src/pages/auth/ChangePasswordPage.tsx
+index 9ed581b..106918e 100644
+--- a/frontend/src/pages/auth/ChangePasswordPage.tsx
++++ b/frontend/src/pages/auth/ChangePasswordPage.tsx
+@@ -1,5 +1,5 @@
+ import { useState } from 'react';
+-import { useNavigate } from 'react-router-dom';
++import { Link, useNavigate } from 'react-router-dom';
+ import { CheckCircle2, KeyRound, ShieldAlert } from 'lucide-react';
+ import { authApi, getErrorMessage } from '@/api';
+ import { Button, Card, Field, Notice, SectionTitle } from '@/components';
+@@ -98,6 +98,9 @@ export function ChangePasswordPage() {
+               {!user?.mustChangePassword && (
+                 <Button type="button" variant="ghost" onClick={() => navigate(-1)}>Huỷ</Button>
+               )}
++              <Link to="/quen-mat-khau" className="ml-auto self-center text-sm text-teal-700 hover:underline">
++                Quên mật khẩu hiện tại?
++              </Link>
+             </div>
+           </form>
+         </Card>
+diff --git a/frontend/src/pages/public/BookingWizard.tsx b/frontend/src/pages/public/BookingWizard.tsx
+index 6fdd306..60758ee 100644
+--- a/frontend/src/pages/public/BookingWizard.tsx
++++ b/frontend/src/pages/public/BookingWizard.tsx
+@@ -1,5 +1,5 @@
+ import { useEffect, useMemo, useRef, useState } from 'react';
+-import { useSearchParams } from 'react-router-dom';
++import { useNavigate, useSearchParams } from 'react-router-dom';
+ import { ArrowLeft, ArrowRight, Check, Clock, Wallet } from 'lucide-react';
+ import { getErrorField, getErrorMessage, publicApi } from '@/api';
+ import type { BookingResult } from '@/types';
+@@ -29,6 +29,7 @@ export function BookingWizard() {
+   const [errors, setErrors] = useState<Step4Errors>({});
+   const toast = useToast();
+   const [searchParams] = useSearchParams();
++  const navigate = useNavigate();
+   const preselected = useRef(false);
+ 
+   useEffect(() => {
+@@ -152,11 +153,11 @@ export function BookingWizard() {
+             </span>
+           </div>
+           <div className="flex items-center gap-2">
+-            {step > 1 && (
+-              <Button variant="outline" size="sm" onClick={() => setStep(step - 1)} icon={<ArrowLeft size={15} />}>
+-                Quay lại
+-              </Button>
+-            )}
++            {/* Bước 1 vẫn có đường lui về trang chủ cho khách lỡ bấm nhầm vào */}
++            <Button variant="outline" size="sm" icon={<ArrowLeft size={15} />}
++                    onClick={() => (step > 1 ? setStep(step - 1) : navigate('/'))}>
++              {step > 1 ? 'Quay lại' : 'Trang chủ'}
++            </Button>
+             {step < 4 ? (
+               <Button size="sm" disabled={!canNext} onClick={() => setStep(step + 1)}>
+                 Tiếp tục <ArrowRight size={15} />
+diff --git a/frontend/src/pages/reception/WalkInPage.tsx b/frontend/src/pages/reception/WalkInPage.tsx
+index 010a7ad..6f6c3a4 100644
+--- a/frontend/src/pages/reception/WalkInPage.tsx
++++ b/frontend/src/pages/reception/WalkInPage.tsx
+@@ -88,25 +88,32 @@ export function WalkInModal({ open, onClose, onCreated }: {
+   const [touched, setTouched] = useState(false);
+   const [saving, setSaving] = useState(false);
+   const [created, setCreated] = useState<Appointment | null>(null);
+-  const date = todayISO();
++  // "Hẹn ngày/giờ khác" cho phép chọn cả ngày, không chỉ giờ trong hôm nay
++  const [date, setDate] = useState(todayISO());
++  const isToday = date === todayISO();
+ 
+   const reset = useCallback(() => {
+     setPhone(''); setFullName(''); setEmail(''); setNote(''); setLookup('idle'); setCustomer(null); setHistory([]);
+     autoFilledName.current = null; setServiceQuery(''); setSelectedIds([]); setMode('now'); setTime(nowRounded());
+-    setStylistId(''); setCheckInNow(true); setTouched(false); setCreated(null);
++    setDate(todayISO()); setStylistId(''); setCheckInNow(true); setTouched(false); setCreated(null);
+   }, []);
+ 
+   useEffect(() => {
+     if (!open) return;
+     reset();
+     catalogApi.services({ isActive: true }).then(setServices).catch(() => undefined);
++  }, [open, reset]);
++
++  // Nạp lại lịch ngày + kỹ năng thợ mỗi khi đổi ngày (không xoá dữ liệu khách đang nhập)
++  useEffect(() => {
++    if (!open) return;
+     Promise.all([appointmentsApi.timeline(date), stylistsApi.list({ isActive: true })])
+       .then(([tl, sty]) => {
+         setTimeline(tl);
+         setSkillMap(Object.fromEntries(sty.map((s) => [s.id, s.serviceIds])));
+       })
+       .catch((e) => toast.error(getErrorMessage(e)));
+-  }, [open, date, reset, toast]);
++  }, [open, date, toast]);
+ 
+   // Tự tra hồ sơ khách quen khi nhập đủ 10 số
+   useEffect(() => {
+@@ -171,7 +178,7 @@ export function WalkInModal({ open, onClose, onCreated }: {
+     if (!timeline || !selected.length) return [];
+     const open = timeToMinutes(timeline.salonOpen);
+     const close = timeToMinutes(timeline.salonClose);
+-    const from = Math.max(open, Math.ceil(timeToMinutes(nowRounded()) / 15) * 15);
++    const from = isToday ? Math.max(open, Math.ceil(timeToMinutes(nowRounded()) / 15) * 15) : open;
+     const out: string[] = [];
+     for (let m = from; m + duration <= close && out.length < 8; m += 15) {
+       const f = stylistFits(timeline, selected, skillMap, m, m + duration)
+@@ -179,14 +186,14 @@ export function WalkInModal({ open, onClose, onCreated }: {
+       if (f.length) out.push(minutesToTime(m));
+     }
+     return out;
+-  }, [timeline, selected, skillMap, duration, stylistId]);
++  }, [timeline, selected, skillMap, duration, stylistId, isToday]);
+ 
+   const closeMin = timeline ? timeToMinutes(timeline.salonClose) : 24 * 60;
+   const errors = {
+     phone: !VN_PHONE_REGEX.test(phone) ? 'Số điện thoại gồm 10 chữ số, bắt đầu bằng 0' : undefined,
+     fullName: !fullName.trim() ? 'Vui lòng nhập tên khách' : undefined,
+     services: !selected.length ? 'Chọn ít nhất một dịch vụ' : undefined,
+-    time: mode === 'later' && (!time || timeToMinutes(time) < timeToMinutes(nowRounded()) - 5)
++    time: mode === 'later' && (!time || date < todayISO() || (isToday && timeToMinutes(time) < timeToMinutes(nowRounded()) - 5))
+       ? 'Giờ bắt đầu không được ở quá khứ' : undefined,
+     stylist: selected.length && !resolvedStylist ? 'Không có thợ phù hợp rảnh vào giờ này'
+       : resolvedStylist && !resolvedStylist.skilled ? `${resolvedStylist.name} chưa làm được toàn bộ dịch vụ đã chọn`
+@@ -367,10 +374,14 @@ export function WalkInModal({ open, onClose, onCreated }: {
+             <div>
+               <h4 className="mb-2 text-sm font-bold text-teal-700">3. Thời gian</h4>
+               <div className="grid grid-cols-2 gap-2">
+-                {([['now', 'Làm ngay', <Zap size={15} key="z" />], ['later', 'Hẹn giờ khác hôm nay', <Clock size={15} key="c" />]] as const)
++                {([['now', 'Làm ngay', <Zap size={15} key="z" />], ['later', 'Hẹn ngày/giờ khác', <Clock size={15} key="c" />]] as const)
+                   .map(([id, label, icon]) => (
+                     <button key={id} type="button" aria-pressed={mode === id}
+-                            onClick={() => { setMode(id); if (id === 'later' && suggestions[0]) setTime(suggestions[0]); }}
++                            onClick={() => {
++                              setMode(id);
++                              if (id === 'now') setDate(todayISO());
++                              if (id === 'later' && suggestions[0]) setTime(suggestions[0]);
++                            }}
+                             className={`flex min-h-[44px] items-center justify-center gap-2 rounded-xl border text-sm font-semibold
+                               ${mode === id ? 'border-teal-600 bg-teal-50 text-teal-700' : 'border-slate-300 text-ink-soft'}`}>
+                       {icon} {label}
+@@ -392,10 +403,16 @@ export function WalkInModal({ open, onClose, onCreated }: {
+                 </div>
+               ) : (
+                 <div className="mt-2 space-y-2">
+-                  <Field label="Giờ bắt đầu" error={shown.time}>
+-                    <input type="time" step={300} className="field-input w-40" value={time}
+-                           onChange={(e) => setTime(e.target.value)} />
+-                  </Field>
++                  <div className="flex flex-wrap gap-3">
++                    <Field label="Ngày">
++                      <input type="date" min={todayISO()} className="field-input w-44" value={date}
++                             onChange={(e) => setDate(e.target.value || todayISO())} />
++                    </Field>
++                    <Field label="Giờ bắt đầu" error={shown.time}>
++                      <input type="time" step={300} className="field-input w-40" value={time}
++                             onChange={(e) => setTime(e.target.value)} />
++                    </Field>
++                  </div>
+                   {suggestions.length > 0 && (
+                     <div className="flex flex-wrap gap-1.5">
+                       <span className="self-center text-xs text-ink-muted">Giờ trống:</span>
+diff --git a/frontend/src/types/index.ts b/frontend/src/types/index.ts
+index 069f8a3..a9714b6 100644
+--- a/frontend/src/types/index.ts
++++ b/frontend/src/types/index.ts
+@@ -90,6 +90,8 @@ export interface PublicCatalogGroup {
+ export interface Stylist {
+   id: string;
+   userId: string | null;
++  /** Email đăng nhập của tài khoản nhân sự gắn với hồ sơ; null khi thợ chưa có tài khoản. */
++  email?: string | null;
+   fullName: string;
+   phone: string | null;
+   avatarUrl: string | null;
+diff --git a/frontend/src/vite-env.d.ts b/frontend/src/vite-env.d.ts
+index b971ab2..afb3d5b 100644
+--- a/frontend/src/vite-env.d.ts
++++ b/frontend/src/vite-env.d.ts
+@@ -5,6 +5,8 @@ interface ImportMetaEnv {
+   readonly VITE_SALON_NAME: string;
+   readonly VITE_SALON_ADDRESS: string;
+   readonly VITE_SALON_HOTLINE: string;
++  /** 'false' = gọi backend thật; mọi giá trị khác (kể cả bỏ trống) = chế độ demo dùng mockBackend. */
++  readonly VITE_DEMO_MODE?: string;
+ }
+ interface ImportMeta {
+   readonly env: ImportMetaEnv;
+diff --git a/frontend/.env.demo b/frontend/.env.demo
+new file mode 100755
+index 0000000..6df8725
+--- /dev/null
++++ b/frontend/.env.demo
+@@ -0,0 +1,3 @@
++# Mock/Demo Mode: dữ liệu mẫu lưu trong trình duyệt, không cần backend.
++# Dùng: npm run dev:demo  (vite --mode demo)
++VITE_DEMO_MODE=true

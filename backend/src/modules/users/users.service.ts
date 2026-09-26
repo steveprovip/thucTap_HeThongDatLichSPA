@@ -163,17 +163,27 @@ export class UsersService {
 
     const saved = await this.userRepo.save(user);
 
-    // Đồng bộ trạng thái sang hồ sơ thợ
-    const stylist = await this.stylistRepo.findOne({ where: { userId: id } });
+    // Đồng bộ họ tên / SĐT / trạng thái sang hồ sơ thợ để hai màn hình luôn khớp nhau
+    let stylist = await this.stylistRepo.findOne({ where: { userId: id } });
     if (stylist) {
       let dirty = false;
       if (dto.fullName !== undefined && stylist.fullName !== saved.fullName) {
         stylist.fullName = saved.fullName; dirty = true;
       }
-      if (dto.isActive !== undefined && stylist.isActive !== saved.isActive) {
-        stylist.isActive = saved.isActive; dirty = true;
+      if (dto.phone !== undefined && stylist.phone !== saved.phone) {
+        stylist.phone = saved.phone; dirty = true;
+      }
+      // Thợ còn hoạt động chỉ khi tài khoản còn hoạt động VÀ vẫn giữ vai trò Thợ
+      const shouldBeActive = saved.isActive && saved.role === Role.STYLIST;
+      if ((dto.isActive !== undefined || dto.role !== undefined) && stylist.isActive !== shouldBeActive) {
+        stylist.isActive = shouldBeActive; dirty = true;
       }
       if (dirty) await this.stylistRepo.save(stylist);
+    } else if (saved.role === Role.STYLIST) {
+      // Đổi vai trò sang Thợ mà chưa có hồ sơ -> tạo hồ sơ tương ứng
+      stylist = await this.stylistRepo.save(this.stylistRepo.create({
+        userId: saved.id, fullName: saved.fullName, phone: saved.phone, isActive: saved.isActive,
+      }));
     }
 
     return this.toView(saved, stylist?.id ?? null);

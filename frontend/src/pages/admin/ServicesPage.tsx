@@ -48,7 +48,7 @@ function validate(f: FormState): Partial<Record<keyof FormState, string>> {
 /** S1-05 + S1-06: danh mục dịch vụ theo nhóm, thời lượng, giá và trạng thái bán. */
 export function ServicesPage() {
   const { user } = useAuth();
-  const canEdit = user?.role === 'owner' || user?.role === 'admin';
+  const canEdit = user?.role === 'owner'; // khớp RolesGuard backend: Admin chỉ xem (PERMISSION_MATRIX)
   const toast = useToast();
 
   const [categories, setCategories] = useState<ServiceCategory[]>([]);
@@ -220,7 +220,7 @@ export function ServicesPage() {
         title="Dịch vụ & bảng giá"
         description={canEdit
           ? 'Thời lượng là bội số của 15 phút (15–240). Giá tối đa 20.000.000 đ. Đổi thời lượng không làm thay đổi lịch đã đặt.'
-          : 'Bạn đang xem ở chế độ chỉ đọc. Chỉ Chủ tiệm và Quản trị mới sửa được bảng giá.'}
+          : 'Bạn đang xem ở chế độ chỉ đọc. Chỉ Chủ tiệm mới sửa được bảng giá.'}
         action={canEdit && (
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" icon={<Tag size={15} />} onClick={openCategories}>Nhóm dịch vụ</Button>

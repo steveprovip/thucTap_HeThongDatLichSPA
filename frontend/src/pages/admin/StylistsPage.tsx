@@ -3,6 +3,7 @@ import {
   CalendarRange, ImagePlus, LayoutGrid, List, Pencil, Plus, Search, Star, UserRound, X,
 } from 'lucide-react';
 import { appointmentsApi, catalogApi, getErrorMessage, stylistsApi } from '@/api';
+import { DEMO_MODE } from '@/api/mockBackend';
 import type { Appointment, ServiceCategory, ServiceItem, Shift, Stylist } from '@/types';
 import {
   Button, Card, EmptyState, Field, Input, Modal, Notice, SectionTitle, Spinner, StylistAvatar, Textarea, Toggle,
@@ -57,7 +58,8 @@ const hours = (m: number) => `${Math.round((m / 60) * 10) / 10}`.replace('.', ',
 /** S1-07: hồ sơ thợ, kỹ năng (dịch vụ làm được) và công suất tuần. */
 export function StylistsPage() {
   const { user } = useAuth();
-  const canEdit = user?.role === 'owner' || user?.role === 'admin';
+  // Khớp RolesGuard backend: chỉ Chủ tiệm ghi hồ sơ thợ, Admin chỉ xem (PERMISSION_MATRIX)
+  const canEdit = user?.role === 'owner';
   const toast = useToast();
 
   const [stylists, setStylists] = useState<Stylist[]>([]);
@@ -73,10 +75,12 @@ export function StylistsPage() {
   const [editing, setEditing] = useState<Stylist | null>(null);
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [bio, setBio] = useState('');
   const [isActive, setIsActive] = useState(true);
   const [serviceIds, setServiceIds] = useState<string[]>([]);
   const [avatar, setAvatar] = useState<string | null>(null);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [skillQuery, setSkillQuery] = useState('');
   const [touched, setTouched] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -135,48 +139,57 @@ export function StylistsPage() {
     !query.trim() || matchSearch(`${s.fullName} ${s.phone ?? ''} ${s.serviceNames.join(' ')}`, query));
 
   const openCreate = () => {
-    setEditing(null); setFullName(''); setPhone(''); setBio(''); setIsActive(true);
-    setServiceIds([]); setAvatar(null); setSkillQuery(''); setTouched(false); setError(null); setOpen(true);
+    setEditing(null); setFullName(''); setPhone(''); setEmail(''); setBio(''); setIsActive(true);
+    setServiceIds([]); setAvatar(null); setAvatarFile(null); setSkillQuery(''); setTouched(false); setError(null); setOpen(true);
   };
   const openEdit = (s: Stylist) => {
-    setEditing(s); setFullName(s.fullName); setPhone(s.phone ?? ''); setBio(s.bio ?? '');
-    setIsActive(s.isActive); setServiceIds([...s.serviceIds]); setAvatar(s.avatarUrl); setSkillQuery('');
+    setEditing(s); setFullName(s.fullName); setPhone(s.phone ?? ''); setEmail(s.email ?? ''); setBio(s.bio ?? '');
+    setIsActive(s.isActive); setServiceIds([...s.serviceIds]); setAvatar(s.avatarUrl); setAvatarFile(null); setSkillQuery('');
     setTouched(false); setError(null); setOpen(true);
   };
 
   const fieldErrors = {
     fullName: !fullName.trim() ? 'Vui lòng nhập họ tên thợ' : undefined,
     phone: phone && !VN_PHONE_REGEX.test(phone) ? 'Số điện thoại phải gồm đúng 10 chữ số, bắt đầu bằng 0' : undefined,
+    email: !editing && email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) ? 'Email không đúng định dạng' : undefined,
     skills: serviceIds.length === 0 ? 'Chọn ít nhất một dịch vụ thợ làm được' : undefined,
   };
   const shown: Partial<typeof fieldErrors> = touched ? fieldErrors : {};
 
   const pickAvatar = async (file: File) => {
-    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-      return toast.error('Chỉ chấp nhận ảnh JPG, PNG hoặc WEBP');
+    // S1-07: ảnh đại diện tối đa 2MB, định dạng JPG hoặc PNG (khớp fileFilter của backend)
+    if (!['image/jpeg', 'image/png'].includes(file.type)) {
+      return toast.error('Chỉ chấp nhận ảnh JPG hoặc PNG');
     }
     if (file.size > MAX_AVATAR_MB * 1024 * 1024) return toast.error(`Ảnh vượt quá ${MAX_AVATAR_MB}MB`);
-    try { setAvatar(await resizeImage(file)); }
+    try { setAvatar(await resizeImage(file)); setAvatarFile(file); }
     catch (e) { toast.error(e instanceof Error ? e.message : 'Không xử lý được ảnh'); }
   };
 
   const save = async () => {
     setTouched(true);
     setError(null);
-    if (fieldErrors.fullName || fieldErrors.phone || fieldErrors.skills) return;
+    if (fieldErrors.fullName || fieldErrors.phone || fieldErrors.email || fieldErrors.skills) return;
     setSaving(true);
     try {
       const payload = {
         fullName: fullName.trim(), phone: phone || undefined, bio: bio.trim() || undefined, isActive, serviceIds,
       };
+      let id: string;
       if (editing) {
-        await stylistsApi.update(editing.id, { ...payload, avatarUrl: avatar });
-        toast.success('Đã cập nhật hồ sơ thợ');
+        // Bản demo lưu ảnh dạng data URL; backend thật nhận ảnh qua POST /stylists/:id/avatar
+        await stylistsApi.update(editing.id, DEMO_MODE ? { ...payload, avatarUrl: avatar } : payload);
+        id = editing.id;
+        toast.success('Đã cập nhật hồ sơ thợ và tài khoản nhân sự đi kèm');
       } else {
-        const created = await stylistsApi.create(payload);
-        if (avatar) await stylistsApi.update(created.id, { avatarUrl: avatar });
-        toast.success('Đã tạo hồ sơ thợ');
+        const created = await stylistsApi.create({ ...payload, email: email.trim() || undefined });
+        id = created.id;
+        if (DEMO_MODE && avatar) await stylistsApi.update(created.id, { avatarUrl: avatar });
+        toast.success(email.trim()
+          ? `Đã tạo hồ sơ thợ và tài khoản đăng nhập, mật khẩu tạm gửi tới ${email.trim()}`
+          : 'Đã tạo hồ sơ thợ (chưa có tài khoản đăng nhập)');
       }
+      if (!DEMO_MODE && avatarFile) await stylistsApi.uploadAvatar(id, avatarFile);
       setOpen(false);
       void load();
     } catch (e) {
@@ -268,6 +281,7 @@ export function StylistsPage() {
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-bold">{s.fullName}</p>
                     <p className="text-xs text-ink-muted">{s.phone ?? 'Chưa có số điện thoại'}</p>
+                    <p className="truncate text-xs text-ink-muted">{s.email ?? 'Chưa có tài khoản đăng nhập'}</p>
                     <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                       <ActiveChip active={s.isActive} />
                       {s.avgRating !== null && (
@@ -386,15 +400,15 @@ export function StylistsPage() {
                   </span>}
             </button>
             <div className="min-w-0">
-              <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
+              <input ref={fileRef} type="file" accept="image/jpeg,image/png" className="hidden"
                      onChange={(e) => { const f = e.target.files?.[0]; if (f) void pickAvatar(f); e.target.value = ''; }} />
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" variant="outline" icon={<ImagePlus size={14} />} onClick={() => fileRef.current?.click()}>
                   {avatar ? 'Đổi ảnh' : 'Chọn ảnh'}
                 </Button>
-                {avatar && <Button size="sm" variant="ghost" onClick={() => setAvatar(null)}>Gỡ ảnh</Button>}
+                {avatar && DEMO_MODE && <Button size="sm" variant="ghost" onClick={() => setAvatar(null)}>Gỡ ảnh</Button>}
               </div>
-              <p className="mt-1 text-xs text-ink-muted">JPG/PNG/WEBP, tối đa {MAX_AVATAR_MB}MB · tự cắt vuông {AVATAR_PX}px</p>
+              <p className="mt-1 text-xs text-ink-muted">JPG/PNG, tối đa {MAX_AVATAR_MB}MB · tự cắt vuông {AVATAR_PX}px</p>
             </div>
           </div>
 
@@ -405,6 +419,19 @@ export function StylistsPage() {
             <Field label="Số điện thoại" error={shown.phone}>
               <Input value={phone} inputMode="numeric" invalid={!!shown.phone} placeholder="09xxxxxxxx"
                      onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))} />
+            </Field>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label={editing ? 'Email đăng nhập' : 'Email đăng nhập (tuỳ chọn)'} error={shown.email}
+                   hint={editing
+                     ? 'Đổi email hoặc vai trò ở mục “Tài khoản nhân sự”'
+                     : 'Có email: tự tạo tài khoản vai trò Thợ, mật khẩu tạm gửi qua email'}>
+              <Input type="email" value={email} disabled={!!editing} invalid={!!shown.email}
+                     placeholder={editing ? 'Chưa có tài khoản đăng nhập' : 'ten@salon.vn'}
+                     onChange={(e) => setEmail(e.target.value)} />
+            </Field>
+            <Field label="Vai trò">
+              <Input value={editing && !editing.userId ? 'Thợ (chưa có tài khoản)' : 'Thợ'} disabled />
             </Field>
           </div>
           <Field label="Giới thiệu ngắn" hint={`${bio.length}/500`}>

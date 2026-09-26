@@ -90,6 +90,8 @@ export interface PublicCatalogGroup {
 export interface Stylist {
   id: string;
   userId: string | null;
+  /** Email đăng nhập của tài khoản nhân sự gắn với hồ sơ; null khi thợ chưa có tài khoản. */
+  email?: string | null;
   fullName: string;
   phone: string | null;
   avatarUrl: string | null;

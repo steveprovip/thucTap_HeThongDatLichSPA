@@ -1,4 +1,4 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsBoolean, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Max, MaxLength, Min,
 } from 'class-validator';
@@ -57,6 +57,9 @@ export class UpdateServiceDto {
 export class ListServicesQuery {
   @IsOptional() @IsUUID('4') categoryId?: string;
   @IsOptional() @IsString() @MaxLength(120) search?: string;
-  @IsOptional() @Type(() => Boolean) @IsBoolean() isActive?: boolean;
-  @IsOptional() @Type(() => Boolean) @IsBoolean() onlyWithStylist?: boolean;
+  // Boolean('false') === true, nên phải đọc chuỗi query một cách tường minh
+  @IsOptional() @Transform(({ value }) => (value === undefined ? undefined : value === true || value === 'true'))
+  @IsBoolean() isActive?: boolean;
+  @IsOptional() @Transform(({ value }) => (value === undefined ? undefined : value === true || value === 'true'))
+  @IsBoolean() onlyWithStylist?: boolean;
 }
