@@ -1,6 +1,6 @@
 import { Type } from 'class-transformer';
 import {
-  ArrayMaxSize, IsArray, IsBoolean, IsNotEmpty, IsOptional, IsString, IsUUID,
+  ArrayMaxSize, IsArray, IsBoolean, IsEmail, IsNotEmpty, IsOptional, IsString, IsUUID,
   Matches, MaxLength, MinLength, ValidateNested,
 } from 'class-validator';
 import { VN_PHONE_REGEX } from '../../../common/utils/phone.util';
@@ -18,6 +18,10 @@ export class CreateStylistDto {
   @IsOptional() @IsString() @MaxLength(500) bio?: string;
   @IsOptional() @IsBoolean() isActive?: boolean;
   @IsOptional() @IsUUID('4', { message: 'Tài khoản liên kết không hợp lệ' }) userId?: string;
+
+  /** Có email -> tự tạo tài khoản vai trò Thợ gắn với hồ sơ (mật khẩu tạm gửi qua email). */
+  @IsOptional() @IsEmail({}, { message: 'Email không đúng định dạng' }) @MaxLength(160)
+  email?: string;
 
   @IsOptional() @IsArray() @ArrayMaxSize(50)
   serviceIds?: string[];

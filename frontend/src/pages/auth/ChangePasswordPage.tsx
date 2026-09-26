@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { CheckCircle2, KeyRound, ShieldAlert } from 'lucide-react';
 import { authApi, getErrorMessage } from '@/api';
 import { Button, Card, Field, Notice, SectionTitle } from '@/components';
@@ -98,6 +98,9 @@ export function ChangePasswordPage() {
               {!user?.mustChangePassword && (
                 <Button type="button" variant="ghost" onClick={() => navigate(-1)}>Huỷ</Button>
               )}
+              <Link to="/quen-mat-khau" className="ml-auto self-center text-sm text-teal-700 hover:underline">
+                Quên mật khẩu hiện tại?
+              </Link>
             </div>
           </form>
         </Card>

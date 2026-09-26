@@ -101,7 +101,7 @@ export function DemoRoleButtons({ onPick, busyRole, onCustomer }: {
       <p className="flex items-center gap-2 text-sm font-semibold text-teal-700">
         <UsersRound size={16} /> Đăng nhập nhanh (bản demo)
       </p>
-      <p className="mt-0.5 text-xs text-ink-muted">Dữ liệu mẫu lưu trong trình duyệt, mật khẩu bất kỳ.</p>
+      <p className="mt-0.5 text-xs text-ink-muted">Dữ liệu mẫu lưu trong trình duyệt. Mật khẩu mẫu và mật khẩu tạm của tài khoản mới: <strong>demo1234</strong>.</p>
       <div className="mt-3 grid grid-cols-2 gap-2">
         {DEMO_ACCOUNTS.map((acc) => (
           <button key={acc.role} type="button" disabled={!!busyRole} onClick={() => onPick(acc.email, acc.role)}

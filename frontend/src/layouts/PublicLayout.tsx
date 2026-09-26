@@ -23,8 +23,14 @@ export function PublicLayout() {
             </span>
           </Link>
           <div className="flex items-center gap-1">
+            {/* Điều hướng cho màn rộng (thanh dưới cùng chỉ hiện trên điện thoại) */}
+            <nav className="mr-1 hidden items-center gap-1 sm:flex" aria-label="Điều hướng chính">
+              <NavLink to="/" end className="btn btn-ghost btn-sm"><Home size={15} /> Trang chủ</NavLink>
+              <NavLink to="/dat-lich" className="btn btn-ghost btn-sm"><CalendarCheck size={15} /> Đặt lịch</NavLink>
+              <NavLink to="/tra-cuu" className="btn btn-ghost btn-sm"><Search size={15} /> Tra cứu</NavLink>
+            </nav>
             <a href={`tel:${SALON.hotline.replace(/\s/g, '')}`}
-               className="btn btn-ghost btn-sm hidden sm:inline-flex">
+               className="btn btn-ghost btn-sm hidden lg:inline-flex">
               <Phone size={15} /> {SALON.hotline}
             </a>
             <Link to="/dang-nhap" className="btn btn-outline btn-sm">

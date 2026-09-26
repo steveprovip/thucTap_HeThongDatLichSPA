@@ -88,25 +88,32 @@ export function WalkInModal({ open, onClose, onCreated }: {
   const [touched, setTouched] = useState(false);
   const [saving, setSaving] = useState(false);
   const [created, setCreated] = useState<Appointment | null>(null);
-  const date = todayISO();
+  // "Hẹn ngày/giờ khác" cho phép chọn cả ngày, không chỉ giờ trong hôm nay
+  const [date, setDate] = useState(todayISO());
+  const isToday = date === todayISO();
 
   const reset = useCallback(() => {
     setPhone(''); setFullName(''); setEmail(''); setNote(''); setLookup('idle'); setCustomer(null); setHistory([]);
     autoFilledName.current = null; setServiceQuery(''); setSelectedIds([]); setMode('now'); setTime(nowRounded());
-    setStylistId(''); setCheckInNow(true); setTouched(false); setCreated(null);
+    setDate(todayISO()); setStylistId(''); setCheckInNow(true); setTouched(false); setCreated(null);
   }, []);
 
   useEffect(() => {
     if (!open) return;
     reset();
     catalogApi.services({ isActive: true }).then(setServices).catch(() => undefined);
+  }, [open, reset]);
+
+  // Nạp lại lịch ngày + kỹ năng thợ mỗi khi đổi ngày (không xoá dữ liệu khách đang nhập)
+  useEffect(() => {
+    if (!open) return;
     Promise.all([appointmentsApi.timeline(date), stylistsApi.list({ isActive: true })])
       .then(([tl, sty]) => {
         setTimeline(tl);
         setSkillMap(Object.fromEntries(sty.map((s) => [s.id, s.serviceIds])));
       })
       .catch((e) => toast.error(getErrorMessage(e)));
-  }, [open, date, reset, toast]);
+  }, [open, date, toast]);
 
   // Tự tra hồ sơ khách quen khi nhập đủ 10 số
   useEffect(() => {
@@ -171,7 +178,7 @@ export function WalkInModal({ open, onClose, onCreated }: {
     if (!timeline || !selected.length) return [];
     const open = timeToMinutes(timeline.salonOpen);
     const close = timeToMinutes(timeline.salonClose);
-    const from = Math.max(open, Math.ceil(timeToMinutes(nowRounded()) / 15) * 15);
+    const from = isToday ? Math.max(open, Math.ceil(timeToMinutes(nowRounded()) / 15) * 15) : open;
     const out: string[] = [];
     for (let m = from; m + duration <= close && out.length < 8; m += 15) {
       const f = stylistFits(timeline, selected, skillMap, m, m + duration)
@@ -179,14 +186,14 @@ export function WalkInModal({ open, onClose, onCreated }: {
       if (f.length) out.push(minutesToTime(m));
     }
     return out;
-  }, [timeline, selected, skillMap, duration, stylistId]);
+  }, [timeline, selected, skillMap, duration, stylistId, isToday]);
 
   const closeMin = timeline ? timeToMinutes(timeline.salonClose) : 24 * 60;
   const errors = {
     phone: !VN_PHONE_REGEX.test(phone) ? 'Số điện thoại gồm 10 chữ số, bắt đầu bằng 0' : undefined,
     fullName: !fullName.trim() ? 'Vui lòng nhập tên khách' : undefined,
     services: !selected.length ? 'Chọn ít nhất một dịch vụ' : undefined,
-    time: mode === 'later' && (!time || timeToMinutes(time) < timeToMinutes(nowRounded()) - 5)
+    time: mode === 'later' && (!time || date < todayISO() || (isToday && timeToMinutes(time) < timeToMinutes(nowRounded()) - 5))
       ? 'Giờ bắt đầu không được ở quá khứ' : undefined,
     stylist: selected.length && !resolvedStylist ? 'Không có thợ phù hợp rảnh vào giờ này'
       : resolvedStylist && !resolvedStylist.skilled ? `${resolvedStylist.name} chưa làm được toàn bộ dịch vụ đã chọn`
@@ -367,10 +374,14 @@ export function WalkInModal({ open, onClose, onCreated }: {
             <div>
               <h4 className="mb-2 text-sm font-bold text-teal-700">3. Thời gian</h4>
               <div className="grid grid-cols-2 gap-2">
-                {([['now', 'Làm ngay', <Zap size={15} key="z" />], ['later', 'Hẹn giờ khác hôm nay', <Clock size={15} key="c" />]] as const)
+                {([['now', 'Làm ngay', <Zap size={15} key="z" />], ['later', 'Hẹn ngày/giờ khác', <Clock size={15} key="c" />]] as const)
                   .map(([id, label, icon]) => (
                     <button key={id} type="button" aria-pressed={mode === id}
-                            onClick={() => { setMode(id); if (id === 'later' && suggestions[0]) setTime(suggestions[0]); }}
+                            onClick={() => {
+                              setMode(id);
+                              if (id === 'now') setDate(todayISO());
+                              if (id === 'later' && suggestions[0]) setTime(suggestions[0]);
+                            }}
                             className={`flex min-h-[44px] items-center justify-center gap-2 rounded-xl border text-sm font-semibold
                               ${mode === id ? 'border-teal-600 bg-teal-50 text-teal-700' : 'border-slate-300 text-ink-soft'}`}>
                       {icon} {label}
@@ -392,10 +403,16 @@ export function WalkInModal({ open, onClose, onCreated }: {
                 </div>
               ) : (
                 <div className="mt-2 space-y-2">
-                  <Field label="Giờ bắt đầu" error={shown.time}>
-                    <input type="time" step={300} className="field-input w-40" value={time}
-                           onChange={(e) => setTime(e.target.value)} />
-                  </Field>
+                  <div className="flex flex-wrap gap-3">
+                    <Field label="Ngày">
+                      <input type="date" min={todayISO()} className="field-input w-44" value={date}
+                             onChange={(e) => setDate(e.target.value || todayISO())} />
+                    </Field>
+                    <Field label="Giờ bắt đầu" error={shown.time}>
+                      <input type="time" step={300} className="field-input w-40" value={time}
+                             onChange={(e) => setTime(e.target.value)} />
+                    </Field>
+                  </div>
                   {suggestions.length > 0 && (
                     <div className="flex flex-wrap gap-1.5">
                       <span className="self-center text-xs text-ink-muted">Giờ trống:</span>

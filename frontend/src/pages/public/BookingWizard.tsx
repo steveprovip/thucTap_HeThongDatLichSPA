@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Check, Clock, Wallet } from 'lucide-react';
 import { getErrorField, getErrorMessage, publicApi } from '@/api';
 import type { BookingResult } from '@/types';
@@ -29,6 +29,7 @@ export function BookingWizard() {
   const [errors, setErrors] = useState<Step4Errors>({});
   const toast = useToast();
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const preselected = useRef(false);
 
   useEffect(() => {
@@ -152,11 +153,11 @@ export function BookingWizard() {
             </span>
           </div>
           <div className="flex items-center gap-2">
-            {step > 1 && (
-              <Button variant="outline" size="sm" onClick={() => setStep(step - 1)} icon={<ArrowLeft size={15} />}>
-                Quay lại
-              </Button>
-            )}
+            {/* Bước 1 vẫn có đường lui về trang chủ cho khách lỡ bấm nhầm vào */}
+            <Button variant="outline" size="sm" icon={<ArrowLeft size={15} />}
+                    onClick={() => (step > 1 ? setStep(step - 1) : navigate('/'))}>
+              {step > 1 ? 'Quay lại' : 'Trang chủ'}
+            </Button>
             {step < 4 ? (
               <Button size="sm" disabled={!canNext} onClick={() => setStep(step + 1)}>
                 Tiếp tục <ArrowRight size={15} />
