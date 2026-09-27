@@ -68,6 +68,8 @@ export interface ServiceItem {
   stylistIds: string[];
   stylistCount: number;
   hasNoStylist: boolean;
+  /** Số lịch hẹn đang tham chiếu dịch vụ; > 0 thì không được xoá, chỉ được ngừng kinh doanh (S1-05). */
+  appointmentCount?: number;
 }
 
 export interface PublicService {

@@ -7,6 +7,7 @@ import { Button, EmptyState, Input, Pagination, SectionTitle, Select, StatusBadg
 import { STATUS_LABELS } from '@/utils/constants';
 import { addDaysISO, formatDuration, todayISO } from '@/utils/format';
 import { useToast } from '@/contexts/ToastContext';
+import { useAppointmentsSync } from '@/utils/liveSync';
 import { AppointmentDrawer } from './AppointmentDrawer';
 
 const STATUSES: AppointmentStatus[] = [
@@ -43,6 +44,8 @@ export function AppointmentsListPage() {
     const t = window.setTimeout(() => { void load(); }, search ? 300 : 0);
     return () => window.clearTimeout(t);
   }, [load, search]);
+  // Lỗi 6: lịch vãng lai / thay đổi ở màn hình khác hiện ngay trong danh sách
+  useAppointmentsSync(() => { void load(); });
 
   return (
     <div className="space-y-3">

@@ -5,7 +5,7 @@ import { publicApi, getErrorMessage } from '@/api';
 import type { PublicCatalogGroup } from '@/types';
 import { EmptyState, Input, ServiceGridSkeleton, SmartImage } from '@/components';
 import { formatDuration } from '@/utils/format';
-import { IMAGES, STYLIST_PHOTOS, assignServiceImages } from '@/utils/images';
+import { IMAGES, STYLIST_PHOTOS, assignServiceImages, serviceMediaKind } from '@/utils/images';
 import { useToast } from '@/contexts/ToastContext';
 
 const TEAM = [
@@ -55,7 +55,7 @@ export function HomePage() {
             <div style={{ '--i': 4 } as React.CSSProperties} className="mt-9 flex flex-wrap items-center gap-x-6 gap-y-3">
               <div className="flex -space-x-2.5">
                 {TEAM.map(member => (
-                  <SmartImage key={member.src} src={member.src} alt={member.name} loading="lazy"
+                  <SmartImage key={member.src} src={member.src} alt={member.name} loading="lazy" kind="person"
                     className="h-10 w-10 rounded-full ring-[3px] ring-white" />
                 ))}
               </div>
@@ -66,7 +66,7 @@ export function HomePage() {
             </div>
           </div>
           <div className="relative hidden min-h-[420px] overflow-hidden lg:block">
-            <SmartImage src={IMAGES.hero_spa_interior} alt="Không gian boutique spa hiện đại"
+            <SmartImage src={IMAGES.hero_spa_interior} alt="Không gian boutique spa hiện đại" kind="spa"
               className="absolute inset-0 h-full w-full" imgClassName="animate-ken-burns" />
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-white via-white/5 to-transparent" />
             <div className="animate-fade-in absolute bottom-6 right-6 flex items-center gap-3 rounded-2xl border border-white/60 bg-white/85 px-4 py-3 shadow-lg backdrop-blur-md [animation-delay:500ms]">
@@ -105,6 +105,8 @@ export function HomePage() {
                 <article key={service.id} style={{ '--i': index } as React.CSSProperties} className="lift group overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-card hover:border-slate-300">
                   <div className="relative">
                     <SmartImage src={photos[service.id]} alt={service.name} loading="lazy" className="h-44"
+                      kind={serviceMediaKind({ name: service.name, categoryId: group.categoryId, categoryName: group.categoryName })}
+                      fallbackLabel={group.categoryName}
                       imgClassName="duration-700 group-hover:scale-[1.06]" />
                     <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-semibold text-slate-700 shadow-sm backdrop-blur"><Clock3 size={12} /> {formatDuration(service.durationMinutes)}</span>
                   </div>

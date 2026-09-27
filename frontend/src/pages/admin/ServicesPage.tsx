@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  AlertTriangle, Clock3, Layers, Pencil, Plus, Search, Tag, Trash2, Wallet,
+  AlertTriangle, Ban, Clock3, Layers, Lock, Pencil, Plus, Search, Tag, Trash2, Wallet,
 } from 'lucide-react';
 import { catalogApi, getErrorMessage, stylistsApi } from '@/api';
 import type { ServiceCategory, ServiceItem, Stylist } from '@/types';
 import { Button, Card, ConfirmDialog, EmptyState, Field, Input, Modal, Notice, SectionTitle, Select, SmartImage, Textarea, Toggle, TableSkeleton } from '@/components';
-import { assignServiceImages } from '@/utils/images';
+import { assignServiceImages, serviceMediaKind } from '@/utils/images';
 import { formatDuration, formatNumber, formatVnd, matchSearch, parseNumber } from '@/utils/format';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
@@ -14,6 +14,9 @@ import { useToast } from '@/contexts/ToastContext';
 const DURATIONS = Array.from({ length: 16 }, (_, i) => (i + 1) * 15);
 const MAX_PRICE = 20_000_000;
 const ALL = '__all__';
+/** S1-05: thông điệp khi dịch vụ đã có lịch hẹn tham chiếu. */
+const IN_USE_TIP = 'Dịch vụ đã có lịch hẹn, chỉ có thể ngừng kinh doanh';
+const isInUse = (s: ServiceItem) => (s.appointmentCount ?? 0) > 0;
 
 type StatusFilter = 'all' | 'active' | 'inactive';
 
@@ -68,6 +71,8 @@ export function ServicesPage() {
   const [serverError, setServerError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<ServiceItem | null>(null);
+  /** Dịch vụ đã có lịch hẹn: không xoá được, đề nghị chuyển sang "Ngừng kinh doanh". */
+  const [retireTarget, setRetireTarget] = useState<ServiceItem | null>(null);
 
   const [catOpen, setCatOpen] = useState(false);
   const [catName, setCatName] = useState('');
@@ -310,7 +315,8 @@ export function ServicesPage() {
                 <tr key={s.id} className={s.isActive ? '' : 'opacity-60'}>
                   <td className="min-w-[260px]">
                     <div className="flex items-center gap-3">
-                      <SmartImage src={photos[s.id]} alt="" loading="lazy" className="h-11 w-11 shrink-0 rounded-xl" />
+                      <SmartImage src={photos[s.id]} alt="" loading="lazy" className="h-11 w-11 shrink-0 rounded-xl"
+                                  kind={serviceMediaKind(s)} />
                       <div className="min-w-0">
                         <span className="font-medium text-ink">{s.name}</span>
                         {s.description && <span className="block text-xs text-ink-muted">{s.description}</span>}
@@ -343,9 +349,24 @@ export function ServicesPage() {
                         <Button size="sm" variant="ghost" onClick={() => openEdit(s)} aria-label={`Sửa ${s.name}`}>
                           <Pencil size={14} /> Sửa
                         </Button>
-                        <Button size="sm" variant="ghost" onClick={() => setRemoveTarget(s)} aria-label={`Xoá ${s.name}`}>
-                          <Trash2 size={14} className="text-red-600" />
-                        </Button>
+                        {isInUse(s) ? (
+                          // Lỗi 7: đã có lịch hẹn → khoá xoá cứng, bấm vào sẽ đề nghị "Ngừng kinh doanh"
+                          <span className="group/tip relative inline-flex">
+                            <Button size="sm" variant="ghost" aria-disabled="true" title={IN_USE_TIP}
+                                    aria-label={`${s.name}: ${IN_USE_TIP}`} onClick={() => setRetireTarget(s)}
+                                    className="cursor-not-allowed text-slate-400 opacity-60 hover:bg-transparent">
+                              <Lock size={14} />
+                            </Button>
+                            <span role="tooltip"
+                                  className="pointer-events-none absolute right-full top-1/2 z-20 mr-2 w-56 -translate-y-1/2 translate-x-1 rounded-lg bg-slate-900 px-2.5 py-1.5 text-left text-[11px] font-medium leading-snug text-white opacity-0 shadow-lg transition-all duration-200 group-focus-within/tip:translate-x-0 group-focus-within/tip:opacity-100 group-hover/tip:translate-x-0 group-hover/tip:opacity-100">
+                              {IN_USE_TIP} ({s.appointmentCount} lịch hẹn).
+                            </span>
+                          </span>
+                        ) : (
+                          <Button size="sm" variant="ghost" onClick={() => setRemoveTarget(s)} aria-label={`Xoá ${s.name}`}>
+                            <Trash2 size={14} className="text-red-600" />
+                          </Button>
+                        )}
                       </div>
                     </td>
                   )}
@@ -498,15 +519,47 @@ export function ServicesPage() {
         title="Xoá dịch vụ"
         confirmLabel="Xoá"
         message={
-          <>Xoá dịch vụ <strong>{removeTarget?.name}</strong>? Nếu dịch vụ đã có lịch hẹn tham chiếu,
-          nên chuyển sang <em>ngừng bán</em> thay vì xoá để giữ lịch sử.</>
+          <>Xoá vĩnh viễn dịch vụ <strong>{removeTarget?.name}</strong>? Dịch vụ này chưa có lịch hẹn nào nên có thể xoá an toàn.</>
         }
         onConfirm={async () => {
           if (!removeTarget) return;
-          try { await catalogApi.removeService(removeTarget.id); toast.success('Đã xoá dịch vụ'); void load(); }
-          catch (e) { toast.error(getErrorMessage(e)); }
+          const target = removeTarget;
+          try { await catalogApi.removeService(target.id); toast.success('Đã xoá dịch vụ'); void load(); }
+          catch (e) {
+            // Máy chủ chặn (409) vì vừa phát sinh lịch hẹn → chuyển sang luồng ngừng kinh doanh
+            const status = (e as { response?: { status?: number } })?.response?.status;
+            if (status === 409) { setRetireTarget({ ...target, appointmentCount: Math.max(1, target.appointmentCount ?? 0) }); void load(); }
+            else toast.error(getErrorMessage(e));
+          }
         }}
         onClose={() => setRemoveTarget(null)}
+      />
+
+      <ConfirmDialog
+        open={!!retireTarget}
+        title="Không thể xoá dịch vụ đã có lịch hẹn"
+        confirmLabel={retireTarget?.isActive ? 'Ngừng kinh doanh' : 'Đã hiểu'}
+        cancelLabel="Để sau"
+        message={
+          <div className="space-y-2.5">
+            <p className="flex items-start gap-2">
+              <Ban size={16} className="mt-0.5 shrink-0 text-amber-600" />
+              <span>
+                <strong>{retireTarget?.name}</strong> đã có {retireTarget?.appointmentCount ?? 1} lịch hẹn tham chiếu.
+                Xoá sẽ làm mất thông tin dịch vụ trong các lịch hẹn và phiếu tính tiền đó.
+              </span>
+            </p>
+            <p className="text-ink-muted">
+              {retireTarget?.isActive
+                ? 'Chuyển sang “Ngừng kinh doanh”: khách không đặt được nữa, còn lịch sử vẫn giữ nguyên. Bạn có thể mở bán lại bất cứ lúc nào.'
+                : 'Dịch vụ này đã ở trạng thái ngừng kinh doanh và vẫn được giữ lại để bảo toàn lịch sử.'}
+            </p>
+          </div>
+        }
+        onConfirm={async () => {
+          if (retireTarget?.isActive) await toggleActive(retireTarget, false);
+        }}
+        onClose={() => setRetireTarget(null)}
       />
     </div>
   );
@@ -514,7 +567,7 @@ export function ServicesPage() {
 
 function StatTile({ icon, label, value, hint }: { icon: React.ReactNode; label: string; value: string; hint?: string }) {
   return (
-    <Card className="p-4">
+    <Card className="hover-lift p-4">
       <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-ink-muted">
         <span className="text-teal-600">{icon}</span> {label}
       </p>

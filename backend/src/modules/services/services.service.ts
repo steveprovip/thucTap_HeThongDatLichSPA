@@ -26,6 +26,8 @@ export interface ServiceView {
   stylistCount: number;
   /** Cảnh báo dịch vụ chưa có thợ nào đảm nhận (S1-07). */
   hasNoStylist: boolean;
+  /** Số lịch hẹn đang tham chiếu dịch vụ; > 0 thì giao diện khoá nút xoá, chỉ cho ngừng kinh doanh (S1-05). */
+  appointmentCount: number;
 }
 
 @Injectable()
@@ -100,6 +102,14 @@ export class ServicesService {
       arr.push(l.stylistId);
       byService.set(l.serviceId, arr);
     }
+    const usageRows: { serviceId: string; count: string }[] = await this.apptServiceRepo
+      .createQueryBuilder('a')
+      .select('a.serviceId', 'serviceId')
+      .addSelect('COUNT(*)', 'count')
+      .where('a.serviceId IN (:...ids)', { ids: services.map((s) => s.id) })
+      .groupBy('a.serviceId')
+      .getRawMany();
+    const usage = new Map(usageRows.map((r) => [r.serviceId, Number(r.count)]));
     return services.map((s) => {
       const stylistIds = byService.get(s.id) ?? [];
       return {
@@ -115,6 +125,7 @@ export class ServicesService {
         stylistIds,
         stylistCount: stylistIds.length,
         hasNoStylist: stylistIds.length === 0,
+        appointmentCount: usage.get(s.id) ?? 0,
       };
     });
   }

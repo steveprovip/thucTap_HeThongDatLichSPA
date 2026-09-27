@@ -76,12 +76,22 @@ export const ROLE_LANDING: Record<string, string> = {
   customer: '/',
 };
 
-/** Tài khoản mẫu cho chế độ demo (khớp dữ liệu trong mockBackend). */
-export const DEMO_ACCOUNTS: { role: string; label: string; email: string; hint: string }[] = [
-  { role: 'admin', label: 'Quản trị', email: 'admin@lumi.vn', hint: 'Tài khoản, nhật ký, phân quyền' },
-  { role: 'owner', label: 'Chủ tiệm', email: 'owner@lumi.vn', hint: 'Báo cáo, bảng giá, mã giảm giá' },
-  { role: 'receptionist', label: 'Lễ tân', email: 'reception@lumi.vn', hint: 'Lịch ngày, khách vãng lai, thu ngân' },
-  { role: 'stylist', label: 'Thợ', email: 'minhanh@lumi.vn', hint: 'Lịch của tôi, ghi chú kỹ thuật' },
+/**
+ * Tài khoản mẫu — NGUỒN DUY NHẤT cho giao diện. Phải trùng khớp tuyệt đối với
+ * database/seed.sql, backend/src/database/run-seed.ts, mockBackend.ts và README.md.
+ */
+export const DEMO_PASSWORDS = {
+  admin: 'Admin@123',
+  owner: 'Owner@123',
+  receptionist: 'Reception@123',
+  stylist: 'Stylist@123',
+} as const;
+
+export const DEMO_ACCOUNTS: { role: string; label: string; email: string; password: string; hint: string }[] = [
+  { role: 'admin', label: 'Quản trị', email: 'admin@salon.vn', password: DEMO_PASSWORDS.admin, hint: 'Tài khoản, nhật ký, phân quyền' },
+  { role: 'owner', label: 'Chủ tiệm', email: 'owner@salon.vn', password: DEMO_PASSWORDS.owner, hint: 'Báo cáo, bảng giá, mã giảm giá' },
+  { role: 'receptionist', label: 'Lễ tân', email: 'reception@salon.vn', password: DEMO_PASSWORDS.receptionist, hint: 'Lịch ngày, khách vãng lai, thu ngân' },
+  { role: 'stylist', label: 'Thợ', email: 'stylist1@salon.vn', password: DEMO_PASSWORDS.stylist, hint: 'Lịch của tôi (stylist1…5)' },
 ];
 
 /** Quy tắc mật khẩu: tối thiểu 8 ký tự, có chữ và số. */
