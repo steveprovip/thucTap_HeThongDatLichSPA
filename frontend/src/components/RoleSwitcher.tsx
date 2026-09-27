@@ -18,7 +18,8 @@ export function RoleSwitcher() {
   if (!DEMO_MODE) return null;
   const current = user?.role ?? 'customer';
   return (
-    <div className="role-switcher no-print fixed bottom-[132px] right-3 z-[80] flex max-w-[calc(100vw-1.5rem)] items-center gap-2 rounded-full border border-slate-200 bg-white/90 py-1.5 pl-3.5 pr-1.5 text-slate-800 shadow-lg backdrop-blur-md sm:bottom-5 sm:right-5 lg:bottom-auto lg:right-auto lg:left-1/2 lg:top-1.5 lg:-translate-x-1/2">
+    // Góc dưới bên phải ở mọi kích thước màn hình: không còn đè lên menu "Đặt lịch / Tra cứu" của thanh trên cùng
+    <div className="role-switcher no-print animate-fade-in fixed bottom-[132px] right-3 z-[80] flex max-w-[calc(100vw-1.5rem)] items-center gap-2 rounded-full border border-slate-200 bg-white/90 py-1.5 pl-3.5 pr-1.5 text-slate-800 shadow-lg backdrop-blur-md transition-shadow hover:shadow-xl sm:bottom-5 sm:right-5">
       <UsersRound size={17} className="hidden shrink-0 text-teal-600 sm:block" aria-hidden="true" />
       <label htmlFor="demo-role" className="whitespace-nowrap text-xs font-semibold text-slate-600">Xem vai trò</label>
       <select id="demo-role" value={current} onChange={event => {

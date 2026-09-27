@@ -1,4 +1,5 @@
 import { STYLIST_PHOTOS } from '@/utils/images';
+import { DEMO_PASSWORDS } from '@/utils/constants';
 import type { AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 import type {
   AppNotification, Appointment, AppointmentStatus, AuditLogRow, AuthUser, Customer, Holiday, Invoice,
@@ -7,12 +8,25 @@ import type {
 } from '@/types';
 
 /** Persisted in the browser so the whole UI can be explored without a server. */
-const KEY = 'salon.demo.v4';
+const KEY = 'salon.demo.v5';
 export const DEMO_MODE = import.meta.env.VITE_DEMO_MODE !== 'false';
 /** Phiên demo lưu MÃ tài khoản (không phải vai trò) để mọi kiểm tra quyền dựa trên đúng người đăng nhập. */
 const SESSION_KEY = 'salon.demoUserId';
-/** Mật khẩu của mọi tài khoản mẫu và mật khẩu tạm của tài khoản mới trong bản demo. */
-export const DEMO_PASSWORD = 'demo1234';
+/** Mật khẩu mẫu theo vai trò — trùng khớp seed của máy chủ thật (database/seed.sql) và README. */
+const passwordForRole = (role: string): string =>
+  (DEMO_PASSWORDS as Record<string, string>)[role] ?? DEMO_PASSWORDS.stylist;
+/** Mật khẩu tạm cho tài khoản mới / cấp lại: luôn có chữ hoa, chữ thường, số và ký tự đặc biệt (giống backend). */
+export const generateTempPassword = (): string => {
+  const rand = (max: number) => {
+    try { return crypto.getRandomValues(new Uint32Array(1))[0] % max; } catch { return Math.floor(Math.random() * max); }
+  };
+  const pick = (s: string) => s[rand(s.length)];
+  const upper = 'ABCDEFGHJKMNPQRSTUVWXYZ'; const lower = 'abcdefghijkmnpqrstuvwxyz'; const digit = '23456789';
+  const chars = [pick(upper), pick(lower), pick(digit), pick('@#$%')];
+  for (let i = 0; i < 6; i += 1) chars.push(pick(upper + lower + digit));
+  for (let i = chars.length - 1; i > 0; i -= 1) { const j = rand(i + 1); [chars[i], chars[j]] = [chars[j], chars[i]]; }
+  return chars.join('');
+};
 const MAX_FAILED_LOGINS = 5;
 const LOCK_MINUTES = 15;
 const MSG = {
@@ -72,30 +86,31 @@ const serviceSeed: ServiceItem[] = [
   id: String(id), categoryId: String(categoryId), categoryName: categoriesSeed.find(c => c.id === categoryId)?.name ?? '',
   name: String(name), durationMinutes: Number(durationMinutes), price: Number(price),
   priceText: money(Number(price)), description: String(description), isActive: true,
-  stylistIds: ['st1', 'st2', 'st3', 'st4'], stylistCount: 4, hasNoStylist: false,
+  stylistIds: ['st1', 'st2', 'st3', 'st4', 'st5'], stylistCount: 5, hasNoStylist: false,
 }));
+/** 5 thợ mẫu — cùng tên/SĐT/email với database/seed.sql (stylist1…5@salon.vn). */
 const stylistSeed: Stylist[] = [
-  ['st1', 'Nguyễn Minh Anh', '0987654321', 4.9, 87],
-  ['st2', 'Trần Bảo Ngọc', '0912345678', 4.8, 64],
-  ['st3', 'Lê Hoàng Phúc', '0908765432', 4.9, 52],
-  ['st4', 'Phạm Thanh Hà', '0934567890', 4.7, 41],
+  ['st1', 'Nguyễn Thu Hà', '0902000001', 4.9, 87],
+  ['st2', 'Trần Minh Tuấn', '0902000002', 4.8, 64],
+  ['st3', 'Lê Thị Bích Ngọc', '0902000003', 4.9, 52],
+  ['st4', 'Phạm Quốc Bảo', '0902000004', 4.7, 41],
+  ['st5', 'Võ Kim Chi', '0902000005', 4.8, 33],
 ].map(([id, fullName, phone, avgRating, reviewCount], index) => ({
   // Mỗi hồ sơ thợ mẫu gắn với đúng một tài khoản nhân sự (usersSeed bên dưới)
   id: String(id), userId: `u-${String(id)}`, fullName: String(fullName), phone: String(phone),
   avatarUrl: [
-    STYLIST_PHOTOS.stylist_1, STYLIST_PHOTOS.stylist_5, STYLIST_PHOTOS.stylist_2, STYLIST_PHOTOS.stylist_3,
+    STYLIST_PHOTOS.stylist_1, STYLIST_PHOTOS.stylist_2, STYLIST_PHOTOS.stylist_3, STYLIST_PHOTOS.stylist_4, STYLIST_PHOTOS.stylist_5,
   ][index], bio: 'Chuyên viên giàu kinh nghiệm, tận tâm với từng khách hàng.', isActive: true,
   serviceIds: serviceSeed.map(s => s.id), serviceNames: serviceSeed.map(s => s.name),
   avgRating: Number(avgRating), reviewCount: Number(reviewCount),
 }));
+/** Tài khoản mẫu — trùng khớp tuyệt đối với README.md và database/seed.sql. */
 const usersSeed: UserRow[] = [
-  { id: 'u1', fullName: 'Linh Nguyễn', email: 'owner@lumi.vn', phone: '0901111222', role: 'owner', stylistId: null },
-  { id: 'u2', fullName: 'Mai Phương', email: 'reception@lumi.vn', phone: '0902222333', role: 'receptionist', stylistId: null },
-  { id: 'u-st1', fullName: 'Nguyễn Minh Anh', email: 'minhanh@lumi.vn', phone: '0987654321', role: 'stylist', stylistId: 'st1' },
-  { id: 'u4', fullName: 'Quản trị viên', email: 'admin@lumi.vn', phone: '0903333444', role: 'admin', stylistId: null },
-  { id: 'u-st2', fullName: 'Trần Bảo Ngọc', email: 'baongoc@lumi.vn', phone: '0912345678', role: 'stylist', stylistId: 'st2' },
-  { id: 'u-st3', fullName: 'Lê Hoàng Phúc', email: 'hoangphuc@lumi.vn', phone: '0908765432', role: 'stylist', stylistId: 'st3' },
-  { id: 'u-st4', fullName: 'Phạm Thanh Hà', email: 'thanhha@lumi.vn', phone: '0934567890', role: 'stylist', stylistId: 'st4' },
+  { id: 'u-admin', fullName: 'Quản trị hệ thống', email: 'admin@salon.vn', phone: '0901000001', role: 'admin', stylistId: null },
+  { id: 'u-owner', fullName: 'Nguyễn Hoàng Anh', email: 'owner@salon.vn', phone: '0901000002', role: 'owner', stylistId: null },
+  { id: 'u-reception', fullName: 'Đỗ Thanh Mai', email: 'reception@salon.vn', phone: '0901000003', role: 'receptionist', stylistId: null },
+  ...stylistSeed.map((s, index) => ({ id: `u-${s.id}`, fullName: s.fullName, email: `stylist${index + 1}@salon.vn`,
+    phone: s.phone, role: 'stylist', stylistId: s.id })),
 ].map(u => ({ ...u, role: u.role as UserRow['role'], isActive: true, mustChangePassword: false, lockedUntil: null,
   lastLoginAt: null, createdAt: new Date().toISOString() }));
 
@@ -108,20 +123,26 @@ interface DemoDb {
   /** Mật khẩu + số lần đăng nhập sai liên tiếp theo mã tài khoản (chỉ dùng cho bản demo). */
   auth: Record<string, { password: string; failed: number }>;
 }
+/**
+ * Dựng một lịch hẹn. `catalog`/`team` mặc định là dữ liệu mẫu (lúc seed); khi tạo lịch thật phải truyền
+ * db.services/db.stylists để dịch vụ & thợ do tiệm tự thêm KHÔNG bị rơi mất (lỗi lịch rỗng dịch vụ, 0 phút).
+ */
 function makeAppointment(id: string, offset: number, time: string, status: AppointmentStatus,
-  customerName: string, phone: string, stylistId: string, serviceIds: string[]): Appointment {
-  const services = serviceIds.map(sid => serviceSeed.find(s => s.id === sid)!).filter(Boolean);
+  customerName: string, phone: string, stylistId: string, serviceIds: string[],
+  catalog: ServiceItem[] = serviceSeed, team: Stylist[] = stylistSeed): Appointment {
+  const services = serviceIds.map(sid => catalog.find(s => s.id === sid)).filter((s): s is ServiceItem => !!s);
   const duration = services.reduce((sum, s) => sum + s.durationMinutes, 0);
   const price = services.reduce((sum, s) => sum + s.price, 0);
   const date = day(offset);
-  const stylist = stylistSeed.find(s => s.id === stylistId)!;
+  const stylist = team.find(s => s.id === stylistId) ?? team[0];
   const startAt = `${date}T${time}:00+07:00`;
   return {
     id, code: `SL-${id.toUpperCase().padStart(6, '0').slice(-6)}`, status, statusLabel: labels[status], source: 'online',
     date, startTime: time, endTime: addMinutes(time, duration), startAt,
     endAt: `${date}T${addMinutes(time, duration)}:00+07:00`, startAtText: `${time}, ${date}`,
     totalDurationMinutes: duration, estimatedTotal: price, estimatedTotalText: money(price),
-    customer: { id: `c-${phone}`, fullName: customerName, phone, phoneMasked: false, email: null, totalVisits: 3, noShowCount: 0 },
+    // Số lượt đến / không đến được tính lại từ lịch sử thật (syncCustomerStats) — không gán cứng
+    customer: { id: `c-${phone}`, fullName: customerName, phone, phoneMasked: false, email: null, totalVisits: 0, noShowCount: 0 },
     stylist: { id: stylistId, fullName: stylist.fullName },
     services: services.map(s => ({ id: uid(), serviceId: s.id, name: s.name, durationMinutes: s.durationMinutes, price: s.price, priceText: s.priceText })),
     customerNote: null, isLate: false, lateMinutes: 0, arrivedAt: null, startedAt: null, completedAt: null,
@@ -167,7 +188,7 @@ function seed(): DemoDb {
       startTime: index < 2 ? '08:00' : '12:00', endTime: index < 2 ? '17:00' : '21:00',
       breakStart: index < 2 ? '12:00' : '16:00', breakEnd: index < 2 ? '13:00' : '17:00', note: null })));
   return {
-    auth: Object.fromEntries(usersSeed.map(u => [u.id, { password: DEMO_PASSWORD, failed: 0 }])),
+    auth: Object.fromEntries(usersSeed.map(u => [u.id, { password: passwordForRole(u.role), failed: 0 }])),
     categories: categoriesSeed, services: serviceSeed, stylists: stylistSeed, users: usersSeed, appointments,
     invoices, shifts, timeOff: [], holidays: [], vouchers: [
       { id: 'v1', code: 'WELCOME10', description: 'Ưu đãi khách mới 10%', discountType: 'percent', discountValue: 10,
@@ -183,12 +204,12 @@ function seed(): DemoDb {
       { id: 'n2', type: 'booking', title: 'Lịch ngày mai', body: 'Hãy kiểm tra lịch làm việc ngày mai.',
         appointmentId: '000006', isRead: false, createdAt: new Date().toISOString() },
     ], audit: [
-      { id: 'log1', actorEmail: 'reception@lumi.vn', actorRole: 'receptionist', action: 'CONFIRM', entityType: 'appointment',
+      { id: 'log1', actorEmail: 'reception@salon.vn', actorRole: 'receptionist', action: 'CONFIRM', entityType: 'appointment',
         entityId: '000003', summary: 'Xác nhận lịch SL-000003', changes: null, ipAddress: '127.0.0.1', createdAt: new Date().toISOString() },
-      { id: 'log2', actorEmail: 'owner@lumi.vn', actorRole: 'owner', action: 'UPDATE', entityType: 'service',
+      { id: 'log2', actorEmail: 'owner@salon.vn', actorRole: 'owner', action: 'UPDATE', entityType: 'service',
         entityId: 's1', summary: 'Cập nhật giá dịch vụ Cắt tóc nữ tạo kiểu', changes: { price: 320000 },
         ipAddress: '127.0.0.1', createdAt: new Date(Date.now() - 3600000).toISOString() },
-      { id: 'log3', actorEmail: 'reception@lumi.vn', actorRole: 'receptionist', action: 'CREATE', entityType: 'invoice',
+      { id: 'log3', actorEmail: 'reception@salon.vn', actorRole: 'receptionist', action: 'CREATE', entityType: 'invoice',
         entityId: 'inv-000001', summary: 'Lập phiếu HD-000001', changes: null, ipAddress: '127.0.0.1',
         createdAt: new Date(Date.now() - 7200000).toISOString() },
     ],
@@ -198,9 +219,38 @@ let db: DemoDb;
 try { db = JSON.parse(localStorage.getItem(KEY) || 'null') as DemoDb || seed(); }
 catch { db = seed(); }
 db.auth ??= {};
-try { localStorage.removeItem('salon.demo.v3'); localStorage.removeItem('salon.demoRole'); } catch { /* bỏ qua */ }
+// Dữ liệu cũ (email @lumi.vn, mật khẩu demo1234) không còn khớp README → bỏ để seed lại
+try {
+  ['salon.demo.v3', 'salon.demo.v4', 'salon.demoRole'].forEach(k => localStorage.removeItem(k));
+} catch { /* bỏ qua */ }
 recomputeLinks();
-const save = () => localStorage.setItem(KEY, JSON.stringify(db));
+syncCustomerStats();
+/** Lưu DB demo và phát sự kiện để mọi màn hình đang mở (Lịch ngày, Danh sách lịch…) tự làm mới. */
+const save = () => {
+  syncCustomerStats();
+  try { localStorage.setItem(KEY, JSON.stringify(db)); } catch { /* hết quota: vẫn giữ trong bộ nhớ */ }
+};
+
+/**
+ * CRM: lượt đến / không đến của khách tính từ lịch sử THẬT theo đúng số điện thoại.
+ * Khách mới (SĐT chưa từng xuất hiện) luôn bắt đầu 0 lượt đến, 0 lần không đến.
+ */
+function customerStats(phone: string) {
+  const visits = db.appointments.filter(a => a.customer.phone === phone);
+  return {
+    totalVisits: visits.filter(a => a.status === 'completed').length,
+    noShowCount: visits.filter(a => a.status === 'no_show').length,
+    total: visits.length,
+  };
+}
+function syncCustomerStats() {
+  const cache = new Map<string, ReturnType<typeof customerStats>>();
+  db.appointments.forEach(a => {
+    const stats = cache.get(a.customer.phone) ?? customerStats(a.customer.phone);
+    cache.set(a.customer.phone, stats);
+    a.customer.totalVisits = stats.totalVisits; a.customer.noShowCount = stats.noShowCount;
+  });
+}
 const paginate = <T,>(items: T[], params: Record<string, unknown>) => {
   const page = Number(params.page) || 1; const limit = Number(params.limit) || 20;
   return { items: items.slice((page - 1) * limit, page * limit), total: items.length, page, limit,
@@ -329,17 +379,24 @@ const availability = (date: string, serviceIds: string[], stylistId?: string, ex
     slots: closed || hours?.isClosed ? [] : slots,
     suggestedDates: [day(1), day(2), day(3)], exceedsLongestShift: duration > 780 };
 };
+/** Số lịch hẹn (mọi trạng thái) đang tham chiếu dịch vụ — lớn hơn 0 thì cấm xoá cứng, chỉ được ngừng bán (S1-05). */
+const serviceUsage = (serviceId: string) =>
+  db.appointments.filter(a => a.services.some(s => s.serviceId === serviceId)).length;
 const createAppointment = (p: Record<string, unknown>, walkIn = false) => {
-  const ids = p.serviceIds as string[];
+  const ids = ((p.serviceIds as string[]) ?? []).filter(id => db.services.some(s => s.id === id));
+  if (!ids.length) bad('Vui lòng chọn ít nhất một dịch vụ còn đang bán', 'serviceIds');
+  const phone = String(p.phone ?? '').trim();
   const date = String(p.date); const time = String(p.time);
   const available = availability(date, ids, p.stylistId ? String(p.stylistId) : undefined);
   const slot = available.slots.find(s => s.time === time);
   if (!walkIn && !slot) bad('Khung giờ này vừa được đặt mất, vui lòng chọn giờ khác');
   const stylistId = String(p.stylistId || slot?.stylistIds[0] || db.stylists[0].id);
+  const existing = db.appointments.find(a => a.customer.phone === phone);
   const a = makeAppointment(uid().slice(0, 6), 0, time, walkIn ? 'confirmed' : 'pending',
-    String(p.fullName), String(p.phone), stylistId, ids);
+    String(p.fullName ?? '').trim(), phone, stylistId, ids, db.services, db.stylists);
   a.date = date; a.startAt = `${date}T${time}:00+07:00`; a.endAt = `${date}T${a.endTime}:00+07:00`;
   a.startAtText = `${time}, ${date}`; a.source = walkIn ? 'walk_in' : 'online'; a.customerNote = String(p.note || '') || null;
+  a.customer.email = (String(p.email ?? '').trim() || existing?.customer.email) ?? null;
   db.appointments.unshift(a); save(); return a;
 };
 
@@ -355,10 +412,11 @@ const customerList = (): Customer[] => {
   return phones.map(phone => {
     const visits = db.appointments.filter(a => a.customer.phone === phone);
     const first = visits[0];
+    const stats = customerStats(phone);
     return { id: first.customer.id, fullName: first.customer.fullName, phone, phoneMasked: false,
-      email: first.customer.email, totalVisits: visits.filter(a => a.status === 'completed').length,
-      noShowCount: visits.filter(a => a.status === 'no_show').length, note: db.notes[phone] ?? null,
-      isNew: visits.length === 1, createdAt: first.createdAt };
+      email: first.customer.email, totalVisits: stats.totalVisits, noShowCount: stats.noShowCount,
+      note: db.notes[phone] ?? null, isNew: stats.totalVisits === 0,
+      createdAt: visits[visits.length - 1]?.createdAt ?? first.createdAt };
   });
 };
 const invoiceLines = (items: { serviceId?: string; name: string; unitPrice: number; quantity: number }[]): InvoiceLine[] =>
@@ -419,7 +477,7 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
     // S1-01: thông báo chung, không tiết lộ email có tồn tại; sai 5 lần liên tiếp khoá 15 phút
     const user = db.users.find(u => u.email.toLowerCase() === String(p.email ?? '').trim().toLowerCase());
     if (!user) return bad(MSG.LOGIN_FAILED, undefined, 401);
-    const cred = (db.auth[user.id] ??= { password: DEMO_PASSWORD, failed: 0 });
+    const cred = (db.auth[user.id] ??= { password: passwordForRole(user.role), failed: 0 });
     if (user.lockedUntil && new Date(user.lockedUntil).getTime() > Date.now()) {
       return bad(MSG.ACCOUNT_LOCKED(Math.max(1, Math.ceil((new Date(user.lockedUntil).getTime() - Date.now()) / 60000))), undefined, 401);
     }
@@ -440,7 +498,7 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
   if (path === '/auth/logout') { startSession(null); return {}; }
   if (path === '/auth/change-password') {
     const me = getUser() ?? bad(MSG.UNAUTHORIZED, undefined, 401);
-    const cred = (db.auth[me.id] ??= { password: DEMO_PASSWORD, failed: 0 });
+    const cred = (db.auth[me.id] ??= { password: passwordForRole(me.role), failed: 0 });
     const next = String(p.newPassword ?? '');
     if (String(p.currentPassword ?? '') !== cred.password) bad(MSG.CURRENT_PASSWORD_WRONG, 'currentPassword');
     if (next.length < 8 || !/[A-Za-z]/.test(next) || !/\d/.test(next)) bad(MSG.PASSWORD_WEAK, 'newPassword');
@@ -544,8 +602,9 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
   if (appointmentMatch) {
     const a = findAppointment(appointmentMatch[1]); const action = appointmentMatch[2];
     if (!action) return forCurrentRole(a);
-    if (action === 'customer-history') return { customerId: a.customer.id, isNewCustomer: false,
-      history: db.appointments.filter(item => item.customer.phone === a.customer.phone).map(item => ({
+    if (action === 'customer-history') return { customerId: a.customer.id,
+      isNewCustomer: customerStats(a.customer.phone).totalVisits === 0,
+      history: db.appointments.filter(item => item.customer.phone === a.customer.phone && item.id !== a.id).map(item => ({
         appointmentId: item.id, code: item.code, date: item.date, status: item.status,
         stylistName: item.stylist.fullName, services: item.services.map(s => s.name), technicalNote: db.notes[item.id] ?? null })) };
     if (action === 'service-note') { db.notes[a.id] = String(p.content); save(); return { content: p.content }; }
@@ -588,8 +647,10 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
     Object.assign(category, pick(p, ['name', 'displayOrder'])); recomputeLinks(); save(); return category;
   }
   if (path === '/services' && method === 'get') return db.services.filter(s =>
-    (!q.categoryId || s.categoryId === q.categoryId) && (q.isActive === undefined || s.isActive === q.isActive) &&
-    (!q.search || `${s.name} ${s.description}`.toLowerCase().includes(String(q.search).toLowerCase())));
+    (!q.categoryId || s.categoryId === q.categoryId) &&
+    (q.isActive === undefined || s.isActive === (q.isActive === true || q.isActive === 'true')) &&
+    (!q.search || `${s.name} ${s.description}`.toLowerCase().includes(String(q.search).toLowerCase())))
+    .map(s => ({ ...s, appointmentCount: serviceUsage(s.id) }));
   if (path === '/services' && method === 'post') {
     validateService(p.durationMinutes, p.price);
     if (db.services.some(s => s.name.trim().toLowerCase() === String(p.name ?? '').trim().toLowerCase()))
@@ -605,11 +666,11 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
     const item = db.services.find(s => s.id === serviceMatch[1]) ?? bad('Không tìm thấy dịch vụ');
     if (method === 'delete') {
       // S1-05: dịch vụ đã có lịch hẹn tham chiếu thì chỉ được ngừng bán
-      if (db.appointments.some(a => a.services.some(s => s.serviceId === item.id))) bad(MSG.SERVICE_IN_USE, undefined, 409);
+      if (serviceUsage(item.id) > 0) bad(MSG.SERVICE_IN_USE, undefined, 409);
       db.services = db.services.filter(s => s.id !== item.id); recomputeLinks(); save();
       record('DELETE', 'service', `Xoá dịch vụ ${item.name}`); return {};
     }
-    if (method !== 'patch') return item;
+    if (method !== 'patch') return { ...item, appointmentCount: serviceUsage(item.id) };
     validateService(p.durationMinutes, p.price);
     if (p.name !== undefined && db.services.some(s => s.id !== item.id &&
       s.name.trim().toLowerCase() === String(p.name).trim().toLowerCase())) bad(MSG.SERVICE_NAME_DUPLICATED, 'name', 409);
@@ -625,6 +686,7 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
     const email = String(p.email ?? '').trim().toLowerCase();
     if (email && !EMAIL_RE.test(email)) bad('Email không đúng định dạng', 'email');
     if (email && emailTaken(email)) bad(MSG.EMAIL_DUPLICATED, 'email', 409);
+    let tempPassword: string | null = null;
     const item: Stylist = { id: uid(), userId: null, fullName: String(p.fullName).trim(), phone: String(p.phone || '') || null,
       avatarUrl: null, bio: String(p.bio || '') || null, isActive: p.isActive !== false, serviceIds: [],
       serviceNames: [], avgRating: null, reviewCount: 0 };
@@ -633,10 +695,12 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
       const user: UserRow = { id: uid(), fullName: item.fullName, email, phone: item.phone, role: 'stylist',
         isActive: item.isActive, mustChangePassword: true, lockedUntil: null, lastLoginAt: null, stylistId: item.id,
         createdAt: new Date().toISOString() };
-      db.users.push(user); db.auth[user.id] = { password: DEMO_PASSWORD, failed: 0 }; item.userId = user.id;
+      tempPassword = generateTempPassword();
+      db.users.push(user); db.auth[user.id] = { password: tempPassword, failed: 0 }; item.userId = user.id;
     }
     db.stylists.push(item); setStylistServices(item.id, (p.serviceIds as string[]) ?? []);
-    save(); record('CREATE', 'stylist', `Thêm ${item.fullName}`); return withEmail(item);
+    save(); record('CREATE', 'stylist', `Thêm ${item.fullName}`);
+    return { ...withEmail(item), tempPassword };
   }
   const stylistMatch = path.match(/^\/stylists\/([^/]+)(?:\/(.+))?$/);
   if (stylistMatch) {
@@ -714,7 +778,14 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
     if (q.q || q.search) items = items.filter(c => `${c.fullName} ${c.phone}`.toLowerCase().includes(String(q.q || q.search).toLowerCase()));
     return paginate(items, q);
   }
-  if (path.startsWith('/customers/by-phone/')) return customerList().find(c => c.phone === path.split('/')[3]) ?? null;
+  if (path.startsWith('/customers/by-phone/')) {
+    // Cùng dạng với máy chủ thật: SĐT mới → found=false, không mượn số liệu của hồ sơ khác
+    const phone = decodeURIComponent(path.split('/')[3] ?? '');
+    const customer = customerList().find(c => c.phone === phone) ?? null;
+    return { found: !!customer, customer, history: customer ? db.appointments.filter(a => a.customer.phone === phone)
+      .map(a => ({ appointmentId: a.id, code: a.code, date: a.date, status: a.status, stylistName: a.stylist.fullName,
+        services: a.services.map(s => s.name), technicalNote: db.notes[a.id] ?? null })) : [] };
+  }
   const customerMatch = path.match(/^\/customers\/([^/]+)(?:\/(history))?$/);
   if (customerMatch) {
     const customer = customerList().find(c => c.id === customerMatch[1]) ?? bad('Không tìm thấy khách hàng');
@@ -812,21 +883,25 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
       phone: p.phone ? String(p.phone) : null, role: p.role as UserRow['role'], isActive: p.isActive !== false,
       mustChangePassword: true, lockedUntil: null, lastLoginAt: null, stylistId: null,
       createdAt: new Date().toISOString() };
-    db.users.push(user); db.auth[user.id] = { password: DEMO_PASSWORD, failed: 0 };
+    // S1-02 (Lỗi 4): sinh mật khẩu tạm và TRẢ VỀ cho quản trị viên để hiển thị/sao chép ngay
+    const tempPassword = generateTempPassword();
+    db.users.push(user); db.auth[user.id] = { password: tempPassword, failed: 0 };
     if (user.role === 'stylist' && p.createStylistProfile !== false) {
       const profile: Stylist = { id: uid(), userId: user.id, fullName: user.fullName, phone: user.phone, avatarUrl: null,
         bio: null, isActive: user.isActive, serviceIds: [], serviceNames: [], avgRating: null, reviewCount: 0 };
       db.stylists.push(profile); user.stylistId = profile.id;
     }
-    save(); record('CREATE', 'user', `Thêm ${user.fullName}`); return { ...user, tempPasswordSentTo: user.email };
+    save(); record('CREATE', 'user', `Thêm ${user.fullName}`); return { ...user, tempPasswordSentTo: user.email, tempPassword };
   }
   const userMatch = path.match(/^\/users\/([^/]+)(?:\/(.+))?$/);
   if (userMatch) {
     const user = db.users.find(u => u.id === userMatch[1]) ?? bad('Không tìm thấy tài khoản');
-    const cred = (db.auth[user.id] ??= { password: DEMO_PASSWORD, failed: 0 });
+    const cred = (db.auth[user.id] ??= { password: passwordForRole(user.role), failed: 0 });
     if (userMatch[2] === 'reset-password') {
-      cred.password = DEMO_PASSWORD; cred.failed = 0; user.lockedUntil = null; user.mustChangePassword = true;
-      save(); return { success: true, sentTo: user.email };
+      const tempPassword = generateTempPassword();
+      cred.password = tempPassword; cred.failed = 0; user.lockedUntil = null; user.mustChangePassword = true;
+      save(); record('RESET_PASSWORD', 'user', `Cấp lại mật khẩu tạm cho ${user.email}`);
+      return { success: true, sentTo: user.email, tempPassword };
     }
     if (userMatch[2] === 'unlock') { user.lockedUntil = null; cred.failed = 0; save(); return user; }
     if (method !== 'patch') return user;

@@ -88,7 +88,7 @@ export class UsersService {
    * S1-02: tạo tài khoản sinh mật khẩu tạm gửi qua email,
    * người dùng buộc đổi mật khẩu ở lần đăng nhập đầu tiên.
    */
-  async create(dto: CreateUserDto): Promise<UserView & { tempPasswordSentTo: string }> {
+  async create(dto: CreateUserDto): Promise<UserView & { tempPasswordSentTo: string; tempPassword: string }> {
     const existed = await this.userRepo
       .createQueryBuilder('u')
       .where('lower(u.email) = lower(:email)', { email: dto.email.trim() })
@@ -134,7 +134,9 @@ export class UsersService {
       html: tpl.html,
     });
 
-    return { ...this.toView(result.saved, result.stylistId), tempPasswordSentTo: result.saved.email };
+    // Sprint 1 – Lỗi 4: trả mật khẩu tạm MỘT lần cho quản trị viên để hiển thị/sao chép và đăng nhập thử ngay.
+    // Chỉ nằm trong phản hồi của chính request này; nhật ký hoạt động chỉ ghi request body nên không lưu lại.
+    return { ...this.toView(result.saved, result.stylistId), tempPasswordSentTo: result.saved.email, tempPassword };
   }
 
   async update(id: string, dto: UpdateUserDto, actorId: string): Promise<UserView> {
@@ -190,7 +192,7 @@ export class UsersService {
   }
 
   /** Cấp lại mật khẩu tạm (khi nhân sự quên và không dùng được email). */
-  async resetTempPassword(id: string): Promise<{ success: boolean; sentTo: string }> {
+  async resetTempPassword(id: string): Promise<{ success: boolean; sentTo: string; tempPassword: string }> {
     const user = await this.userRepo.findOne({ where: { id } });
     if (!user) throw new NotFoundException(MSG.USER_NOT_FOUND);
 
@@ -211,7 +213,7 @@ export class UsersService {
       subject: tpl.subject,
       html: tpl.html,
     });
-    return { success: true, sentTo: user.email };
+    return { success: true, sentTo: user.email, tempPassword };
   }
 
   /** Mở khoá tài khoản đang bị khoá do đăng nhập sai nhiều lần. */

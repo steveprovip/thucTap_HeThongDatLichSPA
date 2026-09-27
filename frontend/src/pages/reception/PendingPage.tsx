@@ -5,6 +5,7 @@ import type { Appointment } from '@/types';
 import { Button, Card, EmptyState, SectionTitle, Spinner, StatusBadge } from '@/components';
 import { formatDuration } from '@/utils/format';
 import { useToast } from '@/contexts/ToastContext';
+import { useAppointmentsSync } from '@/utils/liveSync';
 import { AppointmentDrawer } from './AppointmentDrawer';
 
 /** S3-02: danh sách riêng các lịch đặt online đang chờ xác nhận. */
@@ -26,6 +27,7 @@ export function PendingPage() {
   }, [toast]);
 
   useEffect(() => { void load(); }, [load]);
+  useAppointmentsSync(() => { void load(); });
 
   const overdue = items.filter((i) => i.pendingOverdue);
   const confirm = async (a: Appointment) => {

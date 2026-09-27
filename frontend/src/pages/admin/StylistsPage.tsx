@@ -7,6 +7,7 @@ import { DEMO_MODE } from '@/api/mockBackend';
 import type { Appointment, ServiceCategory, ServiceItem, Shift, Stylist } from '@/types';
 import {
   Button, Card, EmptyState, Field, Input, Modal, Notice, SectionTitle, Spinner, StylistAvatar, Textarea, Toggle,
+  TempPasswordDialog, type TempCredential,
 } from '@/components';
 import {
   addDaysISO, formatDate, matchSearch, startOfWeekISO, timeToMinutes, todayISO, VN_PHONE_REGEX,
@@ -85,6 +86,7 @@ export function StylistsPage() {
   const [touched, setTouched] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [credential, setCredential] = useState<TempCredential | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const weekStart = startOfWeekISO(todayISO());
@@ -185,9 +187,12 @@ export function StylistsPage() {
         const created = await stylistsApi.create({ ...payload, email: email.trim() || undefined });
         id = created.id;
         if (DEMO_MODE && avatar) await stylistsApi.update(created.id, { avatarUrl: avatar });
-        toast.success(email.trim()
-          ? `Đã tạo hồ sơ thợ và tài khoản đăng nhập, mật khẩu tạm gửi tới ${email.trim()}`
-          : 'Đã tạo hồ sơ thợ (chưa có tài khoản đăng nhập)');
+        if (email.trim()) {
+          // Lỗi 4: hiện ngay email + mật khẩu tạm để thợ đăng nhập thử được luôn
+          setCredential({ fullName: created.fullName, email: email.trim().toLowerCase(), password: created.tempPassword ?? null, kind: 'created' });
+        } else {
+          toast.success('Đã tạo hồ sơ thợ (chưa có tài khoản đăng nhập)');
+        }
       }
       if (!DEMO_MODE && avatarFile) await stylistsApi.uploadAvatar(id, avatarFile);
       setOpen(false);
@@ -506,6 +511,8 @@ export function StylistsPage() {
           {error && <Notice tone="danger">{error}</Notice>}
         </div>
       </Modal>
+
+      <TempPasswordDialog credential={credential} onClose={() => setCredential(null)} />
     </div>
   );
 }
