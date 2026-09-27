@@ -36,12 +36,29 @@ frontend → nạp lược đồ và dữ liệu mẫu → chạy song song API 
 
 ### Tài khoản mẫu
 
-| Vai trò | Email | Mật khẩu |
-|---|---|---|
-| Quản trị hệ thống | `admin@salon.vn` | `Admin@123` |
-| Chủ tiệm | `owner@salon.vn` | `Owner@123` |
-| Lễ tân | `reception@salon.vn` | `Reception@123` |
-| Thợ | `stylist1@salon.vn` … `stylist5@salon.vn` | `Stylist@123` |
+Dùng **giống hệt nhau** ở cả hai chế độ: Full-Stack (NestJS + PostgreSQL, `database/seed.sql`) và
+Demo không cần máy chủ (`npm run dev:demo`, dữ liệu trong trình duyệt — `frontend/src/api/mockBackend.ts`).
+
+| Vai trò | Họ tên | Email | Mật khẩu |
+|---|---|---|---|
+| Quản trị hệ thống | Quản trị hệ thống | `admin@salon.vn` | `Admin@123` |
+| Chủ tiệm | Nguyễn Hoàng Anh | `owner@salon.vn` | `Owner@123` |
+| Lễ tân | Đỗ Thanh Mai | `reception@salon.vn` | `Reception@123` |
+| Thợ 1 | Nguyễn Thu Hà | `stylist1@salon.vn` | `Stylist@123` |
+| Thợ 2 | Trần Minh Tuấn | `stylist2@salon.vn` | `Stylist@123` |
+| Thợ 3 | Lê Thị Bích Ngọc | `stylist3@salon.vn` | `Stylist@123` |
+| Thợ 4 | Phạm Quốc Bảo | `stylist4@salon.vn` | `Stylist@123` |
+| Thợ 5 | Võ Kim Chi | `stylist5@salon.vn` | `Stylist@123` |
+
+- Trang **Đăng nhập** có khối *Đăng nhập nhanh* (hiện ở bản demo và khi chạy `npm run dev`): bấm một vai trò là
+  điền đúng email + mật khẩu ở bảng trên và đăng nhập ngay.
+- **Nhân sự mới** do Quản trị tạo (mục *Tài khoản nhân sự*) hoặc Chủ tiệm tạo kèm email (mục *Hồ sơ thợ*) nhận
+  **mật khẩu tạm ngẫu nhiên** (10 ký tự, có chữ hoa, chữ thường, số, ký tự đặc biệt). Mật khẩu hiển thị ngay trong hộp
+  thoại *“Nhân sự mới đã được tạo thành công!”* kèm nút **Sao chép mật khẩu**, đồng thời được gửi qua email
+  (xem ở Maildev http://localhost:1080). Lần đăng nhập đầu tiên bắt buộc đổi mật khẩu. Nút 🔑 *Cấp lại mật khẩu tạm*
+  hoạt động tương tự.
+- Bản demo lưu dữ liệu trong `localStorage` (khoá `salon.demo.v5`). Muốn về dữ liệu mẫu ban đầu: xoá khoá đó
+  trong DevTools → Application → Local Storage rồi tải lại trang.
 
 Khách hàng **không cần tài khoản** — đặt lịch và tra cứu bằng số điện thoại / mã 8 ký tự.
 
@@ -142,6 +159,21 @@ npm run lint             # ESLint cho cả hai phía
 | Phân quyền | `npm run test:e2e` | Đối chiếu 17 endpoint × 4 vai trò, khoá 15 phút sau 5 lần sai |
 | Chống đặt trùng | `npm run test:e2e` | 20 yêu cầu đồng thời → đúng 1 thành công |
 | End-to-end | `npm run test:e2e` | Đặt → xác nhận → check-in → hoàn tất → tính tiền → đánh giá → báo cáo |
+
+---
+
+## Nhật ký sửa lỗi — Sprint 1 · Lỗi 2 (27/09/2026)
+
+| # | Lỗi được báo | Cách khắc phục |
+|---|---|---|
+| 1 | Ảnh dịch vụ lỗi / trống trên giao diện khách | `SmartImage` (`components/Media.tsx`) tự chuyển sang nền gradient theo chủ đề (kéo — Tóc, giọt nước — Gội, lấp lánh — Da, bàn tay — Massage, viên ngọc — Combo) khi ảnh lỗi, mất mạng hoặc tải quá 8 giây. Không còn khung ảnh vỡ. |
+| 2 | Đăng nhập đúng email + mật khẩu nhưng bị từ chối | Dữ liệu demo dùng `@lumi.vn` / `demo1234` → đổi sang đúng bộ tài khoản ở bảng trên; khoá dữ liệu demo nâng lên `salon.demo.v5` để trình duyệt tự nạp lại dữ liệu mới. |
+| 3 | Email trong README và trên web không khớp | Một nguồn duy nhất `DEMO_ACCOUNTS` / `DEMO_PASSWORDS` (`frontend/src/utils/constants.ts`) dùng chung cho mockBackend và nút đăng nhập nhanh, khớp `database/seed.sql` và README. |
+| 4 | Tạo nhân sự mới không biết mật khẩu | API `POST /users`, `POST /users/:id/reset-password`, `POST /stylists` trả thêm `tempPassword`; giao diện hiện hộp thoại có nút *Sao chép mật khẩu*. |
+| 5 | Khách vãng lai mới tạo đã “đi 3 lần” | Bỏ số liệu gán cứng; lượt đến / không đến tính từ lịch sử thật theo **đúng số điện thoại**. SĐT mới luôn 0 lượt, lịch sử rỗng. |
+| 6 | Lịch vãng lai vừa tạo không hiện trong danh mục | Trang *Khách vãng lai* hiển thị cả lịch hẹn ngày khác (tab *Sắp tới*); mọi thao tác ghi phát sự kiện đồng bộ nên *Lịch ngày*, *Danh sách lịch hẹn*, *Chờ xác nhận*… tự làm mới ngay (kể cả tab khác). *Lịch ngày* có nút tạo khách vãng lai. |
+| 7 | Dịch vụ đã có lịch hẹn vẫn xoá được, lịch hẹn mất thông tin dịch vụ | Lịch tạo tại quầy giữ đúng dịch vụ do tiệm tự thêm. Dịch vụ có lịch hẹn: nút xoá bị khoá kèm chú thích *“Dịch vụ đã có lịch hẹn, chỉ có thể ngừng kinh doanh”*, bấm vào sẽ đề nghị chuyển sang **Ngừng kinh doanh**. API trả `appointmentCount` cho từng dịch vụ và vẫn chặn xoá (409). |
+| 8 | Thiếu nút quay lại | Thành phần `<BackButton />` (← Quay lại) trên mọi trang con khu quản lý, trang tra cứu / đánh giá, từng bước đặt lịch và ngăn kéo chi tiết lịch hẹn. |
 
 ---
 

@@ -1,4 +1,4 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsBoolean, IsEmail, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength,
 } from 'class-validator';
@@ -44,6 +44,8 @@ export class ListUsersQuery {
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) page = 1;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(200) limit = 20;
   @IsOptional() @IsEnum(Role) role?: Role;
-  @IsOptional() @Type(() => Boolean) @IsBoolean() isActive?: boolean;
+  // Boolean('false') === true, nên phải đọc chuỗi query một cách tường minh
+  @IsOptional() @Transform(({ value }) => (value === undefined ? undefined : value === true || value === 'true'))
+  @IsBoolean() isActive?: boolean;
   @IsOptional() @IsString() @MaxLength(120) search?: string;
 }

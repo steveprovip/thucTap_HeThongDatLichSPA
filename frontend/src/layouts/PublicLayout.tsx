@@ -1,6 +1,7 @@
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { CalendarCheck, Home, LogIn, Phone, Search } from 'lucide-react';
 import { SALON } from '@/utils/constants';
+import { BackButton } from '@/components';
 
 const navClass = ({ isActive }: { isActive: boolean }) =>
   `flex flex-1 flex-col items-center gap-0.5 rounded-xl px-2 py-2 text-[11px] font-medium transition-colors
@@ -9,6 +10,8 @@ const navClass = ({ isActive }: { isActive: boolean }) =>
 /** Bố cục trang công khai, tối ưu cho màn hình rộng 360px và dùng một tay. */
 export function PublicLayout() {
   const location = useLocation();
+  // Lỗi 8: trang con (tra cứu, đánh giá…) có nút quay lại; trang đặt lịch tự có nút lùi theo từng bước
+  const showBack = location.pathname !== '/' && !location.pathname.startsWith('/dat-lich');
   return (
     <div className="flex min-h-screen flex-col bg-surface-page">
       <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur-md">
@@ -23,8 +26,14 @@ export function PublicLayout() {
             </span>
           </Link>
           <div className="flex items-center gap-1">
+            {/* Điều hướng cho màn rộng (thanh dưới cùng chỉ hiện trên điện thoại) */}
+            <nav className="mr-1 hidden items-center gap-1 sm:flex" aria-label="Điều hướng chính">
+              <NavLink to="/" end className="btn btn-ghost btn-sm"><Home size={15} /> Trang chủ</NavLink>
+              <NavLink to="/dat-lich" className="btn btn-ghost btn-sm"><CalendarCheck size={15} /> Đặt lịch</NavLink>
+              <NavLink to="/tra-cuu" className="btn btn-ghost btn-sm"><Search size={15} /> Tra cứu</NavLink>
+            </nav>
             <a href={`tel:${SALON.hotline.replace(/\s/g, '')}`}
-               className="btn btn-ghost btn-sm hidden sm:inline-flex">
+               className="btn btn-ghost btn-sm hidden lg:inline-flex">
               <Phone size={15} /> {SALON.hotline}
             </a>
             <Link to="/dang-nhap" className="btn btn-outline btn-sm">
@@ -36,6 +45,11 @@ export function PublicLayout() {
 
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 pb-24 pt-4 sm:pb-8">
         <div key={location.pathname} className="animate-fade">
+          {showBack && (
+            <div className="mb-4 animate-slide-in-right-soft">
+              <BackButton to="/" />
+            </div>
+          )}
           <Outlet />
         </div>
       </main>

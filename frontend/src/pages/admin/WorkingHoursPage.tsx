@@ -33,7 +33,7 @@ const vnDate = (iso: string) => formatDate(`${iso}T00:00:00+07:00`);
 /** S1-08 + S2-02: giờ mở cửa theo thứ trong tuần và ngày nghỉ của tiệm. */
 export function WorkingHoursPage() {
   const { user } = useAuth();
-  const canEdit = user?.role === 'owner' || user?.role === 'admin';
+  const canEdit = user?.role === 'owner'; // khớp RolesGuard backend: Admin chỉ xem (PERMISSION_MATRIX)
   const toast = useToast();
 
   const [rows, setRows] = useState<WorkingHour[]>([]);

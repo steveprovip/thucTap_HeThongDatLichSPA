@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
-  CheckCircle2, Clock, History, Loader2, Search, Sparkles, UserCheck, UserPlus, Zap,
+  CalendarDays, CheckCircle2, Clock, History, Loader2, Search, Sparkles, UserCheck, UserPlus, Zap,
 } from 'lucide-react';
 import { appointmentsApi, catalogApi, customersApi, getErrorMessage, stylistsApi } from '@/api';
 import type {
@@ -10,8 +11,9 @@ import {
   Button, Card, EmptyState, Field, Input, Modal, Notice, SectionTitle, Spinner, StatusBadge, Textarea,
 } from '@/components';
 import {
-  formatDate, formatDuration, formatVnd, matchSearch, minutesToTime, timeToMinutes, todayISO, VN_PHONE_REGEX,
+  addDaysISO, formatDate, formatDuration, formatVnd, matchSearch, minutesToTime, timeToMinutes, todayISO, VN_PHONE_REGEX,
 } from '@/utils/format';
+import { useAppointmentsSync } from '@/utils/liveSync';
 import { MAX_SERVICES_PER_BOOKING, STATUS_LABELS } from '@/utils/constants';
 import { useToast } from '@/contexts/ToastContext';
 import { AppointmentDrawer } from './AppointmentDrawer';
@@ -88,25 +90,32 @@ export function WalkInModal({ open, onClose, onCreated }: {
   const [touched, setTouched] = useState(false);
   const [saving, setSaving] = useState(false);
   const [created, setCreated] = useState<Appointment | null>(null);
-  const date = todayISO();
+  // "Hẹn ngày/giờ khác" cho phép chọn cả ngày, không chỉ giờ trong hôm nay
+  const [date, setDate] = useState(todayISO());
+  const isToday = date === todayISO();
 
   const reset = useCallback(() => {
     setPhone(''); setFullName(''); setEmail(''); setNote(''); setLookup('idle'); setCustomer(null); setHistory([]);
     autoFilledName.current = null; setServiceQuery(''); setSelectedIds([]); setMode('now'); setTime(nowRounded());
-    setStylistId(''); setCheckInNow(true); setTouched(false); setCreated(null);
+    setDate(todayISO()); setStylistId(''); setCheckInNow(true); setTouched(false); setCreated(null);
   }, []);
 
   useEffect(() => {
     if (!open) return;
     reset();
     catalogApi.services({ isActive: true }).then(setServices).catch(() => undefined);
+  }, [open, reset]);
+
+  // Nạp lại lịch ngày + kỹ năng thợ mỗi khi đổi ngày (không xoá dữ liệu khách đang nhập)
+  useEffect(() => {
+    if (!open) return;
     Promise.all([appointmentsApi.timeline(date), stylistsApi.list({ isActive: true })])
       .then(([tl, sty]) => {
         setTimeline(tl);
         setSkillMap(Object.fromEntries(sty.map((s) => [s.id, s.serviceIds])));
       })
       .catch((e) => toast.error(getErrorMessage(e)));
-  }, [open, date, reset, toast]);
+  }, [open, date, toast]);
 
   // Tự tra hồ sơ khách quen khi nhập đủ 10 số
   useEffect(() => {
@@ -171,7 +180,7 @@ export function WalkInModal({ open, onClose, onCreated }: {
     if (!timeline || !selected.length) return [];
     const open = timeToMinutes(timeline.salonOpen);
     const close = timeToMinutes(timeline.salonClose);
-    const from = Math.max(open, Math.ceil(timeToMinutes(nowRounded()) / 15) * 15);
+    const from = isToday ? Math.max(open, Math.ceil(timeToMinutes(nowRounded()) / 15) * 15) : open;
     const out: string[] = [];
     for (let m = from; m + duration <= close && out.length < 8; m += 15) {
       const f = stylistFits(timeline, selected, skillMap, m, m + duration)
@@ -179,14 +188,14 @@ export function WalkInModal({ open, onClose, onCreated }: {
       if (f.length) out.push(minutesToTime(m));
     }
     return out;
-  }, [timeline, selected, skillMap, duration, stylistId]);
+  }, [timeline, selected, skillMap, duration, stylistId, isToday]);
 
   const closeMin = timeline ? timeToMinutes(timeline.salonClose) : 24 * 60;
   const errors = {
     phone: !VN_PHONE_REGEX.test(phone) ? 'Số điện thoại gồm 10 chữ số, bắt đầu bằng 0' : undefined,
     fullName: !fullName.trim() ? 'Vui lòng nhập tên khách' : undefined,
     services: !selected.length ? 'Chọn ít nhất một dịch vụ' : undefined,
-    time: mode === 'later' && (!time || timeToMinutes(time) < timeToMinutes(nowRounded()) - 5)
+    time: mode === 'later' && (!time || date < todayISO() || (isToday && timeToMinutes(time) < timeToMinutes(nowRounded()) - 5))
       ? 'Giờ bắt đầu không được ở quá khứ' : undefined,
     stylist: selected.length && !resolvedStylist ? 'Không có thợ phù hợp rảnh vào giờ này'
       : resolvedStylist && !resolvedStylist.skilled ? `${resolvedStylist.name} chưa làm được toàn bộ dịch vụ đã chọn`
@@ -261,9 +270,14 @@ export function WalkInModal({ open, onClose, onCreated }: {
           <p className="mt-3 text-lg font-bold">Đã tạo lịch cho {created.customer.fullName}</p>
           <p className="mt-1 font-mono text-2xl tracking-[0.3em] text-teal-700">{created.code}</p>
           <p className="mt-2 text-sm text-ink-soft">
-            {created.startTime}–{created.endTime} hôm nay · thợ {created.stylist.fullName}
+            {created.startTime}–{created.endTime}{' '}
+            {created.date === todayISO() ? 'hôm nay' : formatDate(`${created.date}T00:00:00+07:00`)} · thợ {created.stylist.fullName}
           </p>
           <div className="mt-3 flex justify-center"><StatusBadge status={created.status} /></div>
+          <p className="mt-3 text-xs text-ink-muted">
+            Lịch đã có ngay trên <Link to={`/quan-ly?date=${created.date}`} className="font-semibold text-teal-700 hover:underline" onClick={onClose}>Lịch ngày</Link>
+            {' '}và <Link to={`/quan-ly/lich-hen?date=${created.date}`} className="font-semibold text-teal-700 hover:underline" onClick={onClose}>Danh sách lịch hẹn</Link>.
+          </p>
         </div>
       ) : (
         <div className="grid gap-5 lg:grid-cols-[1fr_1.25fr]">
@@ -319,7 +333,9 @@ export function WalkInModal({ open, onClose, onCreated }: {
               </div>
             )}
             {lookup === 'new' && (
-              <Notice tone="info" icon={<Sparkles size={15} />}>Khách mới — hồ sơ sẽ được tạo khi lưu lịch.</Notice>
+              <Notice tone="info" icon={<Sparkles size={15} />}>
+                Khách mới — chưa có lịch sử (0 lượt đến · 0 lần không đến). Hồ sơ sẽ được tạo khi lưu lịch.
+              </Notice>
             )}
 
             <Field label="Họ tên" required error={shown.fullName}>
@@ -367,10 +383,14 @@ export function WalkInModal({ open, onClose, onCreated }: {
             <div>
               <h4 className="mb-2 text-sm font-bold text-teal-700">3. Thời gian</h4>
               <div className="grid grid-cols-2 gap-2">
-                {([['now', 'Làm ngay', <Zap size={15} key="z" />], ['later', 'Hẹn giờ khác hôm nay', <Clock size={15} key="c" />]] as const)
+                {([['now', 'Làm ngay', <Zap size={15} key="z" />], ['later', 'Hẹn ngày/giờ khác', <Clock size={15} key="c" />]] as const)
                   .map(([id, label, icon]) => (
                     <button key={id} type="button" aria-pressed={mode === id}
-                            onClick={() => { setMode(id); if (id === 'later' && suggestions[0]) setTime(suggestions[0]); }}
+                            onClick={() => {
+                              setMode(id);
+                              if (id === 'now') setDate(todayISO());
+                              if (id === 'later' && suggestions[0]) setTime(suggestions[0]);
+                            }}
                             className={`flex min-h-[44px] items-center justify-center gap-2 rounded-xl border text-sm font-semibold
                               ${mode === id ? 'border-teal-600 bg-teal-50 text-teal-700' : 'border-slate-300 text-ink-soft'}`}>
                       {icon} {label}
@@ -392,10 +412,16 @@ export function WalkInModal({ open, onClose, onCreated }: {
                 </div>
               ) : (
                 <div className="mt-2 space-y-2">
-                  <Field label="Giờ bắt đầu" error={shown.time}>
-                    <input type="time" step={300} className="field-input w-40" value={time}
-                           onChange={(e) => setTime(e.target.value)} />
-                  </Field>
+                  <div className="flex flex-wrap gap-3">
+                    <Field label="Ngày">
+                      <input type="date" min={todayISO()} className="field-input w-44" value={date}
+                             onChange={(e) => setDate(e.target.value || todayISO())} />
+                    </Field>
+                    <Field label="Giờ bắt đầu" error={shown.time}>
+                      <input type="time" step={300} className="field-input w-40" value={time}
+                             onChange={(e) => setTime(e.target.value)} />
+                    </Field>
+                  </div>
                   {suggestions.length > 0 && (
                     <div className="flex flex-wrap gap-1.5">
                       <span className="self-center text-xs text-ink-muted">Giờ trống:</span>
@@ -461,17 +487,24 @@ function StylistOption({ active, onClick, title, subtitle, ok }: {
 // =====================================================================================
 
 /** S3-07: khách vãng lai — lịch tạo tại quầy vào thẳng Đã xác nhận, bỏ qua ràng buộc đặt trước 60 phút. */
+/** Số ngày tới vẫn hiển thị lịch vãng lai hẹn trước (khách gọi điện đặt cho ngày mai, ngày kia…). */
+const UPCOMING_DAYS = 30;
+const byDateTime = (a: Appointment, b: Appointment) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime);
+
 export function WalkInPage() {
   const toast = useToast();
   const [open, setOpen] = useState(false);
-  const [items, setItems] = useState<Appointment[]>([]);
+  const [all, setAll] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Appointment | null>(null);
+  const [view, setView] = useState<'today' | 'upcoming'>('today');
+  const [flashId, setFlashId] = useState<string | null>(null);
 
+  // Lỗi 6: lấy cả lịch vãng lai hẹn NGÀY KHÁC (không chỉ hôm nay) để lịch vừa tạo luôn xuất hiện
   const load = useCallback(async () => {
     try {
-      const res = await appointmentsApi.list({ from: todayISO(), to: todayISO(), page: 1, limit: 200 });
-      setItems(res.items.filter((a) => a.source === 'walk_in').sort((a, b) => a.startTime.localeCompare(b.startTime)));
+      const res = await appointmentsApi.list({ from: todayISO(), to: addDaysISO(todayISO(), UPCOMING_DAYS), page: 1, limit: 500 });
+      setAll(res.items.filter((a) => a.source === 'walk_in').sort(byDateTime));
     } catch (e) {
       toast.error(getErrorMessage(e));
     } finally {
@@ -480,9 +513,24 @@ export function WalkInPage() {
   }, [toast]);
 
   useEffect(() => { void load(); }, [load]);
+  useAppointmentsSync(() => { void load(); });
 
-  const revenue = items.filter((a) => a.status !== 'cancelled' && a.status !== 'no_show')
+  const today = todayISO();
+  const todayItems = all.filter((a) => a.date === today);
+  const upcomingItems = all.filter((a) => a.date > today);
+  const items = view === 'today' ? todayItems : upcomingItems;
+
+  const revenue = todayItems.filter((a) => a.status !== 'cancelled' && a.status !== 'no_show')
     .reduce((s, a) => s + a.estimatedTotal, 0);
+
+  /** Thêm ngay lịch vừa tạo vào danh sách (lạc quan) rồi đồng bộ lại với máy chủ. */
+  const handleCreated = (a: Appointment) => {
+    setAll((list) => [a, ...list.filter((x) => x.id !== a.id)].sort(byDateTime));
+    setView(a.date === today ? 'today' : 'upcoming');
+    setFlashId(a.id);
+    window.setTimeout(() => setFlashId((id) => (id === a.id ? null : id)), 4000);
+    void load();
+  };
 
   return (
     <div className="space-y-4">
@@ -492,27 +540,48 @@ export function WalkInPage() {
         action={<Button icon={<UserPlus size={16} />} onClick={() => setOpen(true)}>Tạo lịch vãng lai</Button>}
       />
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Card className="p-4"><p className="text-xs uppercase tracking-wide text-ink-muted">Lượt vãng lai hôm nay</p>
-          <p className="mt-1 text-2xl font-bold">{items.length}</p></Card>
-        <Card className="p-4"><p className="text-xs uppercase tracking-wide text-ink-muted">Đang phục vụ</p>
-          <p className="mt-1 text-2xl font-bold">{items.filter((a) => ['arrived', 'in_progress'].includes(a.status)).length}</p></Card>
-        <Card className="p-4"><p className="text-xs uppercase tracking-wide text-ink-muted">Tạm tính</p>
+      <div className="stagger grid gap-3 sm:grid-cols-4">
+        <Card className="lift p-4"><p className="text-xs uppercase tracking-wide text-ink-muted">Lượt vãng lai hôm nay</p>
+          <p className="mt-1 text-2xl font-bold">{todayItems.length}</p></Card>
+        <Card className="lift p-4"><p className="text-xs uppercase tracking-wide text-ink-muted">Đang phục vụ</p>
+          <p className="mt-1 text-2xl font-bold">{todayItems.filter((a) => ['arrived', 'in_progress'].includes(a.status)).length}</p></Card>
+        <Card className="lift p-4"><p className="text-xs uppercase tracking-wide text-ink-muted">Hẹn ngày khác</p>
+          <p className="mt-1 text-2xl font-bold">{upcomingItems.length}</p></Card>
+        <Card className="lift p-4"><p className="text-xs uppercase tracking-wide text-ink-muted">Tạm tính hôm nay</p>
           <p className="mt-1 text-2xl font-bold text-teal-700">{formatVnd(revenue)}</p></Card>
       </div>
 
+      <div role="tablist" aria-label="Lọc lịch vãng lai" className="inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+        {([['today', `Hôm nay (${todayItems.length})`], ['upcoming', `Sắp tới (${upcomingItems.length})`]] as const).map(([id, label]) => (
+          <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => setView(id)}
+                  className={`rounded-lg px-3.5 py-1.5 text-sm font-semibold transition-all duration-200 active:scale-95
+                    ${view === id ? 'bg-teal-600 text-white shadow-sm' : 'text-ink-muted hover:bg-slate-100 hover:text-ink'}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
       {loading ? <Spinner /> : items.length === 0 ? (
-        <EmptyState icon={<UserPlus size={30} />} title="Chưa có khách vãng lai hôm nay"
-                    description="Bấm “Tạo lịch vãng lai” khi có khách tới quầy."
+        <EmptyState icon={<UserPlus size={30} />}
+                    title={view === 'today' ? 'Chưa có khách vãng lai hôm nay' : 'Chưa có lịch vãng lai hẹn ngày khác'}
+                    description="Bấm “Tạo lịch vãng lai” khi có khách tới quầy hoặc gọi điện đặt trước."
                     action={<Button size="sm" onClick={() => setOpen(true)}>Tạo lịch vãng lai</Button>} />
       ) : (
-        <div className="table-wrap">
+        <div className="table-wrap animate-fade-in">
           <table className="table">
             <thead><tr><th>Giờ</th><th>Mã</th><th>Khách</th><th>Dịch vụ</th><th>Thợ</th><th>Trạng thái</th><th /></tr></thead>
             <tbody>
               {items.map((a) => (
-                <tr key={a.id} className="cursor-pointer" onClick={() => setSelected(a)}>
-                  <td className="whitespace-nowrap font-semibold">{a.startTime}–{a.endTime}</td>
+                <tr key={a.id} className={`cursor-pointer ${flashId === a.id ? 'bg-teal-50/80 ring-1 ring-inset ring-teal-300' : ''}`}
+                    onClick={() => setSelected(a)}>
+                  <td className="whitespace-nowrap font-semibold">
+                    {a.startTime}–{a.endTime}
+                    {a.date !== today && (
+                      <span className="mt-0.5 flex items-center gap-1 text-[11px] font-medium text-ink-muted">
+                        <CalendarDays size={11} /> {formatDate(`${a.date}T00:00:00+07:00`)}
+                      </span>
+                    )}
+                  </td>
                   <td className="font-mono text-xs">{a.code}</td>
                   <td>{a.customer.fullName}<span className="block text-xs text-ink-muted">{a.customer.phone}</span></td>
                   <td className="text-xs text-ink-soft">{a.services.map((s) => s.name).join(', ')}</td>
@@ -526,7 +595,7 @@ export function WalkInPage() {
         </div>
       )}
 
-      <WalkInModal open={open} onClose={() => setOpen(false)} onCreated={() => void load()} />
+      <WalkInModal open={open} onClose={() => setOpen(false)} onCreated={handleCreated} />
       <AppointmentDrawer appointment={selected} onClose={() => setSelected(null)} onChanged={load} />
     </div>
   );

@@ -2,7 +2,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { KeyRound, Lock, Plus, Search, Unlock, UserCog } from 'lucide-react';
 import { getErrorMessage, usersApi } from '@/api';
 import type { Role, UserRow } from '@/types';
-import { Button, ConfirmDialog, EmptyState, Field, Input, Modal, Pagination, SectionTitle, Select, TableSkeleton } from '@/components';
+import {
+  Button, ConfirmDialog, EmptyState, Field, Input, Modal, Pagination, SectionTitle, Select, TableSkeleton,
+  TempPasswordDialog, type TempCredential,
+} from '@/components';
 import { ROLE_LABELS } from '@/utils/constants';
 import { formatDateTime, VN_PHONE_REGEX } from '@/utils/format';
 import { useAuth } from '@/contexts/AuthContext';
@@ -23,6 +26,8 @@ export function UsersPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<UserRow | null>(null);
   const [resetTarget, setResetTarget] = useState<UserRow | null>(null);
+  /** Lỗi 4: thông tin đăng nhập tạm vừa sinh, hiển thị trong hộp thoại để sao chép. */
+  const [credential, setCredential] = useState<TempCredential | null>(null);
 
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -75,7 +80,7 @@ export function UsersPage() {
         const created = await usersApi.create({
           fullName: fullName.trim(), email: email.trim(), phone: phone || undefined, role, isActive,
         });
-        toast.success(`Đã tạo tài khoản, mật khẩu tạm gửi tới ${created.tempPasswordSentTo}`);
+        setCredential({ fullName: created.fullName, email: created.email, password: created.tempPassword ?? null, kind: 'created' });
       }
       setFormOpen(false);
       void load();
@@ -92,7 +97,7 @@ export function UsersPage() {
         title="Tài khoản nhân sự"
         description={readOnly
           ? 'Chủ tiệm chỉ được xem danh sách. Chỉ Quản trị hệ thống mới tạo hoặc sửa tài khoản.'
-          : 'Tạo tài khoản sẽ sinh mật khẩu tạm gửi qua email, người dùng buộc đổi ở lần đăng nhập đầu tiên.'}
+          : 'Tạo tài khoản sẽ sinh mật khẩu tạm (hiển thị ngay để sao chép, đồng thời gửi qua email); người dùng buộc đổi ở lần đăng nhập đầu tiên.'}
         action={!readOnly && <Button size="sm" icon={<Plus size={15} />} onClick={openCreate}>Tạo tài khoản</Button>}
       />
 
@@ -217,12 +222,14 @@ export function UsersPage() {
           if (!resetTarget) return;
           try {
             const res = await usersApi.resetPassword(resetTarget.id);
-            toast.success(`Đã gửi mật khẩu tạm tới ${res.sentTo}`);
+            setCredential({ fullName: resetTarget.fullName, email: res.sentTo, password: res.tempPassword ?? null, kind: 'reset' });
             void load();
           } catch (e) { toast.error(getErrorMessage(e)); }
         }}
         onClose={() => setResetTarget(null)}
       />
+
+      <TempPasswordDialog credential={credential} onClose={() => setCredential(null)} />
     </div>
   );
 }
