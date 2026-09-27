@@ -3,7 +3,7 @@ import { Check, Clock, Search } from 'lucide-react';
 import { getErrorMessage, publicApi } from '@/api';
 import type { PublicCatalogGroup } from '@/types';
 import { EmptyState, Input, ListSkeleton, SmartImage } from '@/components';
-import { assignServiceImages } from '@/utils/images';
+import { assignServiceImages, serviceMediaKind } from '@/utils/images';
 import { formatDuration } from '@/utils/format';
 import { MAX_SERVICES_PER_BOOKING } from '@/utils/constants';
 import { useBooking } from '@/contexts/BookingContext';
@@ -86,7 +86,8 @@ export function Step1Services() {
                         ${isOn ? 'border-teal-600 bg-teal-600 text-white' : 'border-slate-300 bg-white'}`}>
                         {isOn && <Check size={14} strokeWidth={3} className="animate-fade-in-scale" />}
                       </span>
-                      <SmartImage src={photos[s.id]} alt="" loading="lazy" className="hidden h-16 w-16 shrink-0 rounded-xl xs:block" />
+                      <SmartImage src={photos[s.id]} alt="" loading="lazy" className="hidden h-16 w-16 shrink-0 rounded-xl xs:block"
+                                  kind={serviceMediaKind({ name: s.name, categoryId: group.categoryId, categoryName: group.categoryName })} />
                       <span className="min-w-0 flex-1">
                         <span className="block font-semibold text-slate-900">{s.name}</span>
                         {s.description && (

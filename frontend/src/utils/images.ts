@@ -35,10 +35,11 @@ export const STYLIST_PHOTOS = {
 
 /** Ảnh cố định cho thợ mẫu (khớp giới tính theo tên). */
 const STYLIST_BY_ID: Record<string, string> = {
-  st1: STYLIST_PHOTOS.stylist_1, // Nguyễn Minh Anh
-  st2: STYLIST_PHOTOS.stylist_5, // Trần Bảo Ngọc
-  st3: STYLIST_PHOTOS.stylist_2, // Lê Hoàng Phúc
-  st4: STYLIST_PHOTOS.stylist_3, // Phạm Thanh Hà
+  st1: STYLIST_PHOTOS.stylist_1, // Nguyễn Thu Hà      — stylist1@salon.vn
+  st2: STYLIST_PHOTOS.stylist_2, // Trần Minh Tuấn     — stylist2@salon.vn
+  st3: STYLIST_PHOTOS.stylist_3, // Lê Thị Bích Ngọc   — stylist3@salon.vn
+  st4: STYLIST_PHOTOS.stylist_4, // Phạm Quốc Bảo      — stylist4@salon.vn
+  st5: STYLIST_PHOTOS.stylist_5, // Võ Kim Chi         — stylist5@salon.vn
 };
 const STYLIST_POOL = Object.values(STYLIST_PHOTOS);
 
@@ -121,6 +122,31 @@ const hash = (s: string) => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >
 export function stylistPhoto(id: string, url?: string | null): string {
   if (url && !url.includes('images.unsplash.com')) return url;
   return STYLIST_BY_ID[id] ?? url ?? STYLIST_POOL[hash(id) % STYLIST_POOL.length];
+}
+
+/** Chủ đề hình ảnh của dịch vụ — quyết định nền gradient + biểu tượng khi ảnh không tải được. */
+export type MediaKind = 'hair' | 'wash' | 'skin' | 'massage' | 'combo' | 'nail' | 'spa' | 'person';
+
+const KIND_BY_CATEGORY: Record<string, MediaKind> = { hair: 'hair', wash: 'wash', skin: 'skin', combo: 'combo' };
+
+/** Nhận diện chủ đề dịch vụ theo tên (bỏ dấu) rồi tới nhóm, dùng cho nền dự phòng offline. */
+export function serviceMediaKind(service: { name: string; categoryId?: string; categoryName?: string }): MediaKind {
+  const name = stripAccents(service.name);
+  if (/(nail|\bmong\b|son gel)/.test(name)) return 'nail';
+  if (/(combo|\bvip\b|tron goi|mot ngay|cap doi)/.test(name)) return 'combo';
+  if (/(massage|vai gay|tinh dau|aroma|bam huyet)/.test(name)) return 'massage';
+  if (/(\bgoi\b|thao moc|duong sinh)/.test(name)) return 'wash';
+  if (/(\bda\b|facial|mat na|\bmun\b|cap am|skin)/.test(name)) return 'skin';
+  if (/(\btoc\b|\bcat\b|nhuom|\buon\b|hair|barber)/.test(name)) return 'hair';
+  const byId = KIND_BY_CATEGORY[service.categoryId ?? ''];
+  if (byId) return byId;
+  const category = stripAccents(service.categoryName ?? '');
+  if (/\btoc\b/.test(category)) return 'hair';
+  if (/\bgoi\b/.test(category)) return 'wash';
+  if (/\bda\b/.test(category)) return 'skin';
+  if (/massage/.test(category)) return 'massage';
+  if (/combo/.test(category)) return 'combo';
+  return 'spa';
 }
 
 export const initials = (name: string) =>

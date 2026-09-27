@@ -17,8 +17,9 @@ export const stylistsApi = {
   async findOne(id: string): Promise<Stylist> {
     return unwrap<Stylist>(await api.get(`/stylists/${id}`));
   },
-  async create(payload: Partial<Stylist> & { fullName: string }): Promise<Stylist> {
-    return unwrap<Stylist>(await api.post('/stylists', payload));
+  /** Khi có email, máy chủ tạo kèm tài khoản Thợ và trả `tempPassword` để hiển thị một lần. */
+  async create(payload: Partial<Stylist> & { fullName: string }): Promise<Stylist & { tempPassword?: string | null }> {
+    return unwrap<Stylist & { tempPassword?: string | null }>(await api.post('/stylists', payload));
   },
   async update(id: string, payload: Partial<Stylist>): Promise<Stylist> {
     return unwrap<Stylist>(await api.patch(`/stylists/${id}`, payload));

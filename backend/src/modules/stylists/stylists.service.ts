@@ -132,7 +132,7 @@ export class StylistsService {
     return (await this.decorate([stylist]))[0];
   }
 
-  async create(dto: CreateStylistDto): Promise<StylistView> {
+  async create(dto: CreateStylistDto): Promise<StylistView & { tempPassword: string | null }> {
     if (dto.userId) {
       const user = await this.userRepo.findOne({ where: { id: dto.userId } });
       if (!user) throw new NotFoundException(MSG.USER_NOT_FOUND);
@@ -185,7 +185,8 @@ export class StylistsService {
         kind: EmailKind.ACCOUNT_CREATED, toEmail: email, toName: saved.fullName, subject: tpl.subject, html: tpl.html,
       });
     }
-    return this.findOne(saved.id);
+    // Trả mật khẩu tạm MỘT lần cho người tạo để hiển thị/sao chép ngay (Sprint 1 – Lỗi 4)
+    return { ...(await this.findOne(saved.id)), tempPassword };
   }
 
   async update(id: string, dto: UpdateStylistDto): Promise<StylistView> {

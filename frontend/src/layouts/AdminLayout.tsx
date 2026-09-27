@@ -5,8 +5,8 @@ import {
   LogOut, Menu, Receipt, ScrollText, Scissors, Settings, Ticket, UserCircle2, Users, X,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { NotificationBell } from '@/components';
-import { ROLE_LABELS } from '@/utils/constants';
+import { BackButton, NotificationBell } from '@/components';
+import { ROLE_LABELS, ROLE_LANDING } from '@/utils/constants';
 import type { Role } from '@/types';
 
 interface NavItem {
@@ -78,6 +78,10 @@ export function AdminLayout() {
         .filter((g) => g.items.length > 0),
     [user],
   );
+
+  // Lỗi 8: mọi trang con (không phải trang chính của vai trò) đều có nút "← Quay lại"
+  const landing = user ? ROLE_LANDING[user.role] ?? '/quan-ly' : '/quan-ly';
+  const showBack = location.pathname.replace(/\/+$/, '') !== landing.replace(/\/+$/, '');
 
   const handleLogout = async () => {
     await logout();
@@ -171,6 +175,11 @@ export function AdminLayout() {
 
         <main className="min-w-0 flex-1 p-3 sm:p-6">
           <div key={location.pathname} className="animate-fade">
+            {showBack && (
+              <div className="no-print mb-3 animate-slide-in-right-soft">
+                <BackButton to={landing} />
+              </div>
+            )}
             <Outlet />
           </div>
         </main>

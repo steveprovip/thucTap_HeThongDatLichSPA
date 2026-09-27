@@ -8,3 +8,5 @@ export * from './DateNav';
 export * from './NotificationBell';
 export * from './Media';
 export * from './Skeleton';
+export * from './TempPasswordDialog';
+export * from './BackButton';

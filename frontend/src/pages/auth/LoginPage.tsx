@@ -66,9 +66,10 @@ export function LoginPage() {
     setBusy(false);
   };
 
-  const quickLogin = async (mail: string, role: string) => {
-    setEmail(mail); setPassword('demo1234'); setBusyRole(role);
-    await doLogin(mail, 'demo1234');
+  /** Đăng nhập 1 chạm: điền ĐÚNG email + mật khẩu mẫu của vai trò (DEMO_ACCOUNTS) rồi gửi luôn. */
+  const quickLogin = async (mail: string, pw: string, role: string) => {
+    setEmail(mail); setPassword(pw); setBusyRole(role); setTouched(false);
+    await doLogin(mail, pw);
     setBusyRole(null);
   };
 
@@ -125,12 +126,13 @@ export function LoginPage() {
         </form>
       </Card>
 
-      {DEMO_MODE && (
+      {(DEMO_MODE || import.meta.env.DEV) && (
         <div className="mt-4">
           <DemoRoleButtons
+            demo={DEMO_MODE}
             busyRole={busyRole}
             onPick={quickLogin}
-            onCustomer={() => { setDemoRole('customer'); navigate('/dat-lich'); }}
+            onCustomer={DEMO_MODE ? () => { setDemoRole('customer'); navigate('/dat-lich'); } : undefined}
           />
         </div>
       )}
