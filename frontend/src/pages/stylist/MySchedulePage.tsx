@@ -5,6 +5,7 @@ import type { Appointment, VisitHistoryItem } from '@/types';
 import { Button, Card, DateNav, EmptyState, Field, Modal, SectionTitle, StatusBadge, Textarea, ListSkeleton } from '@/components';
 import { formatDate, formatDuration, todayISO } from '@/utils/format';
 import { useToast } from '@/contexts/ToastContext';
+import { useAppointmentsSync } from '@/utils/liveSync';
 
 /** S3-08 + S4-03: lịch cá nhân của thợ, bấm bắt đầu / hoàn tất và ghi chú kỹ thuật. */
 export function MySchedulePage() {
@@ -31,6 +32,7 @@ export function MySchedulePage() {
   }, [toast]);
 
   useEffect(() => { void load(date); }, [date, load]);
+  useAppointmentsSync(() => { void load(date); });
   useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 30_000); return () => window.clearInterval(timer); }, []);
 
   const act = async (a: Appointment, kind: 'start' | 'complete') => {

@@ -21,6 +21,8 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
   }
 
   handleRequest<TUser>(err: unknown, user: TUser, info: unknown): TUser {
+    // Giữ nguyên thông điệp cụ thể từ JwtStrategy (vd. tài khoản đã ngưng hoạt động)
+    if (err instanceof UnauthorizedException) throw err;
     if (err || !user) {
       const message =
         info && (info as Error).name === 'TokenExpiredError' ? MSG.TOKEN_EXPIRED : MSG.TOKEN_INVALID;

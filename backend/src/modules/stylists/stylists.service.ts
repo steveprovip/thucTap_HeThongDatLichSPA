@@ -1,6 +1,8 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Between, DataSource, In, Repository } from 'typeorm';
+import * as bcrypt from 'bcryptjs';
 import { Stylist } from '../../database/entities/stylist.entity';
 import { StylistService as StylistServiceLink } from '../../database/entities/stylist-service.entity';
 import { StylistShift } from '../../database/entities/stylist-shift.entity';
@@ -8,7 +10,12 @@ import { StylistTimeOff } from '../../database/entities/stylist-time-off.entity'
 import { ServiceItem } from '../../database/entities/service.entity';
 import { Appointment, ACTIVE_STATUSES } from '../../database/entities/appointment.entity';
 import { User } from '../../database/entities/user.entity';
+import { EmailKind } from '../../database/entities/email-queue.entity';
+import { Role } from '../../common/constants/roles.constant';
 import { MSG } from '../../common/constants/messages.constant';
+import { generateTempPassword } from '../../common/utils/code.util';
+import { MailService } from '../notifications/mail.service';
+import { MailTemplates } from '../notifications/mail-templates';
 import {
   addDays, combine, dayOfWeek, DOW_LABELS, endOfDay, startOfDay, timeToMinutes, trimSeconds,
 } from '../../common/utils/time.util';
@@ -21,6 +28,8 @@ import {
 export interface StylistView {
   id: string;
   userId: string | null;
+  /** Email đăng nhập của tài khoản nhân sự gắn với hồ sơ (null nếu chưa có tài khoản). */
+  email: string | null;
   fullName: string;
   phone: string | null;
   avatarUrl: string | null;
@@ -49,6 +58,8 @@ export interface ShiftView {
 export class StylistsService {
   constructor(
     private readonly dataSource: DataSource,
+    private readonly config: ConfigService,
+    private readonly mail: MailService,
     private readonly workingHours: WorkingHoursService,
     @InjectRepository(Stylist) private readonly stylistRepo: Repository<Stylist>,
     @InjectRepository(StylistServiceLink) private readonly linkRepo: Repository<StylistServiceLink>,
@@ -66,6 +77,9 @@ export class StylistsService {
     const links = await this.linkRepo.find({ where: { stylistId: In(ids) } });
     const services = await this.serviceRepo.find();
     const serviceMap = new Map(services.map((s) => [s.id, s.name]));
+    const userIds = stylists.map((s) => s.userId).filter((v): v is string => !!v);
+    const users = userIds.length ? await this.userRepo.find({ where: { id: In(userIds) } }) : [];
+    const emailMap = new Map(users.map((u) => [u.id, u.email]));
 
     const ratings = await this.dataSource.query(
       `SELECT stylist_id, COUNT(*)::int AS cnt, ROUND(AVG(rating)::numeric, 2)::float AS avg
@@ -85,6 +99,7 @@ export class StylistsService {
       return {
         id: s.id,
         userId: s.userId,
+        email: s.userId ? emailMap.get(s.userId) ?? null : null,
         fullName: s.fullName,
         phone: s.phone,
         avatarUrl: s.avatarUrl,
@@ -117,21 +132,42 @@ export class StylistsService {
     return (await this.decorate([stylist]))[0];
   }
 
-  async create(dto: CreateStylistDto): Promise<StylistView> {
+  async create(dto: CreateStylistDto): Promise<StylistView & { tempPassword: string | null }> {
     if (dto.userId) {
       const user = await this.userRepo.findOne({ where: { id: dto.userId } });
       if (!user) throw new NotFoundException(MSG.USER_NOT_FOUND);
       const taken = await this.stylistRepo.findOne({ where: { userId: dto.userId } });
       if (taken) throw new ConflictException('Tài khoản này đã gắn với một hồ sơ thợ khác');
     }
+    // Có email mà chưa gắn tài khoản -> tạo luôn tài khoản vai trò Thợ để hồ sơ và tài khoản khớp nhau
+    const email = !dto.userId && dto.email ? dto.email.trim().toLowerCase() : null;
+    if (email) {
+      const existed = await this.userRepo
+        .createQueryBuilder('u').where('lower(u.email) = :email', { email }).getOne();
+      if (existed) throw new ConflictException({ message: MSG.EMAIL_DUPLICATED, field: 'email' });
+    }
+    const tempPassword = email ? generateTempPassword() : null;
     const saved = await this.dataSource.transaction(async (manager) => {
+      let userId = dto.userId ?? null;
+      if (email && tempPassword) {
+        const user = await manager.save(manager.create(User, {
+          fullName: dto.fullName.trim(),
+          email,
+          phone: dto.phone ?? null,
+          role: Role.STYLIST,
+          isActive: dto.isActive ?? true,
+          mustChangePassword: true,
+          passwordHash: await bcrypt.hash(tempPassword, this.config.get<number>('security.bcryptRounds')!),
+        }));
+        userId = user.id;
+      }
       const stylist = await manager.save(
         manager.create(Stylist, {
           fullName: dto.fullName.trim(),
           phone: dto.phone ?? null,
           bio: dto.bio ?? null,
           isActive: dto.isActive ?? true,
-          userId: dto.userId ?? null,
+          userId,
         }),
       );
       if (dto.serviceIds?.length) {
@@ -143,7 +179,14 @@ export class StylistsService {
       }
       return stylist;
     });
-    return this.findOne(saved.id);
+    if (email && tempPassword) {
+      const tpl = MailTemplates.accountCreated(this.mail.salonInfo, saved.fullName, email, tempPassword);
+      await this.mail.enqueue({
+        kind: EmailKind.ACCOUNT_CREATED, toEmail: email, toName: saved.fullName, subject: tpl.subject, html: tpl.html,
+      });
+    }
+    // Trả mật khẩu tạm MỘT lần cho người tạo để hiển thị/sao chép ngay (Sprint 1 – Lỗi 4)
+    return { ...(await this.findOne(saved.id)), tempPassword };
   }
 
   async update(id: string, dto: UpdateStylistDto): Promise<StylistView> {
@@ -155,8 +198,20 @@ export class StylistsService {
     if (dto.bio !== undefined) stylist.bio = dto.bio;
     if (dto.isActive !== undefined) stylist.isActive = dto.isActive;
 
+    // Đồng bộ ngược sang tài khoản nhân sự: thợ nghỉ việc mất quyền truy cập ngay (S1-02, S1-07)
+    const user = stylist.userId ? await this.userRepo.findOne({ where: { id: stylist.userId } }) : null;
+    if (user) {
+      if (dto.fullName !== undefined) user.fullName = stylist.fullName;
+      if (dto.phone !== undefined) user.phone = stylist.phone;
+      if (dto.isActive !== undefined && user.isActive !== dto.isActive) {
+        user.isActive = dto.isActive;
+        if (!dto.isActive) user.sessionsValidFrom = new Date();
+      }
+    }
+
     await this.dataSource.transaction(async (manager) => {
       await manager.save(Stylist, stylist);
+      if (user) await manager.save(User, user);
       if (dto.serviceIds) {
         await manager.delete(StylistServiceLink, { stylistId: id });
         if (dto.serviceIds.length) {

@@ -8,7 +8,7 @@ import {
 import { appointmentsApi, getErrorMessage, stylistsApi } from '@/api';
 import type { Appointment, AppointmentStatus, Availability, Stylist, VisitHistoryItem } from '@/types';
 import {
-  Button, ConfirmDialog, Field, Modal, Notice, Select, StatusBadge, Textarea,
+  BackButton, Button, ConfirmDialog, Field, Modal, Notice, Select, StatusBadge, Textarea,
 } from '@/components';
 import { formatDate, formatDateTime, formatDuration, formatTime } from '@/utils/format';
 import { STATUS_LABELS } from '@/utils/constants';
@@ -151,6 +151,7 @@ export function AppointmentDrawer({ appointment, onClose, onChanged }: Appointme
         {/* Đầu ngăn kéo */}
         <header className="flex items-start justify-between gap-3 border-b border-slate-200 px-5 py-4">
           <div className="min-w-0">
+            <BackButton onClick={close} className="mb-2.5" />
             <p className="font-mono text-xs tracking-widest text-ink-muted">{a.code}</p>
             <h3 className="mt-0.5 truncate text-lg font-semibold text-slate-900">{a.customer.fullName}</h3>
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">

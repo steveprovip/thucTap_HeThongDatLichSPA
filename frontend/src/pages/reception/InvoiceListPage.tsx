@@ -7,6 +7,7 @@ import { Button, EmptyState, Pagination, SectionTitle, TableSkeleton } from '@/c
 import { formatDateTime, todayISO, addDaysISO } from '@/utils/format';
 import { PAYMENT_LABELS } from '@/utils/constants';
 import { useToast } from '@/contexts/ToastContext';
+import { useAppointmentsSync } from '@/utils/liveSync';
 
 export function InvoiceListPage() {
   const [from, setFrom] = useState(addDaysISO(todayISO(), -7));
@@ -29,6 +30,7 @@ export function InvoiceListPage() {
   }, [from, to, page, toast]);
 
   useEffect(() => { void load(); }, [load]);
+  useAppointmentsSync(() => { void load(); });
 
   return (
     <div className="space-y-3">

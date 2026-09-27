@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, PanelRightOpen } from 'lucide-react';
+import { useParams } from 'react-router-dom';
+import { PanelRightOpen } from 'lucide-react';
 import { appointmentsApi, getErrorMessage } from '@/api';
 import type { Appointment } from '@/types';
-import { Button, Card, EmptyState, SectionTitle, Spinner, StatusBadge } from '@/components';
+import { BackButton, Button, Card, EmptyState, SectionTitle, Spinner, StatusBadge } from '@/components';
 import { formatDuration } from '@/utils/format';
 import { useToast } from '@/contexts/ToastContext';
 import { AppointmentDrawer } from './AppointmentDrawer';
@@ -29,9 +29,7 @@ export function AppointmentDetailPage() {
 
   useEffect(() => { void load(); }, [load]);
 
-  const back = (
-    <Link to="/quan-ly/lich-hen" className="btn btn-ghost btn-sm"><ArrowLeft size={15} /> Danh sách lịch hẹn</Link>
-  );
+  const back = <BackButton to="/quan-ly/lich-hen" label="Danh sách lịch hẹn" />;
 
   if (loading) return <Spinner />;
   if (!appointment) {
@@ -40,7 +38,7 @@ export function AppointmentDetailPage() {
 
   return (
     <div className="space-y-3">
-      <SectionTitle title={`Lịch hẹn ${appointment.code}`} action={back} />
+      <SectionTitle title={`Lịch hẹn ${appointment.code}`} />
       <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
         <div>
           <p className="font-semibold">{appointment.customer.fullName}</p>

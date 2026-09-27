@@ -93,21 +93,27 @@ export function PasswordStrength({ value, extra = [] }: {
 }
 
 /** Nút đăng nhập nhanh theo vai trò — chỉ hiện ở chế độ demo. */
-export function DemoRoleButtons({ onPick, busyRole, onCustomer }: {
-  onPick: (email: string, role: string) => void; busyRole?: string | null; onCustomer?: () => void;
+export function DemoRoleButtons({ onPick, busyRole, onCustomer, demo = true }: {
+  onPick: (email: string, password: string, role: string) => void; busyRole?: string | null; onCustomer?: () => void;
+  /** true = bản demo (dữ liệu trong trình duyệt); false = đang gọi máy chủ NestJS thật. */
+  demo?: boolean;
 }) {
   return (
-    <div className="rounded-2xl border border-teal-200 bg-teal-50/50 p-4">
+    <div className="animate-fade-in rounded-2xl border border-teal-200 bg-teal-50/50 p-4">
       <p className="flex items-center gap-2 text-sm font-semibold text-teal-700">
-        <UsersRound size={16} /> Đăng nhập nhanh (bản demo)
+        <UsersRound size={16} /> Đăng nhập nhanh — tài khoản mẫu
       </p>
-      <p className="mt-0.5 text-xs text-ink-muted">Dữ liệu mẫu lưu trong trình duyệt, mật khẩu bất kỳ.</p>
-      <div className="mt-3 grid grid-cols-2 gap-2">
+      <p className="mt-0.5 text-xs text-ink-muted">
+        {demo ? 'Dữ liệu mẫu lưu trong trình duyệt. ' : 'Khớp dữ liệu seed của máy chủ. '}
+        Bấm một vai trò để điền đúng email + mật khẩu và đăng nhập ngay.
+      </p>
+      <div className="stagger mt-3 grid grid-cols-2 gap-2">
         {DEMO_ACCOUNTS.map((acc) => (
-          <button key={acc.role} type="button" disabled={!!busyRole} onClick={() => onPick(acc.email, acc.role)}
-                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-left transition-colors hover:border-teal-600 disabled:opacity-50">
+          <button key={acc.role} type="button" disabled={!!busyRole} onClick={() => onPick(acc.email, acc.password, acc.role)}
+                  className="group rounded-xl border border-slate-200 bg-white px-3 py-2 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-teal-600 hover:shadow-card-hover active:scale-95 disabled:opacity-50">
             <span className="block text-sm font-semibold">{busyRole === acc.role ? 'Đang vào…' : acc.label}</span>
-            <span className="block truncate text-[11px] text-ink-muted">{acc.hint}</span>
+            <span className="block truncate font-mono text-[11px] text-teal-700">{acc.email}</span>
+            <span className="block truncate font-mono text-[11px] text-ink-muted">{acc.password}</span>
           </button>
         ))}
       </div>
