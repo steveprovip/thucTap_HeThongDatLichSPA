@@ -8,6 +8,7 @@ import { Button, Card, SectionTitle, Skeleton, StatGridSkeleton, ContentSkeleton
 import { STATUS_LABELS, STATUS_STYLES } from '@/utils/constants';
 import { formatTime, todayISO } from '@/utils/format';
 import { useToast } from '@/contexts/ToastContext';
+import { useAppointmentsSync } from '@/utils/liveSync';
 
 const ORDER: AppointmentStatus[] = [
   'pending', 'confirmed', 'arrived', 'in_progress', 'completed', 'cancelled', 'no_show',
@@ -42,6 +43,7 @@ export function DashboardPage() {
     const id = window.setInterval(() => void load(true), 60_000);
     return () => window.clearInterval(id);
   }, [load]);
+  useAppointmentsSync(() => { void load(true); });
 
   if (loading) return <div className="space-y-5"><Skeleton className="h-7 w-56" /><StatGridSkeleton /><ContentSkeleton rows={5} label="Đang tải hoạt động gần đây…" /></div>;
   if (!data) return null;

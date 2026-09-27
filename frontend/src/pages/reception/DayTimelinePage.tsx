@@ -1,12 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarX2, RefreshCw } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { CalendarX2, RefreshCw, UserPlus } from 'lucide-react';
 import { appointmentsApi, getErrorMessage } from '@/api';
 import type { Appointment, DayTimeline } from '@/types';
 import { Button, DateNav, SectionTitle, StylistAvatar, TimelineSkeleton } from '@/components';
 import { STATUS_BLOCK, STATUS_LABELS, STATUS_STYLES } from '@/utils/constants';
 import { timeToMinutes, todayISO } from '@/utils/format';
+import { useAppointmentsSync } from '@/utils/liveSync';
+import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 import { AppointmentDrawer } from './AppointmentDrawer';
+import { WalkInModal } from './WalkInPage';
+
+/** Số phút từ nửa đêm theo giờ tiệm (Asia/Ho_Chi_Minh), không phụ thuộc múi giờ máy. */
+const salonNowMinutes = (ms: number): number => {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  }).formatToParts(new Date(ms));
+  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? 0);
+  return (get('hour') % 24) * 60 + get('minute') + get('second') / 60;
+};
 
 /** Chiều cao một ô 15 phút (px) — lưới dọc của lịch ngày. */
 const SLOT_H = 30;
@@ -14,12 +27,24 @@ const STEP = 15;
 
 /** S3-01: lịch cả ngày dạng cột theo từng thợ, trục dọc chia theo 15 phút. */
 export function DayTimelinePage() {
-  const [date, setDate] = useState(todayISO());
+  const [params, setParams] = useSearchParams();
+  const initialDate = params.get('date');
+  const [date, setDateState] = useState(initialDate && /^\d{4}-\d{2}-\d{2}$/.test(initialDate) ? initialDate : todayISO());
   const [data, setData] = useState<DayTimeline | null>(null);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Appointment | null>(null);
+  const [walkInOpen, setWalkInOpen] = useState(false);
+  const [flashId, setFlashId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const toast = useToast();
+  const { user } = useAuth();
+  const canWalkIn = user?.role === 'receptionist' || user?.role === 'owner';
+
+  /** Đổi ngày và giữ ?date= trên URL để quay lại / chia sẻ đúng ngày đang xem. */
+  const setDate = useCallback((d: string) => {
+    setDateState(d);
+    setParams(d === todayISO() ? {} : { date: d }, { replace: true });
+  }, [setParams]);
 
   const load = useCallback(async (d: string, silent = false) => {
     if (!silent) setLoading(true);
@@ -33,14 +58,23 @@ export function DayTimelinePage() {
   }, [toast]);
 
   useEffect(() => { void load(date); }, [date, load]);
+  // Lỗi 6: lịch vừa tạo ở quầy / tab khác xuất hiện ngay, không cần bấm "Làm mới"
+  useAppointmentsSync(() => { void load(date, true); });
 
-  // Giữ nguyên vị trí cuộn theo giờ hiện tại khi mở lịch hôm nay
+  const handleWalkInCreated = (a: Appointment) => {
+    setFlashId(a.id);
+    window.setTimeout(() => setFlashId((id) => (id === a.id ? null : id)), 5000);
+    if (a.date !== date) setDate(a.date);
+    else void load(date, true);
+  };
+
+  // Cuộn tới giờ hiện tại MỘT lần khi mở lịch hôm nay (không giật khi dữ liệu tự làm mới)
+  const scrolledFor = useRef<string | null>(null);
   useEffect(() => {
-    if (!data || date !== todayISO() || !scrollRef.current) return;
-    const now = new Date();
-    const nowMin = now.getHours() * 60 + now.getMinutes();
+    if (!data || date !== todayISO() || !scrollRef.current || scrolledFor.current === date) return;
+    scrolledFor.current = date;
     const openMin = timeToMinutes(data.salonOpen);
-    const offset = ((nowMin - openMin) / STEP) * SLOT_H - 120;
+    const offset = ((salonNowMinutes(Date.now()) - openMin) / STEP) * SLOT_H - 120;
     scrollRef.current.scrollTop = Math.max(0, offset);
   }, [data, date]);
 
@@ -68,14 +102,18 @@ export function DayTimelinePage() {
     return () => window.clearInterval(id);
   }, []);
 
+  // Vạch đỏ luôn hiện khi xem hôm nay; ngoài giờ mở cửa thì bám mép trên/dưới lưới (nét đứt) kèm nhãn giờ thật.
+  const nowMinutes = salonNowMinutes(clock);
+  const closeMin = data ? timeToMinutes(data.salonClose) : 0;
+  const outsideHours = !!data && (nowMinutes < openMin || nowMinutes > closeMin);
   const nowLineTop = useMemo(() => {
     if (!data || date !== todayISO()) return null;
-    const now = new Date(clock);
-    const nowMin = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
-    if (nowMin < openMin || nowMin > timeToMinutes(data.salonClose)) return null;
-    return ((nowMin - openMin) / STEP) * SLOT_H;
-  }, [data, date, openMin, clock]);
-  const nowLabel = new Date(clock).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false });
+    const clamped = Math.min(Math.max(nowMinutes, openMin), closeMin);
+    return ((clamped - openMin) / STEP) * SLOT_H;
+  }, [data, date, openMin, closeMin, nowMinutes]);
+  const nowLabel = new Date(clock).toLocaleTimeString('vi-VN', {
+    hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Ho_Chi_Minh',
+  });
 
   return (
     <div className="space-y-3">
@@ -83,9 +121,16 @@ export function DayTimelinePage() {
         title="Lịch hẹn trong ngày"
         description="Mỗi thợ là một cột, trục dọc chia theo 15 phút. Bấm vào một lịch để xử lý."
         action={
-          <Button variant="outline" size="sm" icon={<RefreshCw size={15} />} onClick={() => load(date)}>
-            Làm mới
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" icon={<RefreshCw size={15} />} onClick={() => load(date)}>
+              Làm mới
+            </Button>
+            {canWalkIn && (
+              <Button size="sm" icon={<UserPlus size={15} />} onClick={() => setWalkInOpen(true)}>
+                Khách vãng lai
+              </Button>
+            )}
+          </div>
         }
       />
 
@@ -138,8 +183,8 @@ export function DayTimelinePage() {
                   {nowLineTop !== null && (
                     <div className="pointer-events-none absolute right-1 z-20 -translate-y-1/2 transition-[top] duration-1000 ease-linear"
                          style={{ top: nowLineTop }}>
-                      <span className="inline-flex items-center gap-1 rounded-full bg-rose-500 py-0.5 pl-1 pr-1.5 text-[10px] font-semibold tabular-nums text-white shadow-sm shadow-rose-500/30"
-                            title="Giờ hiện tại">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-red-500 py-0.5 pl-1 pr-1.5 text-[10px] font-semibold tabular-nums text-white shadow-md shadow-red-500/40"
+                            title={outsideHours ? 'Giờ hiện tại (ngoài giờ mở cửa)' : 'Giờ hiện tại'}>
                         <span className="relative flex h-1.5 w-1.5">
                           <span className="animate-ping-soft absolute inline-flex h-full w-full rounded-full bg-white" />
                           <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-white" />
@@ -193,7 +238,9 @@ export function DayTimelinePage() {
                         {/* Phần đã qua trong ngày: phủ nhạt */}
                         <div className="pointer-events-none absolute inset-x-0 top-0 z-[2] bg-white/45 transition-[height] duration-1000 ease-linear"
                              style={{ height: nowLineTop }} aria-hidden />
-                        <div className="pointer-events-none absolute inset-x-0 z-10 h-0 border-t-2 border-rose-500/90 transition-[top] duration-1000 ease-linear"
+                        {/* Vạch đỏ giờ hiện tại: dày 2px, có quầng sáng, nằm trên mọi khối lịch (nhãn giờ ở cột trục) */}
+                        <div className={`pointer-events-none absolute inset-x-0 z-[7] h-[2px] -translate-y-1/2 transition-[top] duration-1000 ease-linear
+                                         ${outsideHours ? 'bg-[repeating-linear-gradient(90deg,#ef4444_0_6px,transparent_6px_10px)]' : 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.55)]'}`}
                              style={{ top: nowLineTop }} aria-hidden />
                       </>
                     )}
@@ -203,8 +250,8 @@ export function DayTimelinePage() {
                         key={a.id}
                         onClick={() => setSelected(a)}
                         className={`absolute inset-x-1 z-[5] overflow-hidden rounded-md border-l-4 px-2 py-1 text-left
-                                    animate-fade-in text-[11px] leading-tight shadow-sm ring-1 ring-slate-900/[0.04] transition-all duration-200 hover:z-[6] hover:shadow-md
-                                    ${STATUS_BLOCK[a.status]}`}
+                                    animate-fade-in text-[11px] leading-tight shadow-sm ring-1 ring-slate-900/[0.04] transition-all duration-200 hover:z-[6] hover:-translate-y-px hover:shadow-md active:scale-[0.98]
+                                    ${STATUS_BLOCK[a.status]} ${flashId === a.id ? 'z-[6] animate-pulse-subtle ring-2 ring-teal-500 ring-offset-1' : ''}`}
                         style={{ top: topOf(a.startTime) + 1, height: heightOf(a.totalDurationMinutes) - 2, animationDelay: `${index * 40}ms` }}
                         title={`${a.startTime}–${a.endTime} · ${a.customer.fullName} · ${a.services.map((s) => s.name).join(', ')}`}
                       >
@@ -234,6 +281,9 @@ export function DayTimelinePage() {
         onClose={() => setSelected(null)}
         onChanged={() => { void load(date, true); }}
       />
+      {canWalkIn && (
+        <WalkInModal open={walkInOpen} onClose={() => setWalkInOpen(false)} onCreated={handleWalkInCreated} />
+      )}
     </div>
   );
 }

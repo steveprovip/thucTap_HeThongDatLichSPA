@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Check, Clock, Wallet } from 'lucide-react';
 import { getErrorField, getErrorMessage, publicApi } from '@/api';
 import type { BookingResult } from '@/types';
-import { Button } from '@/components';
+import { BackButton, Button } from '@/components';
 import { formatDuration, formatVnd, VN_PHONE_REGEX } from '@/utils/format';
 import { useBooking } from '@/contexts/BookingContext';
 import { useToast } from '@/contexts/ToastContext';
@@ -105,6 +105,12 @@ export function BookingWizard() {
 
   return (
     <div className="space-y-4 pb-28 sm:pb-4">
+      {/* Lỗi 8: nút quay lại rõ ràng ở đầu wizard — lùi một bước, ở bước 1 thì về trang trước */}
+      <BackButton
+        label={step > 1 ? `Quay lại bước ${step - 1}` : 'Quay lại'}
+        onClick={step > 1 ? () => setStep(step - 1) : undefined}
+        to="/"
+      />
       {/* Thanh bước */}
       <ol className="grid grid-cols-4 gap-1 sm:gap-2" aria-label="Các bước đặt lịch">
         {STEPS.map((s) => {
