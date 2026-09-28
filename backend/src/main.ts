@@ -58,12 +58,28 @@ async function bootstrap(): Promise<void> {
     .build();
   SwaggerModule.setup(`${prefix}/docs`, app, SwaggerModule.createDocument(app, swagger));
 
+  // Ctrl+C trong cửa sổ launcher -> đóng kết nối CSDL gọn gàng
+  app.enableShutdownHooks();
+
   const port = config.get<number>('app.port')!;
-  await app.listen(port, '0.0.0.0');
+  // Không ép '0.0.0.0': để Node lắng nghe dual-stack (IPv4 + IPv6) nên cả
+  // 127.0.0.1 lẫn ::1 (Windows/macOS hay phân giải "localhost" thành ::1) đều vào được.
+  await app.listen(port);
 
   logger.log(`API chạy tại http://localhost:${port}/${prefix}`);
   logger.log(`Tài liệu API tại http://localhost:${port}/${prefix}/docs`);
   logger.log(`Múi giờ: ${config.get<string>('app.timezone')}`);
 }
 
-void bootstrap();
+bootstrap().catch((err: NodeJS.ErrnoException) => {
+  const logger = new Logger('Bootstrap');
+  if (err?.code === 'EADDRINUSE') {
+    logger.error(
+      `Cổng ${process.env.PORT ?? 3000} đang bị chiếm (có thể hệ thống đã chạy ở một cửa sổ khác). ` +
+        'Đóng cửa sổ đó hoặc đổi PORT trong backend/.env rồi chạy lại.',
+    );
+  } else {
+    logger.error(`Không khởi động được API: ${err?.message ?? err}`, err?.stack);
+  }
+  process.exit(1);
+});
