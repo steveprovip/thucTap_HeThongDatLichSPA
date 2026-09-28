@@ -334,7 +334,7 @@ export class InvoicesService {
     if (params.from) qb.andWhere('i.created_at >= :from', { from: `${params.from}T00:00:00+07:00` });
     if (params.to) qb.andWhere('i.created_at <= :to', { to: `${params.to}T23:59:59+07:00` });
     if (params.status) qb.andWhere('i.status = :st', { st: params.status });
-    qb.orderBy('i.created_at', 'DESC')
+    qb.orderBy('i.createdAt', 'DESC')
       .skip((params.page - 1) * params.limit)
       .take(params.limit);
 

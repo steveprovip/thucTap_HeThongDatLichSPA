@@ -379,7 +379,7 @@ export class BookingService {
         .where('c.phone = :phone', { phone: params.phone })
         .andWhere('a.status IN (:...st)', { st: [...ACTIVE_STATUSES, AppointmentStatus.COMPLETED] });
     }
-    const appointments = await qb.orderBy('a.start_at', 'DESC').take(20).getMany();
+    const appointments = await qb.orderBy('a.startAt', 'DESC').take(20).getMany();
 
     if (!appointments.length) throw new NotFoundException(MSG.CODE_NOT_FOUND);
 
@@ -407,6 +407,8 @@ export class BookingService {
   // =========================================================================
   //  KHÁCH TỰ HUỶ (S3-05)
   // =========================================================================
+  // ip giữ trong chữ ký để controller truyền vào (dành cho giới hạn tần suất sau này)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async cancelByCode(code: string, reason: string | undefined, ip: string) {
     const cutoff = this.config.get<number>('business.cancelCutoffMinutes')!;
     const appt = await this.apptRepo.findOne({ where: { code: code.trim().toUpperCase() } });

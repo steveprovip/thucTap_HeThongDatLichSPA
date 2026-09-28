@@ -220,7 +220,7 @@ export function WalkInModal({ open, onClose, onCreated }: {
       const res = await appointmentsApi.walkIn({
         serviceIds: selectedIds, date, time: startTime, stylistId: resolvedStylist.id,
         fullName: fullName.trim(), phone, email: email.trim() || undefined, note: note.trim() || undefined,
-      }) as Appointment;
+      });
       let final = res;
       if (mode === 'now' && checkInNow) {
         final = await appointmentsApi.checkIn(res.id).catch(() => res);
@@ -503,8 +503,8 @@ export function WalkInPage() {
   // Lỗi 6: lấy cả lịch vãng lai hẹn NGÀY KHÁC (không chỉ hôm nay) để lịch vừa tạo luôn xuất hiện
   const load = useCallback(async () => {
     try {
-      const res = await appointmentsApi.list({ from: todayISO(), to: addDaysISO(todayISO(), UPCOMING_DAYS), page: 1, limit: 500 });
-      setAll(res.items.filter((a) => a.source === 'walk_in').sort(byDateTime));
+      const items = await appointmentsApi.listAll({ from: todayISO(), to: addDaysISO(todayISO(), UPCOMING_DAYS) });
+      setAll(items.filter((a) => a.source === 'walk_in').sort(byDateTime));
     } catch (e) {
       toast.error(getErrorMessage(e));
     } finally {

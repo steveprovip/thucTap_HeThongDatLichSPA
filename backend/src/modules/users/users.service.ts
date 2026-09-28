@@ -69,7 +69,7 @@ export class UsersService {
       const term = `%${normalizeSearch(q.search)}%`;
       qb.andWhere('(f_unaccent(lower(u.full_name)) LIKE :t OR lower(u.email) LIKE :t OR u.phone LIKE :t)', { t: term });
     }
-    qb.orderBy('u.created_at', 'DESC').skip((q.page - 1) * q.limit).take(q.limit);
+    qb.orderBy('u.createdAt', 'DESC').skip((q.page - 1) * q.limit).take(q.limit);
 
     const [entities, total] = await qb.getManyAndCount();
     const stylists = await this.stylistRepo.find();
