@@ -91,7 +91,16 @@ export const getErrorMessage = (error: unknown, fallback = 'Đã xảy ra lỗi,
   const err = error as AxiosError<ApiError>;
   if (err?.response?.data?.message) return err.response.data.message;
   if (err?.code === 'ECONNABORTED') return 'Máy chủ phản hồi quá lâu, vui lòng thử lại';
-  if (err?.message === 'Network Error') return 'Không kết nối được tới máy chủ';
+  if (
+    err?.message === 'Network Error' ||
+    err?.code === 'ERR_NETWORK' ||
+    err?.code === 'ECONNREFUSED' ||
+    err?.response?.status === 502 ||
+    err?.response?.status === 503 ||
+    err?.response?.status === 504
+  ) {
+    return 'Không kết nối được tới máy chủ API (Backend đang khởi động hoặc chưa chạy). Vui lòng đợi vài giây và thử lại.';
+  }
   return fallback;
 };
 
