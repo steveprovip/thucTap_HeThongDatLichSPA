@@ -51,6 +51,16 @@ cat <<'INFO'
     owner@salon.vn      / Owner@123       (Chủ tiệm)
     reception@salon.vn  / Reception@123   (Lễ tân)
     stylist1@salon.vn   / Stylist@123     (Thợ, còn stylist2..5)
-INFO
+(
+  for _ in $(seq 1 60); do
+    sleep 2
+    if curl -s -f http://localhost:3000/health >/dev/null 2>&1; then
+      if command -v xdg-open >/dev/null; then xdg-open http://localhost:5173 >/dev/null 2>&1
+      elif command -v open >/dev/null; then open http://localhost:5173 >/dev/null 2>&1
+      fi
+      break
+    fi
+  done
+) &
 
 npm run start:all
