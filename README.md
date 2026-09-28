@@ -30,8 +30,10 @@ Chỉ cần **bật Docker Desktop** rồi nhấp đúp `run_project.bat` (hoặ
 3. Tạo các tệp `.env` còn thiếu; **tự cài lại gói khi `package.json`/`package-lock.json` đổi** (vd. sau `git pull`).
 4. Kiểm tra cổng 3000/5173 còn trống; nếu hệ thống đang chạy ở cửa sổ khác thì chỉ mở trình duyệt.
 5. Nạp lược đồ + dữ liệu mẫu (tự chờ PostgreSQL tới 120 giây, chạy lại bao nhiêu lần cũng an toàn).
-6. Chạy song song API + giao diện; **trình duyệt chỉ mở khi `GET /health` trả 200** (API biên dịch xong
-   và truy vấn được CSDL) và Vite đã phản hồi.
+6. Chạy API + giao diện dưới **một tiến trình giám sát** (`node scripts/launcher.mjs run`, không qua
+   concurrently/npm): **trình duyệt chỉ mở khi `GET /health` trả 200** (API biên dịch xong và truy vấn được
+   CSDL) và Vite đã phản hồi; dịch vụ nào sập (vd. `exited with code 3221226505`) được **tự khởi động lại**
+   (tối đa 5 lần / 10 phút, kèm giải thích mã lỗi); Ctrl+C dừng sạch cả cây tiến trình, giải phóng cổng 3000/5173.
 
 Biến tuỳ chọn: `SALON_SKIP_DOCKER=1` (dùng PostgreSQL riêng theo `backend/.env`), `SALON_NO_BROWSER=1`.
 Máy đã cài sẵn PostgreSQL chiếm cổng 5432? Đặt `POSTGRES_PORT=5433` trong `.env` và `DB_PORT=5433` trong `backend/.env`.
@@ -155,7 +157,7 @@ npm run db:up            # chỉ dựng docker (postgres, pgadmin, maildev)
 npm run db:reset         # xoá volume và dựng lại từ đầu
 npm run db:seed          # nạp lại dữ liệu mẫu (chạy lại nhiều lần vẫn an toàn)
 npm run start:all        # chạy song song API + giao diện
-npm run start:launch     # như trên + tự mở trình duyệt khi /health = 200 (launcher dùng lệnh này)
+npm run start:launch     # tiến trình giám sát: API + giao diện, tự khởi động lại khi sập, mở trình duyệt khi /health = 200
 npm run build            # build backend và frontend cho môi trường thật
 npm test                 # 35 kiểm thử đơn vị bộ tính khung giờ
 npm run test:e2e         # 25 kiểm thử end-to-end (cần CSDL đang chạy)
@@ -213,6 +215,7 @@ Chạy NestJS + PostgreSQL với `seed.sql`, đăng nhập từng vai trò và m
 | Proxy Vite trả 500 rỗng khi API đang biên dịch | Không có trình xử lý lỗi proxy; đích `localhost` phụ thuộc IPv4/IPv6 | Proxy trỏ `127.0.0.1`, lỗi trả **503 + thông điệp tiếng Việt**; API lắng nghe dual-stack; `strictPort` cho 5173 |
 | `.bat` nhảy nhãn sai / `.sh` báo `$'\r'` trên máy khác | Nhãn `:WAITDB` nằm trong khối `( )`; không cố định kiểu xuống dòng | Không còn nhãn trong khối; thêm `.gitattributes` (`*.bat` CRLF, `*.sh` LF) |
 | `node_modules` cũ sau `git pull` gây lỗi build | Chỉ cài gói khi chưa có thư mục `node_modules` | Cài lại khi hash `package.json` + `package-lock.json` đổi |
+| `[WEB] npm run dev:frontend exited with code 3221226505`, trang web chết dù API vẫn chạy | 3221226505 = `0xC0000409`: Node.js trên Windows abort ở tầng native (assertion libuv khi đóng handle, nodejs/node#56645) — không bắt được bằng JavaScript. concurrently chỉ báo mã thoát rồi bỏ mặc. Bản vá v1.2.4 (`await new Promise(() => {})`) không có tác dụng: Promise treo không giữ được event loop, tiến trình OPEN vẫn thoát ngay | Tiến trình giám sát `launcher.mjs run`: chạy thẳng `node vite.js` / `node nest.js` (bỏ 4 tầng cmd/npm), stdin giữ mở, mở trình duyệt ngay trong tiến trình (không còn tiến trình phụ thoát giữa chừng), giải mã mã thoát, tự khởi động lại, dừng cả cây bằng `taskkill /T` / nhóm tiến trình |
 | Vòng lặp liên kết `node_modules/salon-spa-booking → ..` | Phụ thuộc thừa `"salon-spa-booking": "file:.."` trong backend/frontend | Gỡ bỏ |
 
 ---

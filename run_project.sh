@@ -88,4 +88,6 @@ cat <<'INFO'
 ============================================================
 INFO
 
-exec npm run start:launch
+# Chạy thẳng tiến trình giám sát (không qua npm/concurrently): tự khởi động lại dịch vụ bị sập,
+# Ctrl+C dừng sạch cả cây tiến trình.
+exec node scripts/launcher.mjs run
