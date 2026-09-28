@@ -1,44 +1,74 @@
 #!/usr/bin/env bash
-# Khởi động toàn bộ hệ thống bằng một lệnh trên macOS / Linux.
+# =============================================================================
+#  HỆ THỐNG ĐẶT LỊCH SALON - SPA : khởi động toàn bộ bằng một lệnh (macOS / Linux)
+#  Yêu cầu: Node.js 20+, Docker (đang chạy).
+#  Biến tuỳ chọn: SALON_SKIP_DOCKER=1  -> dùng PostgreSQL riêng (không dùng Docker)
+#                 SALON_NO_BROWSER=1   -> không tự mở trình duyệt
+# =============================================================================
 set -euo pipefail
 cd "$(dirname "$0")"
 
+fail() {
+  echo
+  echo "[LỖI] $*" >&2
+  echo "Khởi động KHÔNG thành công. Đọc thông báo lỗi ở trên rồi chạy lại ./run_project.sh" >&2
+  exit 1
+}
+
 echo "============================================================"
 echo "  HỆ THỐNG ĐẶT LỊCH SALON - SPA"
+echo "  Khởi động bằng MỘT lệnh: docker + backend + frontend"
 echo "============================================================"
+echo
 
-command -v node >/dev/null || { echo "[LỖI] Chưa cài Node.js 20+"; exit 1; }
+# ---------------------------------------------------------------- 1. Node.js
+command -v node >/dev/null 2>&1 || fail "Chưa cài Node.js 20+ (https://nodejs.org)"
+node scripts/launcher.mjs check-node || fail "Phiên bản Node.js quá cũ"
 echo "[1/6] Node.js $(node -v)"
 
-if command -v docker >/dev/null; then
-  echo "[2/6] Dựng PostgreSQL 15, PgAdmin và Maildev..."
-  docker compose up -d
-  printf '      Chờ PostgreSQL sẵn sàng'
-  for _ in $(seq 1 40); do
-    if docker compose exec -T postgres pg_isready -U salon -d salon_booking >/dev/null 2>&1; then
-      echo " — sẵn sàng."; break
+# ---------------------------------------------------------------- 2. Docker
+if [ "${SALON_SKIP_DOCKER:-0}" = "1" ]; then
+  echo "[2/6] Bỏ qua Docker (SALON_SKIP_DOCKER=1). Dùng PostgreSQL theo backend/.env"
+elif command -v docker >/dev/null 2>&1; then
+  echo "[2/6] Kiểm tra Docker ..."
+  tries=0
+  until docker info >/dev/null 2>&1; do
+    tries=$((tries + 1))
+    if [ "$tries" -eq 1 ]; then
+      echo "      Docker chưa sẵn sàng - đang chờ tối đa 2 phút ..."
+      if [ "$(uname -s)" = "Darwin" ]; then open -ga Docker >/dev/null 2>&1 || true; fi
     fi
-    printf '.'; sleep 2
+    [ "$tries" -ge 60 ] && fail "Docker không phản hồi sau 2 phút. Hãy bật Docker Desktop / dịch vụ docker rồi chạy lại."
+    sleep 2
   done
+  echo "      Dựng PostgreSQL 15, PgAdmin và Maildev (lần đầu phải tải image, có thể mất vài phút) ..."
+  docker compose up -d || fail "docker compose up thất bại. Cổng 5432/5050/1080 có thể đang bị chiếm (vd. PostgreSQL cài sẵn): đặt POSTGRES_PORT=5433 trong .env và DB_PORT=5433 trong backend/.env. Nếu trùng tên container: docker rm -f salon_postgres salon_pgadmin salon_maildev"
+  echo "      Container đã chạy."
 else
-  echo "[CẢNH BÁO] Không có Docker, bỏ qua bước dựng hạ tầng."
+  echo "[2/6] [CẢNH BÁO] Không có Docker. Hãy tự đảm bảo PostgreSQL chạy theo backend/.env"
 fi
 
-echo "[3/6] Cài đặt gói..."
-[ -d node_modules ] || npm install --no-fund --no-audit
-[ -d backend/node_modules ] || npm install --prefix backend --no-fund --no-audit
-[ -d frontend/node_modules ] || npm install --prefix frontend --no-fund --no-audit
+# ---------------------------------------------------------------- 3-4. .env + gói + cổng
+echo "[3/6] Chuẩn bị tệp .env và gói npm ..."
+set +e
+node scripts/launcher.mjs prepare
+rc=$?
+set -e
+if [ "$rc" -eq 10 ]; then
+  echo "Hệ thống đang chạy ở một cửa sổ khác - đã mở trình duyệt."
+  exit 0
+fi
+[ "$rc" -eq 0 ] || fail "Chuẩn bị môi trường thất bại"
+echo "[4/6] Cổng 3000 và 5173 đang trống."
 
-echo "[4/6] Chuẩn bị tệp .env..."
-[ -f .env ] || cp .env.example .env
-[ -f backend/.env ] || cp backend/.env.example backend/.env
-[ -f frontend/.env ] || cp frontend/.env.example frontend/.env
+# ---------------------------------------------------------------- 5. Lược đồ + dữ liệu mẫu
+echo "[5/6] Nạp lược đồ và dữ liệu mẫu (chạy lại nhiều lần vẫn an toàn) ..."
+npm run seed --prefix backend || fail "Nạp dữ liệu mẫu thất bại. Xem 'Gợi ý' ở trên; kiểm tra backend/.env"
 
-echo "[5/6] Nạp lược đồ và dữ liệu mẫu..."
-npm run seed --prefix backend
-
+# ---------------------------------------------------------------- 6. Chạy ứng dụng
 cat <<'INFO'
-[6/6] Khởi động API và giao diện...
+
+[6/6] Khởi động API và giao diện ...
 
   API        : http://localhost:3000/api
   Tài liệu   : http://localhost:3000/api/docs
@@ -51,16 +81,11 @@ cat <<'INFO'
     owner@salon.vn      / Owner@123       (Chủ tiệm)
     reception@salon.vn  / Reception@123   (Lễ tân)
     stylist1@salon.vn   / Stylist@123     (Thợ, còn stylist2..5)
-(
-  for _ in $(seq 1 60); do
-    sleep 2
-    if curl -s -f http://localhost:3000/health >/dev/null 2>&1; then
-      if command -v xdg-open >/dev/null; then xdg-open http://localhost:5173 >/dev/null 2>&1
-      elif command -v open >/dev/null; then open http://localhost:5173 >/dev/null 2>&1
-      fi
-      break
-    fi
-  done
-) &
 
-npm run start:all
+  Trình duyệt CHỈ mở khi http://localhost:3000/health trả về 200
+  (API đã biên dịch xong và kết nối được CSDL) - thường mất 15-40 giây.
+  Nhấn Ctrl+C để dừng toàn bộ.
+============================================================
+INFO
+
+exec npm run start:launch
