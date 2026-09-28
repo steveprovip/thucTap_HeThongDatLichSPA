@@ -16,7 +16,7 @@
     "dev:backend": "npm run start:dev --prefix backend",
     "dev:frontend": "npm run dev --prefix frontend",
     "start:all": "concurrently -n \"API,WEB\" -c \"cyan,magenta\" \"npm:dev:backend\" \"npm:dev:frontend\"",
-    "start:launch": "concurrently -n \"API,WEB,OPEN\" -c \"cyan,magenta,green\" \"npm:dev:backend\" \"npm:dev:frontend\" \"node scripts/launcher.mjs open\"",
+    "start:launch": "node scripts/launcher.mjs run",
     "build": "npm run build --prefix backend && npm run build --prefix frontend",
     "test": "npm run test --prefix backend",
     "test:e2e": "npm run test:e2e --prefix backend",
