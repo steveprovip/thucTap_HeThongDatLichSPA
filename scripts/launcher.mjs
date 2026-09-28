@@ -128,19 +128,12 @@ function httpStatus(url, timeoutMs = 2500) {
 
 function openBrowser(url) {
   if (process.env.SALON_NO_BROWSER === '1' || process.env.CI) return;
-  const [cmd, args] =
-    process.platform === 'win32'
-      ? ['cmd', ['/c', 'start', '""', url]] // windowsVerbatimArguments: giữ nguyên "" làm tiêu đề cửa sổ
-      : process.platform === 'darwin'
-        ? ['open', [url]]
-        : ['xdg-open', [url]];
+  const isWin = process.platform === 'win32';
+  const isMac = process.platform === 'darwin';
+  const cmd = isWin ? 'powershell' : isMac ? 'open' : 'xdg-open';
+  const args = isWin ? ['-NoProfile', '-Command', `Start-Process '${url}'`] : [url];
   try {
-    const child = spawn(cmd, args, {
-      stdio: 'ignore',
-      detached: true,
-      windowsHide: true,
-      windowsVerbatimArguments: process.platform === 'win32',
-    });
+    const child = spawn(cmd, args, { stdio: 'ignore', detached: true });
     child.on('error', () => log(`      Hãy tự mở trình duyệt tại ${url}`));
     child.unref();
   } catch {
@@ -186,6 +179,8 @@ async function openWhenReady() {
       log(`  Đăng nhập nhân viên: ${APP_URL}/dang-nhap`);
       log('============================================================');
       openBrowser(APP_URL);
+      // Giữ tiến trình launcher sống không exit để không gây đóng stdio/kill signal lên các tiến trình đồng thời (Vite)
+      await new Promise(() => {});
       return 0;
     }
     if (Date.now() - lastNote > 15000) {
@@ -196,7 +191,8 @@ async function openWhenReady() {
     await sleep(1500);
   }
   err(`[CẢNH BÁO] Sau ${timeoutSec} giây API vẫn chưa sẵn sàng. Xem log [API] phía trên để biết lỗi.`);
-  return 0; // không làm dừng API/WEB
+  await new Promise(() => {});
+  return 0;
 }
 
 /* ------------------------------------------------------------------------ main */
@@ -207,7 +203,9 @@ if (!handlers[cmd]) {
   process.exit(1);
 }
 Promise.resolve(handlers[cmd]())
-  .then((code) => process.exit(code ?? 0))
+  .then((code) => {
+    if (cmd !== 'open') process.exit(code ?? 0);
+  })
   .catch((e) => {
     err(`[LỖI] ${e?.stack ?? e}`);
     process.exit(1);
