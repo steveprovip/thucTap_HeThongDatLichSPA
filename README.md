@@ -175,6 +175,19 @@ npm run lint             # ESLint cho cả hai phía
 | 7 | Dịch vụ đã có lịch hẹn vẫn xoá được, lịch hẹn mất thông tin dịch vụ | Lịch tạo tại quầy giữ đúng dịch vụ do tiệm tự thêm. Dịch vụ có lịch hẹn: nút xoá bị khoá kèm chú thích *“Dịch vụ đã có lịch hẹn, chỉ có thể ngừng kinh doanh”*, bấm vào sẽ đề nghị chuyển sang **Ngừng kinh doanh**. API trả `appointmentCount` cho từng dịch vụ và vẫn chặn xoá (409). |
 | 8 | Thiếu nút quay lại | Thành phần `<BackButton />` (← Quay lại) trên mọi trang con khu quản lý, trang tra cứu / đánh giá, từng bước đặt lịch và ngăn kéo chi tiết lịch hẹn. |
 
+### Rà soát toàn hệ thống với máy chủ thật (28/09/2026)
+
+Chạy NestJS + PostgreSQL với `seed.sql`, đăng nhập từng vai trò và mở mọi trang bằng trình duyệt tự động:
+
+| Lỗi | Nguyên nhân | Khắc phục |
+|---|---|---|
+| *Tổng quan hôm nay* trống, báo “Hệ thống gặp sự cố” | `GET /appointments` lỗi 500: TypeORM dùng `orderBy('a.start_at')` cùng `skip/take` + JOIN | Đổi sang tên thuộc tính (`a.startAt`) ở mọi truy vấn phân trang (lịch hẹn, tra cứu, khách, phiếu, tài khoản) |
+| *Hồ sơ thợ* “Không tìm thấy thợ nào”, báo `limit must not be greater than 200` | Trang gửi `limit=1000` trong khi API tối đa 200 | `appointmentsApi.listAll()` tự lật trang 200 dòng; số liệu công suất lỗi không còn làm trống danh sách thợ |
+| Ảnh “Trị mụn chuyên sâu” trống | Ảnh Unsplash cũ đã bị gỡ | Thay ảnh (đã kiểm tra tải được), thêm ảnh cho Trang điểm / Móng / Đá nóng; ảnh lỗi tự thử 2 ảnh dự phòng cùng chủ đề |
+| Tạo lịch vãng lai ở chế độ máy chủ thật không check-in / không hiện | API trả `{ appointmentId }` chứ không phải lịch hẹn đầy đủ | `appointmentsApi.walkIn()` chuẩn hoá, luôn trả lịch hẹn đầy đủ |
+| Báo lỗi hiện 2 lần | StrictMode gọi API 2 lần | Toast tự bỏ thông báo trùng trong 2,5 giây |
+| Doanh thu / Khung giờ lệch 1 ngày trước 7h sáng | Ngày lấy theo UTC | Lấy theo giờ tiệm (Asia/Ho_Chi_Minh) |
+
 ---
 
 ## Tài liệu kèm theo

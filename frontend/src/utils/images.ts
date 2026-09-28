@@ -1,6 +1,11 @@
 /**
  * Thư viện ảnh HD cho dịch vụ & chuyên viên.
  * Mỗi dịch vụ / thợ có ảnh riêng — không dùng chung một ảnh cho cả danh mục.
+ *
+ * TOÀN BỘ mã ảnh dưới đây đã được kiểm tra tải được thật (28/09/2026). Ảnh cũ
+ * `photo-1512290900672-1f5be661f061` (trị mụn) đã bị Unsplash gỡ → gây khung ảnh trống, nay đã thay.
+ * Nếu sau này một ảnh bị gỡ, SmartImage tự thử ảnh dự phòng cùng chủ đề (KIND_ALTERNATES)
+ * rồi mới tới nền gradient — không bao giờ lộ khung ảnh vỡ.
  */
 const u = (id: string, w = 800, q = 80) => `https://images.unsplash.com/photo-${id}?w=${w}&q=${q}&auto=format&fit=crop`;
 
@@ -10,13 +15,20 @@ export const IMAGES = {
   hair_dye_balayage: u('1522337360788-8b13dee7a37e'),
   hair_perm_curly: u('1580618672591-eb180b1a973f'),
   hair_treatment: u('1527799820374-dcf8d9d4a388'),
+  hair_styling: u('1582095133179-bfd08e2fc6b3'),
   spa_head_wash: u('1540555700478-4be289fbecef'),
   spa_massage_neck: u('1519823551278-64ac92734fb1'),
+  spa_hot_stone: u('1600334129128-685c5582fd35'),
   skin_facial_care: u('1570172619644-dfd03ed5d881'),
-  skin_acne_treatment: u('1512290900672-1f5be661f061'),
+  skin_acne_treatment: u('1552693673-1bf958298935'),
+  skin_mask: u('1616394584738-fc6e612e71b9'),
+  skin_serum: u('1573461160327-b450ce3d8e7f'),
   nail_art_spa: u('1632345031435-8727f6897d53'),
+  nail_polish: u('1610992015732-2449b76344bc'),
+  nail_care: u('1519014816548-bf5fe059798b'),
+  makeup_party: u('1487412947147-5cebf100ffc2'),
+  makeup_products: u('1522335789203-aabd1fc54bc9'),
   combo_vip: u('1562322140-8baeececf3df'),
-  // Bổ sung để 12 dịch vụ mẫu đều có ảnh riêng.
   spa_relax_wash: u('1600334089648-b0d9d3028eb2'),
   spa_face_massage: u('1515377905703-c4788e51af15'),
   spa_couple: u('1544161515-4ab6ce6db874'),
@@ -43,64 +55,111 @@ const STYLIST_BY_ID: Record<string, string> = {
 };
 const STYLIST_POOL = Object.values(STYLIST_PHOTOS);
 
-/** Ảnh chuẩn theo mã dịch vụ mẫu. */
+/** Chủ đề hình ảnh của dịch vụ — quyết định ảnh dự phòng + nền gradient khi ảnh không tải được. */
+export type MediaKind = 'hair' | 'wash' | 'skin' | 'massage' | 'combo' | 'nail' | 'makeup' | 'spa' | 'person';
+
+/** Ảnh chuẩn theo mã dịch vụ mẫu (bản demo). */
 const SERVICE_BY_ID: Record<string, ImageKey> = {
   s1: 'hair_cut_women', s2: 'hair_dye_balayage', s3: 'hair_perm_curly',
   s4: 'spa_head_wash', s5: 'spa_relax_wash', s6: 'hair_treatment',
-  s7: 'skin_facial_care', s8: 'skin_acne_treatment', s9: 'spa_face_massage',
+  s7: 'skin_facial_care', s8: 'skin_mask', s9: 'spa_face_massage',
   s10: 'combo_vip', s11: 'spa_massage_neck', s12: 'spa_couple',
 };
 
-/** Luật theo từ khoá (tên đã bỏ dấu) cho dịch vụ do tiệm tự thêm. */
+/** Luật theo từ khoá (tên đã bỏ dấu) cho dịch vụ do tiệm tự thêm / dữ liệu máy chủ thật. */
 const KEYWORD_RULES: [RegExp, ImageKey][] = [
-  [/\b(nail|mong|gel|son mong)\b/, 'nail_art_spa'],
+  [/(trang diem|make ?up|co dau|ky yeu)/, 'makeup_party'],
+  [/(son gel|son mong|ve mong|nail art)/, 'nail_polish'],
+  [/(\bnail\b|\bmong\b|pedicure|manicure|cham soc mong)/, 'nail_art_spa'],
   [/(toc nam|barber|fade|undercut)/, 'hair_cut_men'],
   [/(nhuom|balayage|highlight|mau toc)/, 'hair_dye_balayage'],
-  [/(uon|song|xoan|perm)/, 'hair_perm_curly'],
-  [/(phuc hoi|keratin|u toc|hap dau|nano)/, 'hair_treatment'],
-  [/(cat|tao kieu|layer)/, 'hair_cut_women'],
-  [/(mun|nan|lam sach sau|thai doc)/, 'skin_acne_treatment'],
+  [/(\buon\b|\bsong\b|xoan|perm)/, 'hair_perm_curly'],
+  [/(phuc hoi|keratin|u toc|hap dau|nano|duong toc)/, 'hair_treatment'],
+  [/(\bsay\b|tao kieu|bui toc|tet toc|styling)/, 'hair_styling'],
+  [/(\bcat\b|layer)/, 'hair_cut_women'],
+  [/(\bmun\b|nan mun|lam sach sau|thai doc|tri lieu)/, 'skin_acne_treatment'],
+  [/(mat na|dap mat|sang da|trang da)/, 'skin_mask'],
+  [/(serum|tinh chat|cang bong|cap nuoc)/, 'skin_serum'],
   [/(massage mat|nang co)/, 'spa_face_massage'],
-  [/(da|facial|mat na|cap am)/, 'skin_facial_care'],
+  [/(\bda\b|facial|cap am)/, 'skin_facial_care'],
+  [/(da nong|hot stone|\bda muoi\b)/, 'spa_hot_stone'],
   [/(cap doi|couple|hai nguoi)/, 'spa_couple'],
-  [/(vai gay|massage|tinh dau|aroma)/, 'spa_massage_neck'],
+  [/(vai gay|massage|tinh dau|aroma|bam huyet|body)/, 'spa_massage_neck'],
   [/(goi duong sinh|thao moc|goi dau)/, 'spa_head_wash'],
-  [/(goi|thu gian)/, 'spa_relax_wash'],
-  [/(combo|vip|tron goi|mot ngay)/, 'combo_vip'],
+  [/(\bgoi\b|thu gian)/, 'spa_relax_wash'],
+  [/(combo|\bvip\b|tron goi|mot ngay|goi dich vu)/, 'combo_vip'],
 ];
 
-const CATEGORY_POOL: Record<string, ImageKey[]> = {
-  hair: ['hair_cut_women', 'hair_dye_balayage', 'hair_perm_curly', 'hair_treatment', 'hair_cut_men'],
-  wash: ['spa_head_wash', 'spa_relax_wash', 'spa_massage_neck', 'hair_treatment'],
-  skin: ['skin_facial_care', 'skin_acne_treatment', 'spa_face_massage'],
-  combo: ['combo_vip', 'spa_massage_neck', 'spa_couple'],
+/** Ảnh theo chủ đề — vừa để chia ảnh không trùng, vừa làm ảnh dự phòng khi ảnh chính lỗi. */
+const KIND_POOL: Record<MediaKind, ImageKey[]> = {
+  hair: ['hair_cut_women', 'hair_dye_balayage', 'hair_perm_curly', 'hair_styling', 'hair_treatment', 'hair_cut_men'],
+  wash: ['spa_head_wash', 'spa_relax_wash', 'hair_treatment', 'spa_massage_neck'],
+  skin: ['skin_facial_care', 'skin_acne_treatment', 'skin_mask', 'skin_serum', 'spa_face_massage'],
+  massage: ['spa_massage_neck', 'spa_hot_stone', 'spa_face_massage', 'spa_couple'],
+  combo: ['combo_vip', 'spa_couple', 'spa_hot_stone', 'spa_massage_neck'],
+  nail: ['nail_art_spa', 'nail_polish', 'nail_care'],
+  makeup: ['makeup_party', 'makeup_products', 'skin_serum'],
+  spa: ['spa_hot_stone', 'combo_vip', 'spa_relax_wash', 'skin_serum'],
+  person: [],
 };
 
-const SERVICE_KEYS = (Object.keys(IMAGES) as ImageKey[]).filter((k) => k !== 'hero_spa_interior');
+/** URL ảnh dự phòng theo chủ đề (SmartImage thử lần lượt trước khi dùng nền gradient). */
+export const KIND_ALTERNATES: Record<MediaKind, string[]> = Object.fromEntries(
+  Object.entries(KIND_POOL).map(([kind, keys]) => [kind, keys.map((k) => IMAGES[k])]),
+) as Record<MediaKind, string[]>;
+
+const KIND_BY_CATEGORY: Record<string, MediaKind> = { hair: 'hair', wash: 'wash', skin: 'skin', combo: 'combo' };
 
 export const stripAccents = (s: string) =>
-  s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase();
+  s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase();
 
-function preferredKey(service: { id: string; name: string; categoryId?: string }): ImageKey | undefined {
+/** Nhận diện chủ đề dịch vụ theo tên (bỏ dấu) rồi tới nhóm, dùng cho ảnh dự phòng + nền offline. */
+export function serviceMediaKind(service: { name: string; categoryId?: string; categoryName?: string }): MediaKind {
+  const name = stripAccents(service.name);
+  if (/(trang diem|make ?up|co dau)/.test(name)) return 'makeup';
+  if (/(nail|\bmong\b|son gel|pedicure|manicure)/.test(name)) return 'nail';
+  if (/(combo|\bvip\b|tron goi|mot ngay|cap doi)/.test(name)) return 'combo';
+  if (/(massage|vai gay|tinh dau|aroma|bam huyet|da nong)/.test(name)) return 'massage';
+  if (/(\bgoi\b|thao moc|duong sinh)/.test(name)) return 'wash';
+  if (/(\bda\b|facial|mat na|\bmun\b|cap am|skin|serum)/.test(name)) return 'skin';
+  if (/(\btoc\b|\bcat\b|nhuom|\buon\b|hair|barber|\bsay\b)/.test(name)) return 'hair';
+  const byId = KIND_BY_CATEGORY[service.categoryId ?? ''];
+  if (byId) return byId;
+  const category = stripAccents(service.categoryName ?? '');
+  if (/(trang diem|make ?up)/.test(category)) return 'makeup';
+  if (/(mong|nail)/.test(category)) return 'nail';
+  if (/\btoc\b/.test(category)) return 'hair';
+  if (/\bgoi\b/.test(category)) return 'wash';
+  if (/\bda\b/.test(category)) return 'skin';
+  if (/massage/.test(category)) return 'massage';
+  if (/combo/.test(category)) return 'combo';
+  return 'spa';
+}
+
+type ServiceLike = { id: string; name: string; categoryId?: string; categoryName?: string };
+
+function preferredKey(service: ServiceLike): ImageKey | undefined {
   if (SERVICE_BY_ID[service.id]) return SERVICE_BY_ID[service.id];
   const name = stripAccents(service.name);
   return KEYWORD_RULES.find(([re]) => re.test(name))?.[1];
 }
 
+const SERVICE_KEYS = (Object.keys(IMAGES) as ImageKey[]).filter((k) => k !== 'hero_spa_interior');
+
 /**
  * Gán ảnh cho cả danh sách dịch vụ, bảo đảm KHÔNG trùng ảnh trong cùng một trang
- * (khi còn ảnh chưa dùng). Trả về map serviceId → url.
+ * (khi còn ảnh chưa dùng). Ưu tiên ảnh cùng chủ đề. Trả về map serviceId → url.
  */
-export function assignServiceImages(services: { id: string; name: string; categoryId?: string }[]): Record<string, string> {
+export function assignServiceImages(services: ServiceLike[]): Record<string, string> {
   const used = new Set<ImageKey>();
   const out: Record<string, string> = {};
-  const pending: typeof services = [];
+  const pending: ServiceLike[] = [];
   for (const s of services) {
     const k = preferredKey(s);
     if (k && !used.has(k)) { used.add(k); out[s.id] = IMAGES[k]; } else pending.push(s);
   }
   for (const s of pending) {
-    const pool = [...(CATEGORY_POOL[s.categoryId ?? ''] ?? []), ...SERVICE_KEYS];
+    const pool = [...KIND_POOL[serviceMediaKind(s)], ...SERVICE_KEYS];
     const k = pool.find((key) => !used.has(key)) ?? preferredKey(s) ?? pool[0];
     used.add(k); out[s.id] = IMAGES[k];
   }
@@ -108,8 +167,8 @@ export function assignServiceImages(services: { id: string; name: string; catego
 }
 
 /** Ảnh cho một dịch vụ đơn lẻ. */
-export function serviceImage(service: { id: string; name: string; categoryId?: string }): string {
-  const k = preferredKey(service) ?? CATEGORY_POOL[service.categoryId ?? '']?.[0] ?? 'combo_vip';
+export function serviceImage(service: ServiceLike): string {
+  const k = preferredKey(service) ?? KIND_POOL[serviceMediaKind(service)][0] ?? 'combo_vip';
   return IMAGES[k];
 }
 
@@ -122,31 +181,6 @@ const hash = (s: string) => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >
 export function stylistPhoto(id: string, url?: string | null): string {
   if (url && !url.includes('images.unsplash.com')) return url;
   return STYLIST_BY_ID[id] ?? url ?? STYLIST_POOL[hash(id) % STYLIST_POOL.length];
-}
-
-/** Chủ đề hình ảnh của dịch vụ — quyết định nền gradient + biểu tượng khi ảnh không tải được. */
-export type MediaKind = 'hair' | 'wash' | 'skin' | 'massage' | 'combo' | 'nail' | 'spa' | 'person';
-
-const KIND_BY_CATEGORY: Record<string, MediaKind> = { hair: 'hair', wash: 'wash', skin: 'skin', combo: 'combo' };
-
-/** Nhận diện chủ đề dịch vụ theo tên (bỏ dấu) rồi tới nhóm, dùng cho nền dự phòng offline. */
-export function serviceMediaKind(service: { name: string; categoryId?: string; categoryName?: string }): MediaKind {
-  const name = stripAccents(service.name);
-  if (/(nail|\bmong\b|son gel)/.test(name)) return 'nail';
-  if (/(combo|\bvip\b|tron goi|mot ngay|cap doi)/.test(name)) return 'combo';
-  if (/(massage|vai gay|tinh dau|aroma|bam huyet)/.test(name)) return 'massage';
-  if (/(\bgoi\b|thao moc|duong sinh)/.test(name)) return 'wash';
-  if (/(\bda\b|facial|mat na|\bmun\b|cap am|skin)/.test(name)) return 'skin';
-  if (/(\btoc\b|\bcat\b|nhuom|\buon\b|hair|barber)/.test(name)) return 'hair';
-  const byId = KIND_BY_CATEGORY[service.categoryId ?? ''];
-  if (byId) return byId;
-  const category = stripAccents(service.categoryName ?? '');
-  if (/\btoc\b/.test(category)) return 'hair';
-  if (/\bgoi\b/.test(category)) return 'wash';
-  if (/\bda\b/.test(category)) return 'skin';
-  if (/massage/.test(category)) return 'massage';
-  if (/combo/.test(category)) return 'combo';
-  return 'spa';
 }
 
 export const initials = (name: string) =>

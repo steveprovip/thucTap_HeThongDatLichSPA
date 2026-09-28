@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import { Banknote, CheckCircle2, RefreshCw, UserX, Users2 } from 'lucide-react';
 import { analyticsApi, appointmentsApi, customersApi, getErrorMessage } from '@/api';
 import type { Appointment, AppointmentStatus, TodayDashboard } from '@/types';
-import { Button, Card, SectionTitle, Skeleton, StatGridSkeleton, ContentSkeleton } from '@/components';
+import { Button, Card, EmptyState, SectionTitle, Skeleton, StatGridSkeleton, ContentSkeleton } from '@/components';
 import { STATUS_LABELS, STATUS_STYLES } from '@/utils/constants';
 import { formatTime, todayISO } from '@/utils/format';
 import { useToast } from '@/contexts/ToastContext';
@@ -26,11 +26,15 @@ export function DashboardPage() {
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
+      // Chỉ số chính là bắt buộc; số khách & hoạt động gần đây lỗi thì vẫn hiển thị trang
       const [dashboard, clients, recent] = await Promise.all([
-        analyticsApi.today(), customersApi.search({ page: 1, limit: 1 }),
-        appointmentsApi.list({ from: todayISO(), to: todayISO(), page: 1, limit: 5 }),
+        analyticsApi.today(),
+        customersApi.search({ page: 1, limit: 1 }).then((r) => r.total).catch(() => null),
+        appointmentsApi.list({ from: todayISO(), to: todayISO(), page: 1, limit: 5 }).then((r) => r.items).catch(() => [] as Appointment[]),
       ]);
-      setData(dashboard); setActiveClients(clients.total); setActivity(recent.items);
+      setData(dashboard);
+      if (clients !== null) setActiveClients(clients);
+      setActivity(recent);
     } catch (e) {
       if (!silent) toast.error(getErrorMessage(e));
     } finally {
@@ -46,7 +50,13 @@ export function DashboardPage() {
   useAppointmentsSync(() => { void load(true); });
 
   if (loading) return <div className="space-y-5"><Skeleton className="h-7 w-56" /><StatGridSkeleton /><ContentSkeleton rows={5} label="Đang tải hoạt động gần đây…" /></div>;
-  if (!data) return null;
+  if (!data) {
+    return (
+      <EmptyState icon={<RefreshCw size={26} />} title="Chưa tải được số liệu hôm nay"
+                  description="Máy chủ chưa phản hồi. Kiểm tra backend đang chạy rồi thử lại."
+                  action={<Button size="sm" icon={<RefreshCw size={15} />} onClick={() => load()}>Thử lại</Button>} />
+    );
+  }
 
   return (
     <div className="space-y-5">
