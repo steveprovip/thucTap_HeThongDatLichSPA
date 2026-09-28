@@ -23,8 +23,18 @@ run_project.bat
 ./run_project.sh
 ```
 
-Script sẽ: dựng PostgreSQL 15 + PgAdmin + Maildev bằng Docker → cài gói cho backend và
-frontend → nạp lược đồ và dữ liệu mẫu → chạy song song API và giao diện.
+Chỉ cần **bật Docker Desktop** rồi nhấp đúp `run_project.bat` (hoặc chạy `./run_project.sh`). Script sẽ:
+
+1. Kiểm tra Node.js ≥ 20 và chờ Docker sẵn sàng (tối đa 2 phút; Windows/macOS tự thử mở Docker Desktop).
+2. `docker compose up -d` — PostgreSQL 15 (healthcheck qua TCP) + PgAdmin + Maildev.
+3. Tạo các tệp `.env` còn thiếu; **tự cài lại gói khi `package.json`/`package-lock.json` đổi** (vd. sau `git pull`).
+4. Kiểm tra cổng 3000/5173 còn trống; nếu hệ thống đang chạy ở cửa sổ khác thì chỉ mở trình duyệt.
+5. Nạp lược đồ + dữ liệu mẫu (tự chờ PostgreSQL tới 120 giây, chạy lại bao nhiêu lần cũng an toàn).
+6. Chạy song song API + giao diện; **trình duyệt chỉ mở khi `GET /health` trả 200** (API biên dịch xong
+   và truy vấn được CSDL) và Vite đã phản hồi.
+
+Biến tuỳ chọn: `SALON_SKIP_DOCKER=1` (dùng PostgreSQL riêng theo `backend/.env`), `SALON_NO_BROWSER=1`.
+Máy đã cài sẵn PostgreSQL chiếm cổng 5432? Đặt `POSTGRES_PORT=5433` trong `.env` và `DB_PORT=5433` trong `backend/.env`.
 
 | Thành phần | Địa chỉ |
 |---|---|
@@ -50,6 +60,8 @@ Demo không cần máy chủ (`npm run dev:demo`, dữ liệu trong trình duy�
 | Thợ 4 | Phạm Quốc Bảo | `stylist4@salon.vn` | `Stylist@123` |
 | Thợ 5 | Võ Kim Chi | `stylist5@salon.vn` | `Stylist@123` |
 
+- Mỗi lần chạy launcher / `npm run db:seed`, 8 tài khoản trên được **đưa về đúng mật khẩu ở bảng**, mở khoá và
+  bỏ cờ bắt đổi mật khẩu — thử "đổi mật khẩu" hay nhập sai 5 lần xong, chạy lại là đăng nhập 1 chạm được ngay.
 - Trang **Đăng nhập** có khối *Đăng nhập nhanh* (hiện ở bản demo và khi chạy `npm run dev`): bấm một vai trò là
   điền đúng email + mật khẩu ở bảng trên và đăng nhập ngay.
 - **Nhân sự mới** do Quản trị tạo (mục *Tài khoản nhân sự*) hoặc Chủ tiệm tạo kèm email (mục *Hồ sơ thợ*) nhận
@@ -143,6 +155,7 @@ npm run db:up            # chỉ dựng docker (postgres, pgadmin, maildev)
 npm run db:reset         # xoá volume và dựng lại từ đầu
 npm run db:seed          # nạp lại dữ liệu mẫu (chạy lại nhiều lần vẫn an toàn)
 npm run start:all        # chạy song song API + giao diện
+npm run start:launch     # như trên + tự mở trình duyệt khi /health = 200 (launcher dùng lệnh này)
 npm run build            # build backend và frontend cho môi trường thật
 npm test                 # 35 kiểm thử đơn vị bộ tính khung giờ
 npm run test:e2e         # 25 kiểm thử end-to-end (cần CSDL đang chạy)
@@ -187,6 +200,20 @@ Chạy NestJS + PostgreSQL với `seed.sql`, đăng nhập từng vai trò và m
 | Tạo lịch vãng lai ở chế độ máy chủ thật không check-in / không hiện | API trả `{ appointmentId }` chứ không phải lịch hẹn đầy đủ | `appointmentsApi.walkIn()` chuẩn hoá, luôn trả lịch hẹn đầy đủ |
 | Báo lỗi hiện 2 lần | StrictMode gọi API 2 lần | Toast tự bỏ thông báo trùng trong 2,5 giây |
 | Doanh thu / Khung giờ lệch 1 ngày trước 7h sáng | Ngày lấy theo UTC | Lấy theo giờ tiệm (Asia/Ho_Chi_Minh) |
+
+### Gia cố launcher chạy trên nhiều máy (28/09/2026)
+
+| Lỗi | Nguyên nhân | Khắc phục |
+|---|---|---|
+| `./run_project.sh` in chữ rồi thoát, không chạy gì | Heredoc `cat <<'INFO'` thiếu dòng kết thúc `INFO` → phần mở trình duyệt và `npm run start:all` bị in ra như văn bản | Viết lại script, dùng `scripts/launcher.mjs` chung cho cả hai hệ điều hành |
+| Lần đầu dựng volume: nạp dữ liệu báo `ECONNREFUSED` | `pg_isready` qua Unix socket báo sẵn sàng khi entrypoint còn chạy init script trên máy chủ tạm (chưa mở TCP) | Healthcheck qua TCP `-h 127.0.0.1`; `run-seed.ts` tự thử lại kết nối tới 120 giây |
+| Launcher hỏng từ ngày thứ hai trở đi | `seed.sql` sinh lịch hẹn mẫu cho ngày mới có thể trùng giờ lịch thật → vi phạm `appointments_no_overlap` | Bỏ qua khung giờ đã có lịch; `ON CONFLICT DO NOTHING` cho mọi khoá duy nhất; ngày nghỉ mẫu không chèn khi trùng kỳ nghỉ khác |
+| Tài khoản mẫu không đăng nhập được sau khi đổi mật khẩu / bị khoá | Seed chỉ `DO NOTHING` | Seed đưa 8 tài khoản mẫu về đúng mật khẩu, mở khoá |
+| `/health` trả 200 dù CSDL chết → trình duyệt mở quá sớm | Luôn trả 200 kèm `degraded` | Trả **503** khi CSDL chưa truy vấn được |
+| Proxy Vite trả 500 rỗng khi API đang biên dịch | Không có trình xử lý lỗi proxy; đích `localhost` phụ thuộc IPv4/IPv6 | Proxy trỏ `127.0.0.1`, lỗi trả **503 + thông điệp tiếng Việt**; API lắng nghe dual-stack; `strictPort` cho 5173 |
+| `.bat` nhảy nhãn sai / `.sh` báo `$'\r'` trên máy khác | Nhãn `:WAITDB` nằm trong khối `( )`; không cố định kiểu xuống dòng | Không còn nhãn trong khối; thêm `.gitattributes` (`*.bat` CRLF, `*.sh` LF) |
+| `node_modules` cũ sau `git pull` gây lỗi build | Chỉ cài gói khi chưa có thư mục `node_modules` | Cài lại khi hash `package.json` + `package-lock.json` đổi |
+| Vòng lặp liên kết `node_modules/salon-spa-booking → ..` | Phụ thuộc thừa `"salon-spa-booking": "file:.."` trong backend/frontend | Gỡ bỏ |
 
 ---
 
