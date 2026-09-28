@@ -38,6 +38,20 @@ export const appointmentsApi = {
   }): Promise<Paginated<Appointment>> {
     return unwrap<Paginated<Appointment>>(await api.get('/appointments', { params }));
   },
+  /**
+   * Lấy TOÀN BỘ lịch hẹn trong khoảng ngày: máy chủ giới hạn tối đa 200 dòng/trang (PaginationDto),
+   * nên tự lật trang thay vì gửi limit lớn (lỗi "limit must not be greater than 200").
+   */
+  async listAll(params: { from?: string; to?: string; status?: AppointmentStatus; stylistId?: string }): Promise<Appointment[]> {
+    const PAGE_SIZE = 200;
+    const out: Appointment[] = [];
+    for (let page = 1; page <= 50; page += 1) {
+      const res = await appointmentsApi.list({ ...params, page, limit: PAGE_SIZE });
+      out.push(...res.items);
+      if (page >= (res.totalPages ?? 1) || res.items.length < PAGE_SIZE) break;
+    }
+    return out;
+  },
   async detail(id: string): Promise<Appointment> {
     return unwrap<Appointment>(await api.get(`/appointments/${id}`));
   },
@@ -58,8 +72,16 @@ export const appointmentsApi = {
       }),
     );
   },
-  async walkIn(payload: WalkInPayload) {
-    return unwrap(await api.post('/appointments/walk-in', payload));
+  /**
+   * Máy chủ thật trả BookingResult ({ appointmentId, code… }) còn bản demo trả thẳng Appointment.
+   * Chuẩn hoá: luôn trả về Appointment đầy đủ (có id, customer, services) để check-in và hiển thị ngay.
+   */
+  async walkIn(payload: WalkInPayload): Promise<Appointment> {
+    const res = unwrap<Partial<Appointment> & { appointmentId?: string }>(await api.post('/appointments/walk-in', payload));
+    if (res.id && res.customer) return res as Appointment;
+    const id = res.appointmentId ?? res.id;
+    if (!id) throw new Error('Máy chủ không trả mã lịch hẹn vừa tạo');
+    return appointmentsApi.detail(id);
   },
   async confirm(id: string): Promise<Appointment> {
     return unwrap<Appointment>(await api.patch(`/appointments/${id}/confirm`, {}));
