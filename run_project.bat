@@ -92,7 +92,10 @@ echo   (API da bien dich xong va ket noi duoc CSDL) - thuong mat 15-40 giay.
 echo   Nhan Ctrl+C trong cua so nay de dung toan bo.
 echo ============================================================
 echo.
-call npm run start:launch
+REM Chay thang tien trinh giam sat (khong qua npm/concurrently): tu khoi dong lai
+REM dich vu bi sap, Ctrl+C dung sach ca cay tien trinh.
+node scripts\launcher.mjs run
+if errorlevel 1 goto :fail
 goto :end
 
 REM ---------------------------------------------------------- Xu ly loi
