@@ -1,8 +1,8 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
-import { Invoice, InvoiceStatus } from '../../database/entities/invoice.entity';
-import { Appointment, AppointmentStatus } from '../../database/entities/appointment.entity';
+import { Invoice } from '../../database/entities/invoice.entity';
+import { Appointment } from '../../database/entities/appointment.entity';
 import { StylistShift } from '../../database/entities/stylist-shift.entity';
 import { MSG } from '../../common/constants/messages.constant';
 import { formatVnd } from '../../common/utils/currency.util';
