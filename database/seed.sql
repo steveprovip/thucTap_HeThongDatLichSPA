@@ -27,7 +27,31 @@ INSERT INTO users (id, full_name, email, phone, password_hash, role, is_active, 
  ('22222222-2222-4222-8222-000000000003','Lê Thị Bích Ngọc','stylist3@salon.vn','0902000003','$2b$10$dPp/KZphlhhpA5T9TIvcDeFgk2bkhJ/6YNGP63oXh6C23uYSnp.c6','stylist',TRUE,FALSE),
  ('22222222-2222-4222-8222-000000000004','Phạm Quốc Bảo','stylist4@salon.vn','0902000004','$2b$10$dPp/KZphlhhpA5T9TIvcDeFgk2bkhJ/6YNGP63oXh6C23uYSnp.c6','stylist',TRUE,FALSE),
  ('22222222-2222-4222-8222-000000000005','Võ Kim Chi','stylist5@salon.vn','0902000005','$2b$10$dPp/KZphlhhpA5T9TIvcDeFgk2bkhJ/6YNGP63oXh6C23uYSnp.c6','stylist',TRUE,FALSE)
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT DO NOTHING;
+
+-- Luôn đưa 8 tài khoản mẫu về trạng thái đăng nhập được: đúng mật khẩu trong
+-- README, đang hoạt động, không bị khoá, không bắt đổi mật khẩu. Nhờ vậy dù đã
+-- thử "đổi mật khẩu" hay nhập sai 5 lần, chạy lại launcher là đăng nhập 1 chạm được ngay.
+UPDATE users u SET
+  password_hash         = d.password_hash,
+  role                  = d.role::user_role,
+  is_active             = TRUE,
+  must_change_password  = FALSE,
+  failed_login_attempts = 0,
+  locked_until          = NULL
+FROM (VALUES
+  ('admin@salon.vn',     'admin',        '$2b$10$4VK1/aOsyRaxTgU8dzYiNuKIfgi1hiqJIQEyaL7z//ZVHUv4aFw0O'),
+  ('owner@salon.vn',     'owner',        '$2b$10$DvZ36dOYRBfmiC4vfwsXqOgRV4MQyqQoMlr9tPuVsROT3rzeAi8W6'),
+  ('reception@salon.vn', 'receptionist', '$2b$10$6xQIx0kWSY7be73XcQIW9OkUv6kvm4jpzl6La9r7hCRF.Xk9oMhX6'),
+  ('stylist1@salon.vn',  'stylist',      '$2b$10$dPp/KZphlhhpA5T9TIvcDeFgk2bkhJ/6YNGP63oXh6C23uYSnp.c6'),
+  ('stylist2@salon.vn',  'stylist',      '$2b$10$dPp/KZphlhhpA5T9TIvcDeFgk2bkhJ/6YNGP63oXh6C23uYSnp.c6'),
+  ('stylist3@salon.vn',  'stylist',      '$2b$10$dPp/KZphlhhpA5T9TIvcDeFgk2bkhJ/6YNGP63oXh6C23uYSnp.c6'),
+  ('stylist4@salon.vn',  'stylist',      '$2b$10$dPp/KZphlhhpA5T9TIvcDeFgk2bkhJ/6YNGP63oXh6C23uYSnp.c6'),
+  ('stylist5@salon.vn',  'stylist',      '$2b$10$dPp/KZphlhhpA5T9TIvcDeFgk2bkhJ/6YNGP63oXh6C23uYSnp.c6')
+) AS d(email, role, password_hash)
+WHERE lower(u.email) = d.email
+  AND (u.password_hash IS DISTINCT FROM d.password_hash OR u.role::text <> d.role OR NOT u.is_active
+       OR u.must_change_password OR u.failed_login_attempts <> 0 OR u.locked_until IS NOT NULL);
 
 -- ---------------------------------------------------------------------------
 -- 2. NHÓM DỊCH VỤ
@@ -37,7 +61,7 @@ INSERT INTO service_categories (id, name, display_order) VALUES
  ('44444444-4444-4444-8444-000000000002','Gội - Dưỡng', 2),
  ('44444444-4444-4444-8444-000000000003','Chăm sóc da', 3),
  ('44444444-4444-4444-8444-000000000004','Trang điểm & Móng', 4)
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT DO NOTHING;
 
 -- ---------------------------------------------------------------------------
 -- 3. DỊCH VỤ (12 dịch vụ, thời lượng 30 - 120 phút)
@@ -55,7 +79,7 @@ INSERT INTO services (id, category_id, name, duration_minutes, price, descriptio
  ('55555555-5555-4555-8555-000000000010','44444444-4444-4444-8444-000000000003','Trị mụn chuyên sâu',     90,  550000,'Lấy nhân mụn chuẩn y khoa, điện di phục hồi.', TRUE),
  ('55555555-5555-4555-8555-000000000011','44444444-4444-4444-8444-000000000003','Massage mặt thư giãn',   45,  280000,'Massage dẫn lưu bạch huyết vùng mặt.', TRUE),
  ('55555555-5555-4555-8555-000000000012','44444444-4444-4444-8444-000000000004','Trang điểm dự tiệc',     60,  450000,'Trang điểm dự tiệc kèm làm tóc nhẹ.', TRUE)
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT DO NOTHING;
 
 -- ---------------------------------------------------------------------------
 -- 4. HỒ SƠ THỢ (5 thợ)
@@ -66,7 +90,7 @@ INSERT INTO stylists (id, user_id, full_name, phone, bio, avatar_url, is_active)
  ('33333333-3333-4333-8333-000000000003','22222222-2222-4222-8222-000000000003','Lê Thị Bích Ngọc','0902000003','Kỹ thuật viên da liễu, chuyên trị mụn.', NULL, TRUE),
  ('33333333-3333-4333-8333-000000000004','22222222-2222-4222-8222-000000000004','Phạm Quốc Bảo','0902000004','Chuyên gội dưỡng sinh và massage cổ vai gáy.', NULL, TRUE),
  ('33333333-3333-4333-8333-000000000005','22222222-2222-4222-8222-000000000005','Võ Kim Chi','0902000005','Chuyên trang điểm dự tiệc và chăm sóc da.', NULL, TRUE)
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT DO NOTHING;
 
 -- ---------------------------------------------------------------------------
 -- 5. KỸ NĂNG CỦA THỢ (nhiều dịch vụ / thợ, nhiều thợ / dịch vụ)
@@ -100,7 +124,7 @@ INSERT INTO stylist_services (stylist_id, service_id) VALUES
  ('33333333-3333-4333-8333-000000000005','55555555-5555-4555-8555-000000000009'),
  ('33333333-3333-4333-8333-000000000005','55555555-5555-4555-8555-000000000011'),
  ('33333333-3333-4333-8333-000000000005','55555555-5555-4555-8555-000000000002')
-ON CONFLICT (stylist_id, service_id) DO NOTHING;
+ON CONFLICT DO NOTHING;
 
 -- ---------------------------------------------------------------------------
 -- 6. GIỜ MỞ CỬA CỦA TIỆM (0 = Chủ nhật … 6 = Thứ bảy)
@@ -113,7 +137,7 @@ INSERT INTO salon_working_hours (day_of_week, open_time, close_time, is_closed) 
  (5,'08:30','20:00',FALSE),
  (6,'08:00','21:00',FALSE),
  (0,'08:00','21:00',FALSE)
-ON CONFLICT (day_of_week) DO NOTHING;
+ON CONFLICT DO NOTHING;
 
 -- ---------------------------------------------------------------------------
 -- 7. MÃ GIẢM GIÁ
@@ -122,7 +146,7 @@ INSERT INTO vouchers (id, code, description, discount_type, discount_value, star
  ('66666666-6666-4666-8666-000000000001','NGAYTHUONG10','Giảm 10% cho lịch hẹn từ thứ 2 đến thứ 6','percent',10, CURRENT_DATE - 90, CURRENT_DATE + 180, NULL, TRUE),
  ('66666666-6666-4666-8666-000000000002','CHAOBAN50K','Giảm 50.000 đ cho khách đến lần đầu','amount',50000, CURRENT_DATE - 90, CURRENT_DATE + 180, 200, TRUE),
  ('66666666-6666-4666-8666-000000000003','HETHAN2024','Mã đã hết hạn dùng để kiểm thử','percent',20, CURRENT_DATE - 365, CURRENT_DATE - 200, NULL, TRUE)
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT DO NOTHING;
 
 -- ---------------------------------------------------------------------------
 -- 8. HỒ SƠ KHÁCH HÀNG
@@ -143,7 +167,7 @@ INSERT INTO customers (id, full_name, phone, email, note) VALUES
  ('77777777-7777-4777-8777-000000000013','Dương Thảo Nhi','0911000013','thao.nhi@example.com',NULL),
  ('77777777-7777-4777-8777-000000000014','Tạ Quang Vinh','0911000014',NULL,NULL),
  ('77777777-7777-4777-8777-000000000015','Kiều Anh Thư','0911000015','anh.thu@example.com',NULL)
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT DO NOTHING;
 
 COMMIT;
 
@@ -201,7 +225,12 @@ END $shifts$;
 -- ---------------------------------------------------------------------------
 INSERT INTO salon_holidays (start_date, end_date, reason)
 SELECT CURRENT_DATE + 21, CURRENT_DATE + 23, 'Nghỉ bảo trì và đào tạo nội bộ'
-WHERE NOT EXISTS (SELECT 1 FROM salon_holidays WHERE reason = 'Nghỉ bảo trì và đào tạo nội bộ');
+WHERE NOT EXISTS (SELECT 1 FROM salon_holidays WHERE reason = 'Nghỉ bảo trì và đào tạo nội bộ')
+  -- Không chèn nếu đã có kỳ nghỉ khác trùng khoảng (ràng buộc salon_holidays_no_overlap)
+  AND NOT EXISTS (
+    SELECT 1 FROM salon_holidays h
+    WHERE daterange(h.start_date, h.end_date, '[]') && daterange(CURRENT_DATE + 21, CURRENT_DATE + 23, '[]')
+  );
 
 INSERT INTO stylist_time_off (stylist_id, off_date, start_time, end_time, reason)
 SELECT '33333333-3333-4333-8333-000000000003', CURRENT_DATE + 3, NULL, NULL, 'Nghỉ phép cá nhân'
@@ -288,6 +317,15 @@ BEGIN
         v_start := (v_date + v_slot) AT TIME ZONE 'Asia/Ho_Chi_Minh';
         v_end   := v_start + make_interval(mins => v_dur);
         v_rnd2  := ('x' || substr(md5(v_seed || 'x'), 1, 7))::bit(28)::int % 100;
+
+        -- Chạy lại vào ngày khác: khung giờ mới có thể đã bị lịch hẹn THẬT (tạo trên web)
+        -- chiếm chỗ. Bỏ qua thay vì vi phạm appointments_no_overlap làm hỏng cả lần nạp.
+        CONTINUE WHEN EXISTS (
+          SELECT 1 FROM appointments a
+          WHERE a.stylist_id = v_st.id
+            AND a.status IN ('pending','confirmed','arrived','in_progress')
+            AND tstzrange(a.start_at, a.end_at, '[)') && tstzrange(v_start, v_end, '[)')
+        );
 
         IF v_date < CURRENT_DATE THEN
           v_status := CASE WHEN v_rnd2 < 82 THEN 'completed'::appointment_status

@@ -1,0 +1,18 @@
+# Chuẩn hoá xuống dòng để launcher chạy được trên MỌI máy, bất kể cấu hình core.autocrlf:
+#  - .sh phải là LF, nếu không bash báo "$'\r': command not found"
+#  - .bat/.cmd phải là CRLF, nếu không cmd.exe nhảy nhãn (goto/call :label) sai
+* text=auto
+*.sh   text eol=lf
+*.mjs  text eol=lf
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.docx binary
+*.pdf  binary

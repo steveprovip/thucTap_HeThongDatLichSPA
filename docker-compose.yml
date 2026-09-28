@@ -29,10 +29,14 @@ services:
       - ./database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
       - ./database/seed.sql:/docker-entrypoint-initdb.d/02_seed.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-salon} -d ${POSTGRES_DB:-salon_booking}"]
-      interval: 5s
+      # Kiểm tra qua TCP (-h 127.0.0.1) chứ KHÔNG qua Unix socket: lần đầu dựng volume,
+      # entrypoint chạy init script trên một máy chủ TẠM chỉ mở socket rồi khởi động lại.
+      # Kiểm tra qua socket sẽ báo "healthy" quá sớm -> backend/seed kết nối bị ECONNREFUSED.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 3s
       timeout: 5s
-      retries: 20
+      retries: 30
+      start_period: 120s
     networks: [salon_net]
 
   pgadmin:
