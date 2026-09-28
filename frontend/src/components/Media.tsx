@@ -1,6 +1,6 @@
 import { ImgHTMLAttributes, ReactNode, useCallback, useEffect, useState } from 'react';
-import { Droplets, Flower2, Gem, HandHeart, Leaf, Scissors, Sparkles, UserRound } from 'lucide-react';
-import { initials, stylistPhoto, type MediaKind } from '@/utils/images';
+import { Droplets, Flower2, Gem, HandHeart, Leaf, Palette, Scissors, Sparkles, UserRound } from 'lucide-react';
+import { initials, KIND_ALTERNATES, stylistPhoto, type MediaKind } from '@/utils/images';
 
 /**
  * Ảnh đã nằm sẵn trong cache có thể bắn onLoad TRƯỚC khi useEffect chạy; nếu effect sau đó đặt lại
@@ -23,6 +23,7 @@ const FALLBACK: Record<MediaKind, { gradient: string; tint: string; icon: ReactN
   massage: { gradient: 'from-amber-100 via-orange-50 to-rose-100', tint: 'text-amber-600', icon: <HandHeart aria-hidden /> },
   combo: { gradient: 'from-violet-100 via-fuchsia-50 to-amber-50', tint: 'text-violet-600', icon: <Gem aria-hidden /> },
   nail: { gradient: 'from-pink-100 via-rose-50 to-violet-100', tint: 'text-pink-600', icon: <Flower2 aria-hidden /> },
+  makeup: { gradient: 'from-rose-100 via-pink-50 to-amber-50', tint: 'text-rose-500', icon: <Palette aria-hidden /> },
   spa: { gradient: 'from-teal-100 via-teal-50 to-amber-50', tint: 'text-teal-600', icon: <Leaf aria-hidden /> },
   person: { gradient: 'from-slate-100 via-teal-50 to-slate-100', tint: 'text-teal-700', icon: <UserRound aria-hidden /> },
 };
@@ -49,26 +50,38 @@ export function MediaFallback({ kind = 'spa', label, className = '' }: { kind?: 
   );
 }
 
+/** Số ảnh dự phòng cùng chủ đề được thử khi ảnh chính bị gỡ / lỗi, trước khi dùng nền gradient. */
+const MAX_ALTERNATES = 2;
+
 /**
- * Ảnh có khung shimmer khi đang tải, hiện dần khi xong; khi CDN lỗi, mất mạng hoặc tải quá lâu
- * thì chuyển mượt sang nền gradient theo chủ đề dịch vụ (kéo, giọt nước, lấp lánh…).
+ * Ảnh có khung shimmer khi đang tải, hiện dần khi xong. Khi ảnh chính lỗi (ảnh bị gỡ khỏi CDN)
+ * thì thử lần lượt ảnh dự phòng cùng chủ đề; mất mạng / tải quá lâu / hết ảnh dự phòng thì chuyển
+ * mượt sang nền gradient theo chủ đề dịch vụ (kéo, giọt nước, lấp lánh…). Không bao giờ lộ ảnh vỡ.
  */
 export function SmartImage({ src, alt, className = '', imgClassName = '', kind = 'spa', fallbackLabel, ...rest }:
   ImgHTMLAttributes<HTMLImageElement> & { imgClassName?: string; kind?: MediaKind; fallbackLabel?: string }) {
   const initial = (): 'loading' | 'error' => (src && !isOffline() ? 'loading' : 'error');
   const [state, setState] = useState<'loading' | 'ready' | 'error'>(initial);
   const [trackedSrc, setTrackedSrc] = useState(src);
-  if (src !== trackedSrc) { setTrackedSrc(src); setState(initial()); }
+  const [attempt, setAttempt] = useState(0);
+  if (src !== trackedSrc) { setTrackedSrc(src); setState(initial()); setAttempt(0); }
+  const candidates = [src, ...(KIND_ALTERNATES[kind] ?? []).filter((u) => u !== src).slice(0, MAX_ALTERNATES)].filter(Boolean);
+  const currentSrc = candidates[attempt];
   const imgRef = useCallback((img: HTMLImageElement | null) => {
-    const s = readyState(img); if (s) setState(s);
+    const s = readyState(img); if (s === 'ready') setState('ready');
   }, []);
+  /** Ảnh hiện tại lỗi → thử ảnh dự phòng kế tiếp; hết thì dùng nền gradient. */
+  const handleError = () => {
+    if (isOffline() || attempt + 1 >= candidates.length) { setState('error'); return; }
+    setAttempt((n) => n + 1); setState('loading');
+  };
 
   // Mạng treo (không lỗi mà cũng không về) → không để khung shimmer chạy mãi
   useEffect(() => {
     if (state !== 'loading') return;
     const timer = window.setTimeout(() => setState((s) => (s === 'loading' ? 'error' : s)), LOAD_TIMEOUT_MS);
     return () => window.clearTimeout(timer);
-  }, [state, trackedSrc]);
+  }, [state, trackedSrc, attempt]);
 
   return (
     <div className={`relative overflow-hidden ${state === 'loading' ? 'skeleton-shimmer' : 'bg-slate-100'} ${className}`}>
@@ -76,11 +89,12 @@ export function SmartImage({ src, alt, className = '', imgClassName = '', kind =
         <MediaFallback kind={kind} label={fallbackLabel} />
       ) : (
         <img
+          key={currentSrc}
           ref={imgRef}
-          src={src}
+          src={currentSrc}
           alt={alt}
           onLoad={() => setState('ready')}
-          onError={() => setState('error')}
+          onError={handleError}
           className={`h-full w-full object-cover transition-[opacity,transform] duration-700 ease-out
             ${state === 'ready' ? 'opacity-100' : 'opacity-0'} ${imgClassName}`}
           {...rest}

@@ -97,9 +97,10 @@ export function StylistsPage() {
       const [sty, svc, cats, sh, appts] = await Promise.all([
         stylistsApi.list(), catalogApi.services(), catalogApi.categories(),
         stylistsApi.shifts({ from: weekStart, to: weekEnd }),
-        appointmentsApi.list({ from: weekStart, to: weekEnd, page: 1, limit: 1000 }),
+        // Số liệu công suất chỉ là phụ: lỗi ở đây không được làm trống danh sách thợ
+        appointmentsApi.listAll({ from: weekStart, to: weekEnd }).catch(() => [] as Appointment[]),
       ]);
-      setStylists(sty); setServices(svc); setShifts(sh); setAppointments(appts.items);
+      setStylists(sty); setServices(svc); setShifts(sh); setAppointments(appts);
       setCategories([...cats].sort((a, b) => a.displayOrder - b.displayOrder));
     } catch (e) {
       toast.error(getErrorMessage(e));

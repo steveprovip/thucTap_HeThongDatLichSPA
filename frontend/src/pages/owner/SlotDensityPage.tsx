@@ -4,12 +4,11 @@ import { analyticsApi, getErrorMessage } from '@/api';
 import type { SlotDensityReport } from '@/types';
 import { Button, Card, SectionTitle, Skeleton, StatGridSkeleton } from '@/components';
 import { useToast } from '@/contexts/ToastContext';
+import { todayISO } from '@/utils/format';
 
-const firstOfMonth = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
-};
-const todayStr = () => new Date().toISOString().slice(0, 10);
+// Theo giờ tiệm (Asia/Ho_Chi_Minh): toISOString() là giờ UTC nên trước 7h sáng sẽ lùi về ngày hôm qua
+const todayStr = () => todayISO();
+const firstOfMonth = () => `${todayISO().slice(0, 8)}01`;
 
 /** S4-09: tỉ lệ khách không đến và phân bố lượt hẹn theo khung giờ. */
 export function SlotDensityPage() {

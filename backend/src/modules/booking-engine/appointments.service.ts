@@ -19,7 +19,7 @@ import { AuthUser } from '../../common/types/auth.types';
 import { PaginatedResult, paginate } from '../../common/dto/pagination.dto';
 import {
   addMinutes, combine, dayOfWeek, diffMinutes, endOfDay, formatDateTimeVN, startOfDay,
-  toDateString, toSalon, toTimeString, trimSeconds,
+  toDateString, toTimeString, trimSeconds,
 } from '../../common/utils/time.util';
 import { normalizeSearch } from '../../common/utils/text.util';
 import { AvailabilityService } from './availability.service';
@@ -241,7 +241,10 @@ export class AppointmentsService {
         { raw: `%${query.search.trim()}%`, t: `%${normalizeSearch(query.search)}%` },
       );
     }
-    qb.orderBy('a.start_at', 'DESC').skip((query.page - 1) * query.limit).take(query.limit);
+    // skip/take + JOIN khiến TypeORM dựng truy vấn con DISTINCT: orderBy PHẢI dùng tên thuộc tính (startAt),
+    // dùng tên cột 'a.start_at' sẽ ném "Cannot read properties of undefined (reading 'databaseName')" → 500.
+    qb.orderBy('a.startAt', 'DESC').addOrderBy('a.id', 'DESC')
+      .skip((query.page - 1) * query.limit).take(query.limit);
 
     const [items, total] = await qb.getManyAndCount();
     return paginate(await this.decorate(items, user.role), total, query.page, query.limit);
