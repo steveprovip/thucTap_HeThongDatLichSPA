@@ -93,9 +93,13 @@ echo     owner@salon.vn      / Owner@123       (Chu tiem)
 echo     reception@salon.vn  / Reception@123   (Le tan)
 echo     stylist1@salon.vn   / Stylist@123     (Tho, con stylist2..5)
 echo.
+echo   Dang khoi dong backend... Trinh duyet se tu dong mo ngay khi he thong san sang!
 echo   Nhan Ctrl+C trong cua so nay de dung ca hai tien trinh.
 echo ============================================================
 echo.
+
+REM Tien trinh chay ngam tu dong cho Backend san sang (HTTP 200) roi moi mo trinh duyet
+start /b "" powershell -NoProfile -Command "for ($i=0; $i -lt 60; $i++) { Start-Sleep -Seconds 2; try { $res = Invoke-WebRequest -Uri 'http://localhost:3000/health' -UseBasicParsing -TimeoutSec 2; if ($res.StatusCode -eq 200) { Start-Process 'http://localhost:5173'; break } } catch {} }"
 
 call npm run start:all
 endlocal

@@ -24,12 +24,22 @@ export function HomePage() {
   const toast = useToast();
   useEffect(() => {
     let alive = true;
-    setLoading(true);
-    publicApi.catalog(search.trim() || undefined)
-      .then(data => { if (alive) setGroups(data); })
-      .catch(error => toast.error(getErrorMessage(error)))
-      .finally(() => { if (alive) setLoading(false); });
-    return () => { alive = false; };
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const fetchCatalog = (retryCount = 0) => {
+      setLoading(true);
+      publicApi.catalog(search.trim() || undefined)
+        .then(data => { if (alive) setGroups(data); })
+        .catch(error => {
+          if (alive && retryCount < 3) {
+            timer = setTimeout(() => fetchCatalog(retryCount + 1), 2000);
+          } else if (alive) {
+            toast.error(getErrorMessage(error));
+          }
+        })
+        .finally(() => { if (alive) setLoading(false); });
+    };
+    fetchCatalog();
+    return () => { alive = false; if (timer) clearTimeout(timer); };
   }, [search, toast]);
   const visible = useMemo(() => category === 'all' ? groups : groups.filter(group => group.categoryId === category), [groups, category]);
   const total = groups.reduce((sum, group) => sum + group.services.length, 0);
