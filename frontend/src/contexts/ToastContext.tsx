@@ -35,6 +35,7 @@ const STYLES: Record<ToastKind, string> = {
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const seq = useRef(0);
+  const recent = useRef(new Map<string, number>());
 
   const remove = useCallback((id: number) => {
     setToasts((list) => list.filter((t) => t.id !== id));
@@ -42,6 +43,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const toast = useCallback(
     (message: string, kind: ToastKind = 'info') => {
+      // Bỏ thông báo trùng lặp bắn liên tiếp (StrictMode chạy effect 2 lần, nhiều API cùng lỗi một lúc)
+      const key = `${kind}|${message}`;
+      const now = Date.now();
+      if ((recent.current.get(key) ?? 0) > now - 2500) return;
+      recent.current.set(key, now);
       const id = ++seq.current;
       setToasts((list) => [...list, { id, kind, message }]);
       window.setTimeout(() => remove(id), kind === 'error' ? 7000 : 4000);

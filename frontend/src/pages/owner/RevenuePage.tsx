@@ -6,14 +6,13 @@ import { Download, TrendingUp } from 'lucide-react';
 import { analyticsApi, getErrorMessage, reviewsApi } from '@/api';
 import type { RevenueReport, StylistRating } from '@/types';
 import { Button, Card, EmptyState, SectionTitle, Skeleton, StatGridSkeleton } from '@/components';
-import { formatVnd, formatVndShort } from '@/utils/format';
+import { formatVnd, formatVndShort, todayISO } from '@/utils/format';
+import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 
-const firstOfMonth = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
-};
-const todayStr = () => new Date().toISOString().slice(0, 10);
+// Theo giờ tiệm (Asia/Ho_Chi_Minh): toISOString() là giờ UTC nên trước 7h sáng sẽ lùi về ngày hôm qua
+const todayStr = () => todayISO();
+const firstOfMonth = () => `${todayISO().slice(0, 8)}01`;
 
 /** Một chuỗi số liệu dùng MỘT màu — màu khác nhau chỉ dành cho các nhóm khác nhau. */
 const BAR_COLOR = '#0D9488';
@@ -29,13 +28,16 @@ export function RevenuePage() {
   const [ratings, setRatings] = useState<StylistRating[]>([]);
   const [loading, setLoading] = useState(true);
   const toast = useToast();
+  const { user } = useAuth();
+  // Điểm đánh giá thợ chỉ Chủ tiệm / Quản trị được xem (RolesGuard) → Lễ tân không gọi để tránh 403
+  const canSeeRatings = user?.role === 'owner' || user?.role === 'admin';
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const [report, rate] = await Promise.all([
         analyticsApi.revenue(from, to),
-        reviewsApi.stylistRatings().catch(() => [] as StylistRating[]),
+        canSeeRatings ? reviewsApi.stylistRatings().catch(() => [] as StylistRating[]) : Promise.resolve([] as StylistRating[]),
       ]);
       setData(report);
       setRatings(rate);
@@ -44,7 +46,7 @@ export function RevenuePage() {
     } finally {
       setLoading(false);
     }
-  }, [from, to, toast]);
+  }, [from, to, toast, canSeeRatings]);
 
   useEffect(() => { void load(); }, [load]);
 

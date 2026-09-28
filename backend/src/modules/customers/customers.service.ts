@@ -107,7 +107,7 @@ export class CustomersService {
         t: term, raw: `%${q.replace(/\D/g, '')}%`,
       });
     }
-    qb.orderBy('c.updated_at', 'DESC').skip((page - 1) * limit).take(limit);
+    qb.orderBy('c.updatedAt', 'DESC').skip((page - 1) * limit).take(limit);
     const [items, total] = await qb.getManyAndCount();
     return paginate(items.map((c) => this.toView(c, viewerRole)), total, page, limit);
   }
