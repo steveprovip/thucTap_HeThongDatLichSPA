@@ -1,9 +1,13 @@
 /**
  * Nạp lược đồ và dữ liệu mẫu vào cơ sở dữ liệu.
- *   npm run seed            -> chạy schema.sql (nếu bảng chưa có) rồi seed.sql
- *   npm run seed -- --force -> chạy lại cả hai tệp
+ *   npm run seed   -> chạy schema.sql rồi seed.sql
  *
- * Cả hai tệp SQL đều viết theo hướng chạy lại được, không nhân đôi bản ghi (S1-10).
+ * Cả hai tệp SQL đều viết theo hướng chạy lại được, không nhân đôi bản ghi (S1-10),
+ * nên schema.sql được áp dụng MỖI LẦN: máy đã có CSDL cũ vẫn nhận đủ bảng/cột/chỉ mục mới
+ * sau khi git pull. (Cờ --force cũ vẫn được chấp nhận để tương thích.)
+ *
+ * Kết nối được thử lại tối đa DB_WAIT_SECONDS giây (mặc định 120): lần đầu dựng volume,
+ * container PostgreSQL chạy init script rồi KHỞI ĐỘNG LẠI, trong lúc đó cổng TCP chưa mở.
  */
 import 'reflect-metadata';
 import { readFileSync, existsSync } from 'fs';
@@ -31,26 +35,73 @@ const findSqlDir = (): string => {
   throw new Error('Không tìm thấy thư mục database chứa schema.sql');
 };
 
+/** Mã lỗi cho thấy máy chủ CSDL CHƯA sẵn sàng (đáng để thử lại), khác với sai cấu hình. */
+const TRANSIENT_CODES = new Set([
+  'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE', 'EAI_AGAIN',
+  '57P03', // cannot_connect_now: "the database system is starting up / shutting down"
+  '53300', // too_many_connections
+]);
+
+type PgError = Error & { code?: string };
+
+const isTransient = (err: PgError): boolean =>
+  (err.code !== undefined && TRANSIENT_CODES.has(err.code)) ||
+  /terminat|starting up|shutting down|Connection terminated/i.test(err.message);
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function connectWithRetry(): Promise<Client> {
+  const waitSeconds = Number(process.env.DB_WAIT_SECONDS ?? 120);
+  const deadline = Date.now() + waitSeconds * 1000;
+  let attempt = 0;
+  for (;;) {
+    attempt += 1;
+    const client = new Client({ ...DB, connectionTimeoutMillis: 5000 });
+    try {
+      await client.connect();
+      await client.query('SELECT 1');
+      return client;
+    } catch (e) {
+      const err = e as PgError;
+      await client.end().catch(() => undefined);
+      if (!isTransient(err) || Date.now() >= deadline) throw err;
+      if (attempt === 1) {
+        console.log(`> Chờ PostgreSQL tại ${DB.host}:${DB.port} sẵn sàng (tối đa ${waitSeconds} giây) ...`);
+      }
+      await sleep(2000);
+    }
+  }
+}
+
+/** Gợi ý khắc phục theo mã lỗi PostgreSQL / Node để người dùng tự sửa được. */
+const hintFor = (err: PgError): string | null => {
+  switch (err.code) {
+    case '28P01':
+    case '28000':
+      return (
+        `Sai tài khoản/mật khẩu CSDL. Nguyên nhân hay gặp: máy đã cài sẵn PostgreSQL chiếm cổng ${DB.port}, ` +
+        'nên kết nối đi vào PostgreSQL của máy chứ không phải container. Cách sửa: đặt POSTGRES_PORT=5433 trong .env ' +
+        'và DB_PORT=5433 trong backend/.env rồi chạy lại.'
+      );
+    case '3D000':
+      return `CSDL "${DB.database}" chưa tồn tại. Nếu dùng Docker: npm run db:reset. Nếu dùng PostgreSQL riêng: tạo CSDL rồi chạy lại.`;
+    case 'ECONNREFUSED':
+    case 'ETIMEDOUT':
+      return `Không có PostgreSQL nào lắng nghe ở ${DB.host}:${DB.port}. Hãy bật Docker Desktop rồi chạy lại launcher (hoặc: docker compose up -d).`;
+    default:
+      return null;
+  }
+};
+
 async function main(): Promise<void> {
-  const force = process.argv.includes('--force');
   const sqlDir = findSqlDir();
-  const client = new Client(DB);
-  await client.connect();
+  const client = await connectWithRetry();
   console.log(`> Kết nối ${DB.user}@${DB.host}:${DB.port}/${DB.database}`);
 
   try {
-    const { rows } = await client.query(
-      `SELECT to_regclass('public.appointments') IS NOT NULL AS ready`,
-    );
-    const schemaReady: boolean = rows[0].ready;
-
-    if (!schemaReady || force) {
-      console.log('> Áp dụng database/schema.sql ...');
-      await client.query(readFileSync(join(sqlDir, 'schema.sql'), 'utf8'));
-      console.log('  Xong.');
-    } else {
-      console.log('> Lược đồ đã tồn tại, bỏ qua schema.sql (dùng --force để chạy lại).');
-    }
+    console.log('> Áp dụng database/schema.sql (idempotent) ...');
+    await client.query(readFileSync(join(sqlDir, 'schema.sql'), 'utf8'));
+    console.log('  Xong.');
 
     console.log('> Nạp database/seed.sql ...');
     client.on('notice', (n) => console.log(`  ${n.message}`));
@@ -76,7 +127,9 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
-  console.error('Nạp dữ liệu thất bại:', err.message);
+main().catch((err: PgError) => {
+  console.error('Nạp dữ liệu thất bại:', err.message || err.code || String(err));
+  const hint = hintFor(err);
+  if (hint) console.error(`Gợi ý: ${hint}`);
   process.exit(1);
 });
