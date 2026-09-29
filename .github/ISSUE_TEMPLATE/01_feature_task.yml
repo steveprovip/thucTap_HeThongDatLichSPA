@@ -1,0 +1,46 @@
+name: "🚀 Giao Nhiệm Vụ (Feature / Task)"
+description: "Phân công User Story hoặc Task phát triển cho thành viên nhóm"
+title: "[TASK]: <Mô tả ngắn gọn công việc>"
+labels: ["task", "sprint"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ### 📋 Biểu Mẫu Giao Task Cho Thành Viên Nhóm 3
+  - type: input
+    id: assignee_name
+    attributes:
+      label: Thành viên phụ trách
+      description: Nhập tên thành viên và MSSV phụ trách task này
+      placeholder: "VD: Nguyễn Nam Khánh - DTC..."
+    validations:
+      required: true
+  - type: dropdown
+    id: epic_id
+    attributes:
+      label: Thuộc Epic
+      options:
+        - "EP-01: Tài khoản và phân quyền"
+        - "EP-02: Dịch vụ, thợ và lịch làm việc"
+        - "EP-03: Đặt lịch công khai và tính khung giờ trống"
+        - "EP-04: Vận hành lịch hẹn hằng ngày"
+        - "EP-05: Thanh toán và hồ sơ khách hàng"
+        - "EP-06: Nhắc lịch, thông báo và báo cáo"
+        - "DOCS: Báo cáo & Tài liệu"
+        - "QA: Kiểm thử & Kịch bản"
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Chi tiết yêu cầu & Tiêu chí hoàn thành (Acceptance Criteria)
+      placeholder: "- Tạo màn hình HomePage\n- Kiểm tra responsive di động 360px\n- Kết nối API lấy danh sách dịch vụ..."
+    validations:
+      required: true
+  - type: input
+    id: branch_name
+    attributes:
+      label: Tên nhánh quy định
+      placeholder: "feature/<mssv>-<ten-task> (VD: feature/namkhanh-public-booking)"
+    validations:
+      required: true
