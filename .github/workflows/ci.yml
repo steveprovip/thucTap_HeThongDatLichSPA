@@ -1,0 +1,69 @@
+name: "CI - Kiem Tra Chat Luong Ma Nguon"
+
+on:
+  push:
+    branches: [ "main", "develop" ]
+  pull_request:
+    branches: [ "main", "develop" ]
+
+jobs:
+  lint-and-typecheck:
+    name: "Lint & Typecheck (Backend + Frontend)"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Root Dependencies
+        run: npm ci || npm install
+
+      - name: Install Backend Dependencies
+        working-directory: ./backend
+        run: npm ci || npm install
+
+      - name: Install Frontend Dependencies
+        working-directory: ./frontend
+        run: npm ci || npm install
+
+      - name: Typecheck Backend
+        working-directory: ./backend
+        run: npm run typecheck
+
+      - name: Typecheck Frontend
+        working-directory: ./frontend
+        run: npm run typecheck
+
+      - name: Lint Backend
+        working-directory: ./backend
+        run: npm run lint
+
+      - name: Lint Frontend
+        working-directory: ./frontend
+        run: npm run lint
+
+  unit-tests:
+    name: "Unit Tests Backend (Jest)"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Backend Dependencies
+        working-directory: ./backend
+        run: npm ci || npm install
+
+      - name: Run Jest Unit Tests
+        working-directory: ./backend
+        run: npm run test
