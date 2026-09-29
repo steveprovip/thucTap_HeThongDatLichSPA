@@ -1,0 +1,35 @@
+name: "🐛 Báo Lỗi Kiểm Thử (Bug Report)"
+description: "Dành cho QA / Tester báo lỗi khi kiểm thử các Sprint"
+title: "[BUG]: <Tên lỗi ngắn gọn>"
+labels: ["bug", "qa"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ### 🔍 Phiếu Báo Lỗi Kiểm Thử Hệ Thống Salon - Spa
+  - type: input
+    id: tester_name
+    attributes:
+      label: Người báo lỗi (QA / Tester)
+      placeholder: "VD: Trương Quốc Khánh / Nguyễn Thị Hương"
+    validations:
+      required: true
+  - type: input
+    id: story_code
+    attributes:
+      label: Liên quan đến User Story / Kịch bản
+      placeholder: "VD: S1-05 (Dịch vụ) hoặc Bước 3 Kịch bản DEMO"
+  - type: textarea
+    id: steps_to_reproduce
+    attributes:
+      label: Các bước tái hiện lỗi (Steps to Reproduce)
+      placeholder: "1. Đăng nhập tài khoản lễ tân...\n2. Bấm chọn lịch hẹn ngày...\n3. Bấm huỷ lịch nhưng giao diện không phản hồi..."
+    validations:
+      required: true
+  - type: textarea
+    id: expected_vs_actual
+    attributes:
+      label: Kết quả mong muốn vs Thực tế xảy ra
+      placeholder: "- Mong muốn: Hiện thông báo huỷ thành công và làm mới danh sách.\n- Thực tế: Báo lỗi 500 trên console..."
+    validations:
+      required: true
