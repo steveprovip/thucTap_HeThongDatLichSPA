@@ -21,7 +21,7 @@
  *   dễ hiểu và TỰ KHỞI ĐỘNG LẠI dịch vụ bị sập (tối đa 5 lần / 10 phút).
  */
 import { spawn, spawnSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { copyFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import net from 'node:net';
@@ -67,6 +67,30 @@ function ensureEnvFiles() {
       copyFileSync(example, target);
       log(`      Tạo ${join(dir, '.env')} từ .env.example`);
     }
+  }
+  rotatePlaceholderSecrets(join(ROOT, 'backend', '.env'));
+}
+
+/**
+ * backend/.env.example (đã commit lên git) chứa khoá JWT mẫu công khai. Nếu backend/.env còn giữ
+ * nguyên giá trị đó thì bất kỳ ai đọc repo cũng ký được token hợp lệ -> thay bằng khoá ngẫu nhiên.
+ * Chỉ đụng tới đúng dòng còn là giá trị mẫu; khoá do người dùng tự đặt được giữ nguyên.
+ */
+const PLACEHOLDER_SECRET = /^(JWT_(?:ACCESS|REFRESH)_SECRET)=(doi_chuoi_nay_trong_moi_truong_that_\w*|dev_\w*_secret|)\s*$/;
+function rotatePlaceholderSecrets(file) {
+  if (!existsSync(file)) return;
+  const raw = readFileSync(file, 'utf8');
+  const eol = raw.includes('\r\n') ? '\r\n' : '\n';
+  let changed = 0;
+  const out = raw.split(/\r?\n/).map((line) => {
+    const m = PLACEHOLDER_SECRET.exec(line);
+    if (!m) return line;
+    changed += 1;
+    return `${m[1]}=${randomBytes(48).toString('base64url')}`;
+  });
+  if (changed) {
+    writeFileSync(file, out.join(eol));
+    log(`      Sinh ${changed} khoá JWT ngẫu nhiên thay cho giá trị mẫu trong backend/.env`);
   }
 }
 

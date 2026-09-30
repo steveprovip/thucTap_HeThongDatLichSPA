@@ -22,7 +22,8 @@ services:
       - "-c"
       - "max_connections=200"
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      # Chỉ mở trên loopback: không lộ CSDL (mật khẩu mặc định) ra mạng LAN/Wi-Fi chung
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - salon_pgdata:/var/lib/postgresql/data
       # Nạp tự động lần đầu khởi tạo volume: schema rồi seed (thứ tự theo tên file)
@@ -49,7 +50,8 @@ services:
       PGADMIN_CONFIG_SERVER_MODE: "False"
       PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
     ports:
-      - "${PGADMIN_PORT:-5050}:80"
+      # SERVER_MODE=False = không cần đăng nhập -> tuyệt đối không mở ra ngoài máy
+      - "127.0.0.1:${PGADMIN_PORT:-5050}:80"
     depends_on:
       postgres:
         condition: service_healthy
@@ -67,8 +69,8 @@ services:
       MAILDEV_INCOMING_PASS: ""
       TZ: Asia/Ho_Chi_Minh
     ports:
-      - "${MAILDEV_WEB_PORT:-1080}:1080"   # Giao diện web đọc email
-      - "${MAILDEV_SMTP_PORT:-1025}:1025"  # Cổng SMTP cho backend
+      - "127.0.0.1:${MAILDEV_WEB_PORT:-1080}:1080"   # Giao diện web đọc email (chứa link đặt lại mật khẩu)
+      - "127.0.0.1:${MAILDEV_SMTP_PORT:-1025}:1025"  # Cổng SMTP cho backend
     networks: [salon_net]
 
 volumes:

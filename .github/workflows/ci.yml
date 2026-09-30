@@ -47,6 +47,15 @@ jobs:
         working-directory: ./frontend
         run: npm run lint
 
+      # typecheck không bắt được lỗi bundling (import động, manualChunks, CSS Tailwind) -> build thật
+      - name: Build Backend
+        working-directory: ./backend
+        run: npm run build
+
+      - name: Build Frontend (production, API mode)
+        working-directory: ./frontend
+        run: npm run build
+
   unit-tests:
     name: "Unit Tests Backend (Jest)"
     runs-on: ubuntu-latest

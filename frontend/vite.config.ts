@@ -18,6 +18,8 @@ const API_TARGET = process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:3000';
 const backendProxy = (): ProxyOptions => ({
   target: API_TARGET,
   changeOrigin: true,
+  // Gắn IP thật của trình duyệt vào X-Forwarded-For; backend chỉ tin header này từ loopback (TRUST_PROXY)
+  xfwd: true,
   configure: (proxy) => {
     proxy.on('error', (_err, _req, res) => {
       const out = res as ServerResponse | undefined;
@@ -53,5 +55,16 @@ export default defineConfig({
       '/health': backendProxy(),
     },
   },
-  build: { outDir: 'dist', sourcemap: false, chunkSizeWarningLimit: 1200 },
+  build: {
+    outDir: 'dist',
+    sourcemap: false,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ['react', 'react-dom', 'react-router-dom'],
+          charts: ['recharts'],
+        },
+      },
+    },
+  },
 });

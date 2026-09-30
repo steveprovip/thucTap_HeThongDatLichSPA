@@ -3,11 +3,19 @@
 @tailwind utilities;
 
 @layer base {
-  html { -webkit-text-size-adjust: 100%; }
+  :root { --bottom-nav-h: 64px; }
+  html { -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; }
   body {
     @apply bg-surface-page text-ink font-sans antialiased;
     margin: 0;
+    /* Lưới an toàn chống tràn ngang; 'clip' không phá position: sticky như 'hidden' */
+    overflow-x: clip;
+    /* viewport-fit=cover: chừa tai thỏ/cạnh cong khi xoay ngang */
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
   }
+  /* Grid item mặc định min-width:auto → bảng/biểu đồ bên trong đẩy cột rộng hơn màn hình */
+  .grid > * { min-width: 0; }
   /* Vùng chạm tối thiểu 44px để dùng một tay trên điện thoại */
   button, [role='button'], a.btn { touch-action: manipulation; }
   :focus-visible { @apply outline-none ring-2 ring-teal-500/40 ring-offset-2 ring-offset-white; }
@@ -29,7 +37,7 @@
   .card { @apply rounded-2xl border border-slate-200/80 bg-white shadow-card; }
   .field-label { @apply block text-sm font-medium text-slate-700 mb-1.5; }
   .field-input {
-    @apply w-full rounded-xl border border-slate-300 bg-white px-3.5 min-h-[44px] text-sm text-slate-900
+    @apply w-full rounded-xl border border-slate-300 bg-white px-3.5 min-h-[44px] text-base sm:text-sm text-slate-900
            placeholder:text-slate-400 focus:border-teal-600 focus:outline-none
            focus:ring-2 focus:ring-teal-500/20 disabled:bg-slate-50 disabled:text-slate-500;
   }
@@ -119,12 +127,14 @@
 
 /* Hiệu ứng nhấc thẻ khi rê chuột */
 .lift { transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s ease, border-color 0.2s ease; }
-.lift:hover { transform: translateY(-3px); box-shadow: 0 16px 40px -12px rgba(15, 23, 42, 0.16), 0 4px 10px -4px rgba(15, 23, 42, 0.06); }
+@media (hover: hover) {
+  .lift:hover { transform: translateY(-3px); box-shadow: 0 16px 40px -12px rgba(15, 23, 42, 0.16), 0 4px 10px -4px rgba(15, 23, 42, 0.06); }
+  .hover-lift:hover { transform: translateY(-4px); box-shadow: 0 10px 15px -3px rgba(15, 23, 42, 0.08), 0 4px 6px -4px rgba(15, 23, 42, 0.06); }
+}
 .press { transition: transform 0.15s ease; }
 .press:active { transform: scale(0.98); }
 /* Thẻ tương tác: nhấc nhẹ khi rê chuột, nảy khi nhấn (hover:-translate-y-1 hover:shadow-lg) */
 .hover-lift { transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s ease; }
-.hover-lift:hover { transform: translateY(-4px); box-shadow: 0 10px 15px -3px rgba(15, 23, 42, 0.08), 0 4px 6px -4px rgba(15, 23, 42, 0.06); }
 .hover-lift:active { transform: translateY(-1px) scale(0.99); }
 
 @media (prefers-reduced-motion: reduce) {
@@ -154,3 +164,13 @@
 
 /* Ẩn bộ chuyển vai trò demo khi đang mở hộp thoại để không che nút hành động */
 body:has([aria-modal='true']) .role-switcher { display: none; }
+
+/* Màn cảm ứng: vùng chạm >= 44px (Apple HIG / WCAG 2.5.5).
+   Đặt ngoài @layer để thắng các utility min-h-[36px] đi kèm. */
+@media (pointer: coarse) {
+  .btn-sm, .tap-44, .min-h-\[36px\], .min-h-\[38px\] { min-height: 44px; }
+  .tap-44 { min-width: 44px; }
+  /* Công tắc/nút icon nhỏ: giữ kích thước hiển thị, nới vùng chạm vô hình ra 44x44 */
+  .hit-44 { position: relative; }
+  .hit-44::before { content: ''; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%); }
+}

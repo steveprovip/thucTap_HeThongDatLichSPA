@@ -1,6 +1,8 @@
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
+  // Cảm ứng: tắt hover:* để phần tử không bị "kẹt" trạng thái hover/translate sau khi chạm
+  future: { hoverOnlyWhenSupported: true },
   theme: {
     extend: {
       colors: {

@@ -31,7 +31,7 @@ export function BackButton({ to = '/', label = 'Quay lại', onClick, className 
       type="button"
       onClick={handle}
       aria-label={label}
-      className={`group inline-flex min-h-[36px] items-center gap-1.5 rounded-full border border-slate-200 bg-white/90 px-3.5 py-1.5
+      className={`tap-44 group inline-flex min-h-[36px] items-center gap-1.5 rounded-full border border-slate-200 bg-white/90 px-3.5 py-1.5
                   text-sm font-medium text-slate-700 shadow-sm backdrop-blur transition-all duration-200
                   hover:-translate-y-0.5 hover:border-teal-300 hover:text-teal-700 hover:shadow-card-hover active:scale-95 ${className}`}
     >

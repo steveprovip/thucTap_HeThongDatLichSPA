@@ -1,9 +1,13 @@
 import { createParamDecorator, ExecutionContext } from '@nestjs/common';
 
-/** Lấy IP thật của khách, có tính tới reverse proxy. */
-export const ClientIp = createParamDecorator((_data: unknown, ctx: ExecutionContext): string => {
-  const req = ctx.switchToHttp().getRequest();
-  const forwarded = req.headers?.['x-forwarded-for'];
-  if (typeof forwarded === 'string' && forwarded.length > 0) return forwarded.split(',')[0].trim();
-  return req.ip ?? req.socket?.remoteAddress ?? 'unknown';
-});
+/**
+ * IP thật của khách. KHÔNG tự đọc X-Forwarded-For: header đó do client đặt tuỳ ý nên đổi mỗi
+ * request là vượt mọi giới hạn tần suất theo IP. req.ip đã được Express giải theo 'trust proxy'
+ * (cấu hình TRUST_PROXY trong main.ts) -> chỉ lấy địa chỉ do proxy tin cậy ghi vào.
+ */
+export const clientIpOf = (req: { ip?: string; socket?: { remoteAddress?: string } }): string =>
+  req.ip ?? req.socket?.remoteAddress ?? 'unknown';
+
+export const ClientIp = createParamDecorator((_data: unknown, ctx: ExecutionContext): string =>
+  clientIpOf(ctx.switchToHttp().getRequest()),
+);

@@ -258,6 +258,9 @@ export class BookingService {
       totalDuration,
       estimatedTotal,
     };
+    // Lịch ĐÃ commit: lỗi email/thông báo phía sau không được biến thành 500 (khách tưởng đặt hỏng,
+    // bấm lại -> 409 "khung giờ đã bị chiếm" bởi chính lịch của mình).
+    try {
     if (result.customer.email) {
       const tpl = MailTemplates.bookingConfirmation(this.mail.salonInfo, mailData);
       await this.mail.enqueue({
@@ -280,6 +283,9 @@ export class BookingService {
       `${result.customer.fullName} đặt lúc ${formatDateTimeVN(startAt)} (${totalDuration} phút)`,
       result.appointment.id,
     );
+    } catch (e) {
+      this.logger.error(`Lịch ${result.appointment.code} đã lưu nhưng gửi email/thông báo lỗi: ${(e as Error).message}`);
+    }
 
     return {
       code: result.appointment.code,
@@ -383,8 +389,9 @@ export class BookingService {
 
     if (!appointments.length) throw new NotFoundException(MSG.CODE_NOT_FOUND);
 
-    // Tra cứu đúng thì xoá bộ đếm để khách hợp lệ không bị chặn oan
-    await this.rateLimit.reset('lookup_ip', params.ip);
+    // Chỉ xoá bộ đếm khi tra đúng MÃ (bí mật 8 ký tự). Tra theo SĐT mà cũng xoá thì kẻ gian có danh
+    // sách SĐT dò vô hạn: mỗi lần trúng lại được đặt lại hạn mức -> lộ tên, lịch hẹn và mã huỷ lịch.
+    if (params.code) await this.rateLimit.reset('lookup_ip', params.ip);
 
     const customerIds = Array.from(new Set(appointments.map((a) => a.customerId)));
     const stylistIds = Array.from(new Set(appointments.map((a) => a.stylistId)));

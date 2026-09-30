@@ -181,7 +181,7 @@ export function Toggle({ checked, onChange, disabled, label, size = 'md' }: {
       title={label}
       disabled={disabled}
       onClick={() => onChange(!checked)}
-      className={`relative inline-flex shrink-0 items-center rounded-full border transition-colors ${track}
+      className={`hit-44 relative inline-flex shrink-0 items-center rounded-full border transition-colors ${track}
         ${checked ? 'border-teal-600 bg-teal-600' : 'border-slate-300 bg-slate-200'}
         disabled:cursor-not-allowed disabled:opacity-50`}
     >
