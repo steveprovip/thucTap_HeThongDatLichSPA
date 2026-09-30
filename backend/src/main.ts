@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { Logger, ValidationPipe, BadRequestException } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ValidationError } from 'class-validator';
@@ -11,9 +12,21 @@ import { MSG } from './common/constants/messages.constant';
 process.env.TZ = process.env.APP_TIMEZONE ?? 'Asia/Ho_Chi_Minh';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule, { bufferLogs: false });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: false });
   const config = app.get(ConfigService);
   const logger = new Logger('Bootstrap');
+
+  // req.ip chỉ lấy từ X-Forwarded-For khi request đi qua proxy tin cậy (mặc định loopback = Vite dev proxy)
+  const tp = config.get<string>('app.trustProxy') ?? 'loopback';
+  app.set('trust proxy', tp === 'false' ? false : /^\d+$/.test(tp) ? Number(tp) : tp);
+  app.disable('x-powered-by');
+  // Header bảo mật tối thiểu (không cần thêm gói helmet); nosniff chặn trình duyệt đoán kiểu tệp ở /uploads
+  app.use((_req: unknown, res: { setHeader: (k: string, v: string) => void }, next: () => void) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    next();
+  });
 
   const prefix = config.get<string>('app.apiPrefix')!;
   app.setGlobalPrefix(prefix, { exclude: ['health'] });
@@ -56,7 +69,10 @@ async function bootstrap(): Promise<void> {
     .setVersion('1.0')
     .addBearerAuth()
     .build();
-  SwaggerModule.setup(`${prefix}/docs`, app, SwaggerModule.createDocument(app, swagger));
+  // Production: không công khai toàn bộ bản đồ API trừ khi bật SWAGGER_ENABLED=true
+  if (config.get<boolean>('app.swaggerEnabled')) {
+    SwaggerModule.setup(`${prefix}/docs`, app, SwaggerModule.createDocument(app, swagger));
+  }
 
   // Ctrl+C trong cửa sổ launcher -> đóng kết nối CSDL gọn gàng
   app.enableShutdownHooks();

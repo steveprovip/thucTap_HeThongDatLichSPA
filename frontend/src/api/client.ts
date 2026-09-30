@@ -53,6 +53,9 @@ const doRefresh = async (): Promise<string | null> => {
     }
     return null;
   } catch {
+    // Tab khác vừa xoay vòng refresh token (token cũ bị thu hồi) -> dùng cặp token mới tab kia đã lưu
+    // thay vì đăng xuất người dùng oan khi mở nhiều tab.
+    if (tokenStore.refresh && tokenStore.refresh !== refreshToken) return tokenStore.access;
     return null;
   }
 };

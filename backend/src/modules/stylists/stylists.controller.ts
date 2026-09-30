@@ -5,7 +5,6 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ConfigService } from '@nestjs/config';
 import { diskStorage } from 'multer';
-import { extname } from 'path';
 import { StylistsService } from './stylists.service';
 import {
   CopyWeekDto, CreateShiftsDto, CreateStylistDto, CreateTimeOffDto, UpdateShiftDto, UpdateStylistDto,
@@ -66,7 +65,9 @@ export class StylistsController {
         destination: process.env.UPLOAD_DIR ?? 'uploads',
         filename: (_req, file, cb) => {
           const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-          cb(null, `avatar-${unique}${extname(file.originalname).toLowerCase()}`);
+          // Đuôi tệp lấy theo MIME đã được kiểm tra, KHÔNG theo tên gốc: "x.html" gửi kèm
+          // Content-Type image/png sẽ thành avatar-*.html và chạy script trên cùng origin (XSS).
+          cb(null, `avatar-${unique}${file.mimetype === 'image/png' ? '.png' : '.jpg'}`);
         },
       }),
       limits: { fileSize: MAX_AVATAR_BYTES },

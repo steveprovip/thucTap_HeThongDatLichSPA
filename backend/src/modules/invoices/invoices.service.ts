@@ -235,6 +235,11 @@ export class InvoicesService {
       invoice.voucherCode = voucher?.code ?? null;
       invoice.discountAmount = discount;
       invoice.total = Math.max(0, subtotal - discount);
+      // Đã ghi nhận thanh toán mà sửa số tiền -> số đã thu không còn khớp phiếu: buộc thu lại
+      if (invoice.status === InvoiceStatus.PAID) {
+        invoice.status = InvoiceStatus.DRAFT;
+        invoice.paidAt = null;
+      }
       await manager.save(Invoice, invoice);
     });
 
@@ -274,14 +279,26 @@ export class InvoicesService {
       throw new BadRequestException(MSG.INVOICE_REQUIRES_COMPLETED);
     }
 
-    await this.dataSource.transaction(async (manager) => {
-      invoice.status = InvoiceStatus.CLOSED;
-      invoice.closedAt = new Date();
-      await manager.save(Invoice, invoice);
+    const closedAt = new Date();
+    const closedNow = await this.dataSource.transaction(async (manager) => {
+      // Chuyển trạng thái CÓ ĐIỀU KIỆN: bấm "Đóng phiếu" 2 lần / 2 máy cùng lúc chỉ đóng 1 lần
+      const res = await manager.update(Invoice, { id, status: InvoiceStatus.PAID }, { status: InvoiceStatus.CLOSED, closedAt });
+      if (!res.affected) return false;
       if (invoice.voucherId) {
-        await manager.increment(Voucher, { id: invoice.voucherId }, 'usedCount', 1);
+        // Tăng lượt dùng có chặn trần max_usage ngay tại câu UPDATE (không vượt dù đóng song song)
+        const used = await manager
+          .createQueryBuilder()
+          .update(Voucher)
+          .set({ usedCount: () => 'used_count + 1' })
+          .where('id = :vid AND (max_usage IS NULL OR used_count < max_usage)', { vid: invoice.voucherId })
+          .execute();
+        if (!used.affected) throw new BadRequestException(MSG.VOUCHER_USED_UP);
       }
+      return true;
     });
+    if (!closedNow) return this.findOne(id);
+    invoice.status = InvoiceStatus.CLOSED;
+    invoice.closedAt = closedAt;
 
     await this.reviews.createInvitation(invoice.appointmentId);
     return this.toView(invoice);

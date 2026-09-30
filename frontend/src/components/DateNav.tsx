@@ -16,7 +16,7 @@ export function DateNav({ value, onChange, className = '' }: {
           type="date"
           value={value}
           onChange={(e) => e.target.value && onChange(e.target.value)}
-          className="field-input min-h-[36px] pl-9 text-sm"
+          className="field-input min-h-[44px] pl-9 sm:min-h-[36px]"
           aria-label="Chọn ngày"
         />
       </div>

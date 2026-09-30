@@ -471,6 +471,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_invoice_code ON invoices (code);
 CREATE UNIQUE INDEX IF NOT EXISTS ux_invoice_appointment_primary
   ON invoices (appointment_id) WHERE adjusts_invoice_id IS NULL;
 CREATE INDEX IF NOT EXISTS ix_invoice_stylist_closed ON invoices (stylist_id, closed_at);
+-- Khoá ngoại không có chỉ mục -> lịch sử khách / kiểm tra RESTRICT khi xoá phải quét toàn bảng
+CREATE INDEX IF NOT EXISTS ix_invoice_customer ON invoices (customer_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS ix_invoice_voucher  ON invoices (voucher_id) WHERE voucher_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS ix_invoice_status_closed  ON invoices (status, closed_at);
 DROP TRIGGER IF EXISTS trg_invoices_updated ON invoices;
 CREATE TRIGGER trg_invoices_updated BEFORE UPDATE ON invoices
@@ -510,6 +513,7 @@ CREATE TABLE IF NOT EXISTS reviews (
 CREATE UNIQUE INDEX IF NOT EXISTS ux_review_appointment ON reviews (appointment_id);
 CREATE UNIQUE INDEX IF NOT EXISTS ux_review_token ON reviews (token);
 CREATE INDEX IF NOT EXISTS ix_review_stylist ON reviews (stylist_id) WHERE submitted_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS ix_review_customer ON reviews (customer_id);
 
 -- ---------------------------------------------------------------------------
 -- 9. THÔNG BÁO & EMAIL  (EP-06 / S4-05, S4-06)

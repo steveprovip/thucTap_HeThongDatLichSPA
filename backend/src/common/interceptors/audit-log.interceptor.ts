@@ -3,6 +3,7 @@ import { Reflector } from '@nestjs/core';
 import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
 import { AUDIT_KEY, AuditMeta } from '../decorators/audit.decorator';
+import { clientIpOf } from '../decorators/client-ip.decorator';
 import { AuditService } from '../../modules/audit/audit.service';
 import { AuthUser } from '../types/auth.types';
 
@@ -23,10 +24,7 @@ export class AuditLogInterceptor implements NestInterceptor {
 
     const req = context.switchToHttp().getRequest();
     const user: AuthUser | undefined = req.user;
-    const ip: string =
-      (typeof req.headers?.['x-forwarded-for'] === 'string'
-        ? req.headers['x-forwarded-for'].split(',')[0].trim()
-        : undefined) ?? req.ip ?? 'unknown';
+    const ip = clientIpOf(req);
 
     return next.handle().pipe(
       tap((result) => {

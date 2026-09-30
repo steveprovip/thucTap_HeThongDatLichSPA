@@ -131,7 +131,7 @@ export function RevenuePage() {
             </div>
           </Card>
 
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <Card className="p-4">
               <p className="mb-3 text-sm font-semibold text-slate-900">Doanh thu theo thợ</p>
               {data.byStylist.length === 0 ? <EmptyState title="Chưa có dữ liệu" /> : (

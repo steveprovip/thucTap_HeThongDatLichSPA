@@ -90,6 +90,7 @@ export function Step1Services() {
                                   kind={serviceMediaKind({ name: s.name, categoryId: group.categoryId, categoryName: group.categoryName })} />
                       <span className="min-w-0 flex-1">
                         <span className="block font-semibold text-slate-900">{s.name}</span>
+                        <span className="block text-sm font-bold text-teal-700 sm:hidden">{s.priceText}</span>
                         {s.description && (
                           <span className="mt-0.5 block line-clamp-2 text-xs text-ink-muted">{s.description}</span>
                         )}
@@ -97,7 +98,7 @@ export function Step1Services() {
                           <Clock size={13} /> {formatDuration(s.durationMinutes)}
                         </span>
                       </span>
-                      <span className="shrink-0 font-bold text-teal-700">{s.priceText}</span>
+                      <span className="hidden shrink-0 font-bold text-teal-700 sm:block">{s.priceText}</span>
                     </button>
                   </li>
                 );

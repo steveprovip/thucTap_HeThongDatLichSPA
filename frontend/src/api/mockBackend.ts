@@ -9,7 +9,13 @@ import type {
 
 /** Persisted in the browser so the whole UI can be explored without a server. */
 const KEY = 'salon.demo.v5';
-export const DEMO_MODE = import.meta.env.VITE_DEMO_MODE !== 'false';
+/**
+ * Có đặt VITE_DEMO_MODE thì theo đúng giá trị. KHÔNG đặt (vd. build trên máy/CI không có .env vì .env
+ * bị gitignore) thì: dev -> demo như trước, còn bản build production -> gọi API thật. Trước đây
+ * thiếu biến = demo ở mọi nơi -> bản production âm thầm chạy dữ liệu giả trong trình duyệt.
+ */
+const DEMO_FLAG = import.meta.env.VITE_DEMO_MODE;
+export const DEMO_MODE = DEMO_FLAG ? DEMO_FLAG !== 'false' : import.meta.env.DEV;
 /** Phiên demo lưu MÃ tài khoản (không phải vai trò) để mọi kiểm tra quyền dựa trên đúng người đăng nhập. */
 const SESSION_KEY = 'salon.demoUserId';
 /** Mật khẩu mẫu theo vai trò — trùng khớp seed của máy chủ thật (database/seed.sql) và README. */

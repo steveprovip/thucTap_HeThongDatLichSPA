@@ -19,6 +19,10 @@ export interface AppointmentMailData {
   estimatedTotal: number;
 }
 
+/** Dữ liệu do khách tự nhập (họ tên, lý do…) phải escape trước khi chèn vào HTML email. */
+const esc = (v: unknown): string =>
+  String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+
 const wrap = (salon: SalonInfo, title: string, inner: string): string => `<!DOCTYPE html>
 <html lang="vi"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -49,7 +53,7 @@ const serviceRows = (data: AppointmentMailData): string =>
   data.services
     .map(
       (s) => `<tr>
-        <td style="padding:6px 0;border-bottom:1px solid #eee">${s.name}</td>
+        <td style="padding:6px 0;border-bottom:1px solid #eee">${esc(s.name)}</td>
         <td style="padding:6px 0;border-bottom:1px solid #eee;text-align:right;white-space:nowrap">${s.durationMinutes} phút</td>
         <td style="padding:6px 0;border-bottom:1px solid #eee;text-align:right;white-space:nowrap">${formatVnd(s.price)}</td>
       </tr>`,
@@ -62,7 +66,7 @@ const appointmentBlock = (data: AppointmentMailData): string => `
         <td style="padding:4px 0"><strong style="font-size:18px;letter-spacing:2px">${data.code}</strong></td></tr>
     <tr><td style="padding:4px 0;color:#7a6a5f">Thời gian</td>
         <td style="padding:4px 0"><strong>${formatDateTimeVN(data.startAt)}</strong> — dự kiến xong ${formatTimeVN(data.endAt)}</td></tr>
-    <tr><td style="padding:4px 0;color:#7a6a5f">Thợ phụ trách</td><td style="padding:4px 0">${data.stylistName}</td></tr>
+    <tr><td style="padding:4px 0;color:#7a6a5f">Thợ phụ trách</td><td style="padding:4px 0">${esc(data.stylistName)}</td></tr>
     <tr><td style="padding:4px 0;color:#7a6a5f">Tổng thời lượng</td><td style="padding:4px 0">${data.totalDuration} phút</td></tr>
   </table>
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;margin-bottom:8px">
@@ -88,7 +92,7 @@ export const MailTemplates = {
       html: wrap(
         salon,
         'Tiệm đã nhận lịch hẹn của bạn',
-        `<p style="font-size:14px">Chào <strong>${data.customerName}</strong>, cảm ơn bạn đã đặt lịch.</p>
+        `<p style="font-size:14px">Chào <strong>${esc(data.customerName)}</strong>, cảm ơn bạn đã đặt lịch.</p>
          ${appointmentBlock(data)}
          ${button(`${salon.frontendUrl}/tra-cuu?code=${data.code}`, 'Xem hoặc huỷ lịch hẹn')}`,
       ),
@@ -101,7 +105,7 @@ export const MailTemplates = {
       html: wrap(
         salon,
         'Nhắc bạn buổi hẹn sắp tới',
-        `<p style="font-size:14px">Chào <strong>${data.customerName}</strong>, tiệm xin nhắc bạn buổi hẹn sắp tới.</p>
+        `<p style="font-size:14px">Chào <strong>${esc(data.customerName)}</strong>, tiệm xin nhắc bạn buổi hẹn sắp tới.</p>
          ${appointmentBlock(data)}
          <p style="font-size:14px">Nếu bạn bận đột xuất, vui lòng huỷ sớm để tiệm kịp nhận khách khác.</p>
          ${button(`${salon.frontendUrl}/tra-cuu?code=${data.code}`, 'Xem hoặc huỷ lịch hẹn')}`,
@@ -115,7 +119,7 @@ export const MailTemplates = {
       html: wrap(
         salon,
         'Lịch hẹn của bạn vừa được điều chỉnh',
-        `<p style="font-size:14px">Chào <strong>${data.customerName}</strong>, tiệm vừa điều chỉnh lịch hẹn của bạn:</p>
+        `<p style="font-size:14px">Chào <strong>${esc(data.customerName)}</strong>, tiệm vừa điều chỉnh lịch hẹn của bạn:</p>
          <p style="font-size:14px;background:#fff6ed;border-left:4px solid #d98d4e;padding:10px 14px">${changeSummary}</p>
          ${appointmentBlock(data)}
          ${button(`${salon.frontendUrl}/tra-cuu?code=${data.code}`, 'Xem chi tiết lịch hẹn')}`,
@@ -129,9 +133,9 @@ export const MailTemplates = {
       html: wrap(
         salon,
         'Lịch hẹn đã được huỷ',
-        `<p style="font-size:14px">Chào <strong>${data.customerName}</strong>, lịch hẹn lúc
+        `<p style="font-size:14px">Chào <strong>${esc(data.customerName)}</strong>, lịch hẹn lúc
          <strong>${formatDateTimeVN(data.startAt)}</strong> đã được huỷ.</p>
-         <p style="font-size:14px">Lý do: ${reason}</p>
+         <p style="font-size:14px">Lý do: ${esc(reason)}</p>
          ${button(`${salon.frontendUrl}/dat-lich`, 'Đặt lịch mới')}`,
       ),
     };
@@ -143,8 +147,8 @@ export const MailTemplates = {
       html: wrap(
         salon,
         'Mời bạn chấm điểm buổi dịch vụ',
-        `<p style="font-size:14px">Chào <strong>${data.customerName}</strong>, cảm ơn bạn đã tin tưởng tiệm.</p>
-         <p style="font-size:14px">Bạn dành 30 giây chấm điểm cho thợ <strong>${data.stylistName}</strong> nhé.
+        `<p style="font-size:14px">Chào <strong>${esc(data.customerName)}</strong>, cảm ơn bạn đã tin tưởng tiệm.</p>
+         <p style="font-size:14px">Bạn dành 30 giây chấm điểm cho thợ <strong>${esc(data.stylistName)}</strong> nhé.
          Liên kết dùng được một lần trong 7 ngày.</p>
          ${button(`${salon.frontendUrl}/danh-gia/${token}`, 'Chấm điểm ngay')}`,
       ),
@@ -157,9 +161,9 @@ export const MailTemplates = {
       html: wrap(
         salon,
         'Tài khoản đã sẵn sàng',
-        `<p style="font-size:14px">Chào <strong>${fullName}</strong>, quản trị viên vừa tạo tài khoản cho bạn.</p>
+        `<p style="font-size:14px">Chào <strong>${esc(fullName)}</strong>, quản trị viên vừa tạo tài khoản cho bạn.</p>
          <table role="presentation" style="font-size:14px;margin:12px 0">
-           <tr><td style="padding:4px 12px 4px 0;color:#7a6a5f">Email đăng nhập</td><td><strong>${email}</strong></td></tr>
+           <tr><td style="padding:4px 12px 4px 0;color:#7a6a5f">Email đăng nhập</td><td><strong>${esc(email)}</strong></td></tr>
            <tr><td style="padding:4px 12px 4px 0;color:#7a6a5f">Mật khẩu tạm</td>
                <td><strong style="letter-spacing:1px">${tempPassword}</strong></td></tr>
          </table>
@@ -176,7 +180,7 @@ export const MailTemplates = {
       html: wrap(
         salon,
         'Yêu cầu đặt lại mật khẩu',
-        `<p style="font-size:14px">Chào <strong>${fullName}</strong>, bạn vừa yêu cầu đặt lại mật khẩu.</p>
+        `<p style="font-size:14px">Chào <strong>${esc(fullName)}</strong>, bạn vừa yêu cầu đặt lại mật khẩu.</p>
          <p style="font-size:14px">Liên kết dưới đây <strong>hết hạn sau 30 phút</strong> và chỉ dùng được một lần.</p>
          ${button(`${salon.frontendUrl}/dat-lai-mat-khau?token=${token}`, 'Đặt lại mật khẩu')}
          <p style="font-size:12px;color:#7a6a5f">Nếu không phải bạn yêu cầu, hãy bỏ qua email này.</p>`,

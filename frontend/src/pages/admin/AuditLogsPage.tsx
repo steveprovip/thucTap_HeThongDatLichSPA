@@ -113,7 +113,7 @@ export function AuditLogsPage() {
           <span className="text-sm font-semibold">Bộ lọc</span>
           {PRESETS.map((p) => (
             <button key={p.label}
-                    className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs text-ink-soft hover:border-teal-600 hover:text-teal-700"
+                    className="hit-44 rounded-lg border border-slate-200 px-2.5 py-1 text-xs text-ink-soft hover:border-teal-600 hover:text-teal-700"
                     onClick={() => update(() => { setFrom(addDaysISO(todayISO(), -p.days)); setTo(todayISO()); })}>
               {p.label}
             </button>
@@ -173,7 +173,7 @@ export function AuditLogsPage() {
                       <tr className="cursor-pointer" onClick={() => setExpanded(isOpen ? null : r.id)}>
                         <td className="text-ink-muted">
                           <button aria-expanded={isOpen} aria-label={isOpen ? 'Thu gọn' : 'Xem chi tiết'}
-                                  className="rounded p-1 hover:bg-slate-100">
+                                  className="hit-44 rounded p-1 hover:bg-slate-100">
                             {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                           </button>
                         </td>
