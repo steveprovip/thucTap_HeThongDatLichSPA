@@ -5,6 +5,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ConfigService } from '@nestjs/config';
 import { diskStorage } from 'multer';
+import { open, unlink } from 'fs/promises';
 import { StylistsService } from './stylists.service';
 import {
   CopyWeekDto, CreateShiftsDto, CreateStylistDto, CreateTimeOffDto, UpdateShiftDto, UpdateStylistDto,
@@ -15,8 +16,26 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Audit } from '../../common/decorators/audit.decorator';
 import { AuditAction } from '../../database/entities/audit-log.entity';
 import { MSG } from '../../common/constants/messages.constant';
+import { MAX_AVATAR_BYTES } from '../../common/constants/upload.constant';
+import { detectImageSignature } from '../../common/utils/image-signature.util';
 
-const MAX_AVATAR_BYTES = 2 * 1024 * 1024; // 2MB (S1-07)
+/**
+ * QA-22: Content-Type trong multipart do client tự khai -> đọc "magic bytes" của tệp đã lưu để chắc chắn
+ * là JPG/PNG thật; tệp giả mạo bị xoá ngay khỏi thư mục uploads.
+ */
+const assertRealImage = async (path: string): Promise<void> => {
+  const handle = await open(path, 'r');
+  const head = new Uint8Array(8);
+  try {
+    await handle.read(head, 0, head.length, 0);
+  } finally {
+    await handle.close();
+  }
+  if (!detectImageSignature(head)) {
+    await unlink(path).catch(() => undefined);
+    throw new BadRequestException(MSG.FILE_TYPE_INVALID);
+  }
+};
 
 @Controller('stylists')
 @UseGuards(RolesGuard)
@@ -79,6 +98,7 @@ export class StylistsController {
   )
   async uploadAvatar(@Param('id', ParseUUIDPipe) id: string, @UploadedFile() file?: Express.Multer.File) {
     if (!file) throw new BadRequestException('Vui lòng chọn tệp ảnh');
+    await assertRealImage(file.path);
     return this.service.setAvatar(id, `/uploads/${file.filename}`);
   }
 

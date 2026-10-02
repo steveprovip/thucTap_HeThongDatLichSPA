@@ -5,6 +5,7 @@ import { ServiceCategory } from '../../database/entities/service-category.entity
 import { ServiceItem } from '../../database/entities/service.entity';
 import { StylistService } from '../../database/entities/stylist-service.entity';
 import { AppointmentServiceItem } from '../../database/entities/appointment-service.entity';
+import { InvoiceItem } from '../../database/entities/invoice-item.entity';
 import { MSG } from '../../common/constants/messages.constant';
 import { normalizeSearch } from '../../common/utils/text.util';
 import { formatVnd } from '../../common/utils/currency.util';
@@ -239,13 +240,20 @@ export class ServicesService {
     return this.findOne(id);
   }
 
-  /** S1-05: dịch vụ đã có lịch hẹn tham chiếu thì không xoá, chỉ được ngừng bán. */
+  /**
+   * S1-05 / QA-06: dịch vụ đã có lịch hẹn HOẶC đã nằm trên phiếu tính tiền thì không xoá cứng,
+   * chỉ được ngừng bán. invoice_items.service_id là ON DELETE SET NULL nên trước đây xoá vẫn "thành công"
+   * và làm mất liên kết dịch vụ ở báo cáo doanh thu. Khoá dòng dịch vụ (FOR UPDATE) để lịch/phiếu tạo
+   * song song (giữ KEY SHARE trên dòng này qua khoá ngoại) phải chờ -> không lọt giữa bước đếm và bước xoá.
+   */
   async remove(id: string): Promise<{ success: boolean }> {
-    const service = await this.serviceRepo.findOne({ where: { id } });
-    if (!service) throw new NotFoundException(MSG.SERVICE_NOT_FOUND);
-    const used = await this.apptServiceRepo.count({ where: { serviceId: id } });
-    if (used > 0) throw new ConflictException(MSG.SERVICE_IN_USE);
     await this.dataSource.transaction(async (manager) => {
+      const locked: { id: string }[] = await manager.query('SELECT id FROM services WHERE id = $1 FOR UPDATE', [id]);
+      if (!locked.length) throw new NotFoundException(MSG.SERVICE_NOT_FOUND);
+      const usedByAppointments = await manager.count(AppointmentServiceItem, { where: { serviceId: id } });
+      if (usedByAppointments > 0) throw new ConflictException(MSG.SERVICE_IN_USE);
+      const usedByInvoices = await manager.count(InvoiceItem, { where: { serviceId: id } });
+      if (usedByInvoices > 0) throw new ConflictException(MSG.SERVICE_IN_INVOICE);
       await manager.delete(StylistService, { serviceId: id });
       await manager.delete(ServiceItem, { id });
     });

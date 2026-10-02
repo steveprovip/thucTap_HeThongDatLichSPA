@@ -10,15 +10,17 @@ import { StylistTimeOff } from '../../database/entities/stylist-time-off.entity'
 import { ServiceItem } from '../../database/entities/service.entity';
 import { Appointment, ACTIVE_STATUSES } from '../../database/entities/appointment.entity';
 import { User } from '../../database/entities/user.entity';
+import { Customer } from '../../database/entities/customer.entity';
 import { EmailKind } from '../../database/entities/email-queue.entity';
 import { Role } from '../../common/constants/roles.constant';
-import { MSG } from '../../common/constants/messages.constant';
+import { ERROR_CODES, MSG } from '../../common/constants/messages.constant';
 import { generateTempPassword } from '../../common/utils/code.util';
 import { MailService } from '../notifications/mail.service';
 import { MailTemplates } from '../notifications/mail-templates';
 import {
-  addDays, combine, dayOfWeek, DOW_LABELS, endOfDay, startOfDay, timeToMinutes, trimSeconds,
+  addDays, combine, dayOfWeek, DOW_LABELS, endOfDay, startOfDay, timeToMinutes, toTimeString, trimSeconds,
 } from '../../common/utils/time.util';
+import { findShiftOverlap, shiftDayText, shiftLabel, ShiftRange, shiftRangeText } from './shift-rules';
 import { WorkingHoursService } from '../working-hours/working-hours.service';
 import {
   CopyWeekDto, CreateShiftsDto, CreateStylistDto, CreateTimeOffDto, ShiftItemDto,
@@ -245,18 +247,25 @@ export class StylistsService {
     return { ok: false, missing: services.map((s) => s.name) };
   }
 
-  /** Các thợ làm được TẤT CẢ dịch vụ đã chọn và đang làm việc. */
+  /**
+   * Các thợ làm được TẤT CẢ dịch vụ đã chọn và đang làm việc.
+   * QA-15: trước đây dùng dataSource.query('SELECT s.*') rồi ép kiểu `as Stylist[]` -> nhận về cột snake_case
+   * (full_name, avatar_url) nên `fullName` luôn undefined: API /public/stylists trả thợ KHÔNG tên/ảnh, và
+   * "thợ bất kỳ" sập 500 (undefined.localeCompare) mỗi khi hai thợ rảnh có cùng số lịch.
+   */
   async findCapableStylists(serviceIds: string[]): Promise<Stylist[]> {
-    if (!serviceIds.length) return [];
-    const rows = await this.dataSource.query(
-      `SELECT s.* FROM stylists s
-        WHERE s.is_active = TRUE
-          AND (SELECT COUNT(DISTINCT ss.service_id) FROM stylist_services ss
-                WHERE ss.stylist_id = s.id AND ss.service_id = ANY($1)) = $2
-        ORDER BY s.full_name`,
-      [serviceIds, serviceIds.length],
-    );
-    return rows as Stylist[];
+    const ids = Array.from(new Set(serviceIds));
+    if (!ids.length) return [];
+    return this.stylistRepo
+      .createQueryBuilder('s')
+      .where('s.is_active = TRUE')
+      .andWhere(
+        `(SELECT COUNT(DISTINCT ss.service_id) FROM stylist_services ss
+           WHERE ss.stylist_id = s.id AND ss.service_id IN (:...ids)) = :n`,
+        { ids, n: ids.length },
+      )
+      .orderBy('s.fullName', 'ASC')
+      .getMany();
   }
 
   // ---------------------------------------------------------------- SHIFTS
@@ -290,8 +299,15 @@ export class StylistsService {
   private async assertWithinSalonHours(item: ShiftItemDto): Promise<void> {
     const dow = dayOfWeek(item.workDate);
     const wh = await this.workingHours.getByDayOfWeek(dow);
-    if (!wh || wh.isClosed) {
-      throw new BadRequestException(`${DOW_LABELS[dow]} ${item.workDate}: ${MSG.SALON_CLOSED_THAT_DAY}`);
+    const outside = (message: string, details: Record<string, string | null> = {}): BadRequestException =>
+      new BadRequestException({
+        message, code: ERROR_CODES.SHIFT_OUTSIDE_OPERATING_HOURS, details: { workDate: item.workDate, ...details },
+      });
+    if (!wh || wh.isClosed) throw outside(`${DOW_LABELS[dow]} ${item.workDate}: ${MSG.SALON_CLOSED_THAT_DAY}`);
+    // QA-08: "giờ mở cửa ngày hôm đó" gồm cả ngày nghỉ lễ / nghỉ đột xuất của tiệm, không chỉ lịch theo thứ
+    const holiday = await this.workingHours.isHoliday(item.workDate);
+    if (holiday) {
+      throw outside(MSG.SHIFT_ON_HOLIDAY(shiftDayText(item.workDate), holiday.reason), { holidayReason: holiday.reason });
     }
     const open = timeToMinutes(trimSeconds(wh.openTime));
     const close = timeToMinutes(trimSeconds(wh.closeTime));
@@ -299,9 +315,9 @@ export class StylistsService {
     const end = timeToMinutes(item.endTime);
     if (end <= start) throw new BadRequestException('Giờ kết thúc ca phải sau giờ bắt đầu ca');
     if (start < open || end > close) {
-      throw new BadRequestException(
-        MSG.SHIFT_OUT_OF_SALON_HOURS(trimSeconds(wh.openTime), trimSeconds(wh.closeTime)),
-      );
+      throw outside(MSG.SHIFT_OUT_OF_SALON_HOURS(trimSeconds(wh.openTime), trimSeconds(wh.closeTime)), {
+        openTime: trimSeconds(wh.openTime), closeTime: trimSeconds(wh.closeTime),
+      });
     }
     if (item.breakStart || item.breakEnd) {
       if (!item.breakStart || !item.breakEnd) {
@@ -315,11 +331,50 @@ export class StylistsService {
     }
   }
 
+  /** Ca này có nằm trọn trong giờ mở cửa hôm đó không (dùng khi sao chép tuần — bỏ qua thay vì báo lỗi). */
+  private async fitsSalonHours(item: ShiftItemDto): Promise<boolean> {
+    try {
+      await this.assertWithinSalonHours(item);
+      return true;
+    } catch (e) {
+      if (e instanceof BadRequestException) return false;
+      throw e;
+    }
+  }
+
+  /**
+   * QA-07: kiểm tra chồng lấn TRƯỚC khi chạm ràng buộc EXCLUDE để thông báo nêu rõ TÊN CA và KHUNG GIỜ
+   * đang xung đột (lỗi 23P01 của CSDL chỉ biết báo chung chung). Xét cả ca đã lưu lẫn các ca trong cùng lô.
+   */
+  private async assertNoShiftOverlap(stylistId: string, items: ShiftRange[]): Promise<void> {
+    const dates = Array.from(new Set(items.map((i) => i.workDate)));
+    const saved = await this.shiftRepo.find({ where: { stylistId, workDate: In(dates) } });
+    const accepted: ShiftRange[] = saved.map((s) => ({
+      id: s.id, workDate: String(s.workDate), startTime: trimSeconds(s.startTime), endTime: trimSeconds(s.endTime), note: s.note,
+    }));
+    for (const item of items) {
+      const hit = findShiftOverlap(item, accepted);
+      if (hit) {
+        throw new ConflictException({
+          message: MSG.SHIFT_OVERLAP_DETAIL(shiftRangeText(item), shiftLabel(hit), shiftRangeText(hit), shiftDayText(item.workDate)),
+          field: 'startTime',
+          code: ERROR_CODES.SHIFT_OVERLAP,
+          details: {
+            workDate: item.workDate,
+            conflictWith: { id: hit.id ?? null, label: shiftLabel(hit), startTime: hit.startTime, endTime: hit.endTime },
+          },
+        });
+      }
+      accepted.push(item);
+    }
+  }
+
   async createShifts(stylistId: string, dto: CreateShiftsDto): Promise<ShiftView[]> {
     const stylist = await this.stylistRepo.findOne({ where: { id: stylistId } });
     if (!stylist) throw new NotFoundException(MSG.STYLIST_NOT_FOUND);
 
     for (const item of dto.shifts) await this.assertWithinSalonHours(item);
+    await this.assertNoShiftOverlap(stylistId, dto.shifts.map((s) => ({ ...s, note: s.note ?? null })));
 
     const created = await this.dataSource.transaction(async (manager) =>
       manager.save(
@@ -352,6 +407,10 @@ export class StylistsService {
       breakEnd: dto.breakEnd !== undefined ? dto.breakEnd : shift.breakEnd ? trimSeconds(shift.breakEnd) : null,
     };
     await this.assertWithinSalonHours(merged);
+    await this.assertNoShiftOverlap(shift.stylistId, [{
+      id: shift.id, workDate: merged.workDate, startTime: merged.startTime, endTime: merged.endTime,
+      note: dto.note !== undefined ? dto.note : shift.note,
+    }]);
 
     // Không được thu hẹp ca ra ngoài các lịch hẹn đang có bên trong
     const inside = await this.appointmentsInsideShift(shift);
@@ -393,9 +452,24 @@ export class StylistsService {
     if (!shift) throw new NotFoundException(MSG.SHIFT_NOT_FOUND);
     const inside = await this.appointmentsInsideShift(shift);
     if (inside.length) {
-      throw new ConflictException(
-        `${MSG.SHIFT_HAS_APPOINTMENTS}: ${inside.map((a) => `${a.code} (${trimSeconds(String(a.startAt))})`).join(', ')}`,
-      );
+      const customerIds = Array.from(new Set(inside.map((a) => a.customerId)));
+      const customers = await this.dataSource.getRepository(Customer).find({ where: { id: In(customerIds) } });
+      const names = new Map(customers.map((c) => [c.id, c.fullName]));
+      const appointments = inside.map((a) => ({
+        id: a.id,
+        code: a.code,
+        startTime: toTimeString(a.startAt),
+        endTime: toTimeString(a.endAt),
+        customerName: names.get(a.customerId) ?? '',
+        status: a.status,
+      }));
+      throw new ConflictException({
+        message: `${MSG.SHIFT_HAS_APPOINTMENTS}: ${appointments
+          .map((a) => `${a.code} (${a.startTime}–${a.endTime}${a.customerName ? `, ${a.customerName}` : ''})`)
+          .join('; ')}`,
+        code: ERROR_CODES.SHIFT_HAS_APPOINTMENTS,
+        details: { appointments },
+      });
     }
     await this.shiftRepo.delete(id);
     return { success: true };
@@ -432,6 +506,21 @@ export class StylistsService {
       }
 
       for (const bucket of targetsByKey.values()) {
+        // QA-08: ngày đích có thể là ngày nghỉ của tiệm hoặc giờ mở cửa đã đổi -> chỉ chép ca còn hợp lệ
+        const valid: StylistShift[] = [];
+        for (const s of bucket.items) {
+          const fits = await this.fitsSalonHours({
+            workDate: bucket.targetDate,
+            startTime: trimSeconds(s.startTime),
+            endTime: trimSeconds(s.endTime),
+            breakStart: s.breakStart ? trimSeconds(s.breakStart) : null,
+            breakEnd: s.breakEnd ? trimSeconds(s.breakEnd) : null,
+          });
+          if (fits) valid.push(s); else skipped += 1;
+        }
+        if (!valid.length) continue;
+        bucket.items = valid;
+
         const existing = await manager.find(StylistShift, {
           where: { stylistId: bucket.stylistId, workDate: bucket.targetDate },
         });
