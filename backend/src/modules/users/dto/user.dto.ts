@@ -3,7 +3,8 @@ import {
   IsBoolean, IsEmail, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength,
 } from 'class-validator';
 import { Role } from '../../../common/constants/roles.constant';
-import { VN_PHONE_REGEX } from '../../../common/utils/phone.util';
+import { VN_PHONE_MESSAGE, VN_PHONE_REGEX } from '../../../common/utils/phone.util';
+import { IsAsciiEmail } from '../../../common/validators/credential.validators';
 
 export class CreateUserDto {
   @IsString()
@@ -13,11 +14,12 @@ export class CreateUserDto {
   fullName!: string;
 
   @IsEmail({}, { message: 'Email không đúng định dạng' })
+  @IsAsciiEmail()
   @MaxLength(160)
   email!: string;
 
   @IsOptional()
-  @Matches(VN_PHONE_REGEX, { message: 'Số điện thoại phải gồm đúng 10 chữ số và bắt đầu bằng số 0' })
+  @Matches(VN_PHONE_REGEX, { message: VN_PHONE_MESSAGE })
   phone?: string;
 
   @IsEnum(Role, { message: 'Vai trò không hợp lệ' })
@@ -35,7 +37,7 @@ export class CreateUserDto {
 
 export class UpdateUserDto {
   @IsOptional() @IsString() @MinLength(2) @MaxLength(120) fullName?: string;
-  @IsOptional() @Matches(VN_PHONE_REGEX, { message: 'Số điện thoại phải gồm đúng 10 chữ số và bắt đầu bằng số 0' }) phone?: string;
+  @IsOptional() @Matches(VN_PHONE_REGEX, { message: VN_PHONE_MESSAGE }) phone?: string;
   @IsOptional() @IsEnum(Role, { message: 'Vai trò không hợp lệ' }) role?: Role;
   @IsOptional() @IsBoolean() isActive?: boolean;
 }

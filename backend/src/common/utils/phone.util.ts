@@ -1,5 +1,7 @@
-/** Số điện thoại Việt Nam: đúng 10 chữ số, bắt đầu bằng 0 (S2-07). */
-export const VN_PHONE_REGEX = /^0\d{9}$/;
+/** Số di động Việt Nam: đúng 10 chữ số, đầu số 03/05/07/08/09 (S2-07, QA-16). */
+export const VN_PHONE_REGEX = /^0[35789]\d{8}$/;
+
+export const VN_PHONE_MESSAGE = 'Số điện thoại phải gồm đúng 10 chữ số và bắt đầu bằng 03, 05, 07, 08 hoặc 09';
 
 export const isValidVnPhone = (phone: string): boolean => VN_PHONE_REGEX.test((phone ?? '').trim());
 

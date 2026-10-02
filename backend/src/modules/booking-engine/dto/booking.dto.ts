@@ -1,9 +1,10 @@
 import { Transform, Type } from 'class-transformer';
 import {
-  ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsEmail, IsEnum, IsInt, IsNotEmpty,
+  ArrayMaxSize, ArrayMinSize, ArrayUnique, IsArray, IsBoolean, IsEmail, IsEnum, IsInt, IsNotEmpty,
   IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min,
 } from 'class-validator';
-import { VN_PHONE_REGEX } from '../../../common/utils/phone.util';
+import { VN_PHONE_MESSAGE, VN_PHONE_REGEX } from '../../../common/utils/phone.util';
+import { IsAsciiEmail } from '../../../common/validators/credential.validators';
 import { AppointmentStatus } from '../../../database/entities/appointment.entity';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -37,6 +38,8 @@ export class QuoteDto {
   @IsArray()
   @ArrayMinSize(1, { message: 'Vui lòng chọn ít nhất một dịch vụ' })
   @ArrayMaxSize(5, { message: 'Mỗi lượt đặt chỉ được chọn tối đa 5 dịch vụ' })
+  @ArrayUnique({ message: 'Mỗi dịch vụ chỉ được chọn một lần' })
+  @IsUUID('4', { each: true, message: 'Mã dịch vụ không hợp lệ' })
   serviceIds!: string[];
 }
 
@@ -44,6 +47,8 @@ export class CreateBookingDto {
   @IsArray()
   @ArrayMinSize(1, { message: 'Vui lòng chọn ít nhất một dịch vụ' })
   @ArrayMaxSize(5, { message: 'Mỗi lượt đặt chỉ được chọn tối đa 5 dịch vụ' })
+  @ArrayUnique({ message: 'Mỗi dịch vụ chỉ được chọn một lần' })
+  @IsUUID('4', { each: true, message: 'Mã dịch vụ không hợp lệ' })
   serviceIds!: string[];
 
   @Matches(DATE_RE, { message: 'Ngày hẹn phải theo định dạng yyyy-MM-dd' })
@@ -59,10 +64,10 @@ export class CreateBookingDto {
   @IsString() @IsNotEmpty({ message: 'Vui lòng nhập họ tên' }) @MaxLength(120)
   fullName!: string;
 
-  @Matches(VN_PHONE_REGEX, { message: 'Số điện thoại phải gồm đúng 10 chữ số và bắt đầu bằng số 0' })
+  @Matches(VN_PHONE_REGEX, { message: VN_PHONE_MESSAGE })
   phone!: string;
 
-  @IsOptional() @IsEmail({}, { message: 'Email không đúng định dạng' }) @MaxLength(160)
+  @IsOptional() @IsEmail({}, { message: 'Email không đúng định dạng' }) @IsAsciiEmail() @MaxLength(160)
   email?: string;
 
   @IsOptional() @IsString() @MaxLength(300, { message: 'Ghi chú cho thợ tối đa 300 ký tự' })
@@ -76,7 +81,7 @@ export class WalkInBookingDto extends CreateBookingDto {
 
 export class LookupDto {
   @IsOptional() @IsString() @MaxLength(8) code?: string;
-  @IsOptional() @Matches(VN_PHONE_REGEX, { message: 'Số điện thoại phải gồm đúng 10 chữ số và bắt đầu bằng số 0' })
+  @IsOptional() @Matches(VN_PHONE_REGEX, { message: VN_PHONE_MESSAGE })
   phone?: string;
 }
 

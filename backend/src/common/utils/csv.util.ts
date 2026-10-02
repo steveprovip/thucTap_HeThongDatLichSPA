@@ -1,5 +1,5 @@
 /** Dấu BOM để Excel trên Windows mở đúng tiếng Việt UTF-8 (S4-07). */
-export const UTF8_BOM = '﻿';
+export const UTF8_BOM = '\uFEFF';
 
 const escapeCell = (value: unknown): string => {
   if (value === null || value === undefined) return '';
