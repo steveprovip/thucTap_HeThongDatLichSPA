@@ -1,11 +1,11 @@
-import { useMemo, useState } from 'react';
+import { Suspense, useMemo, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   BarChart3, CalendarClock, CalendarDays, ClipboardList, Clock, FileText, Gauge, Home,
   LogOut, Menu, Receipt, ScrollText, Scissors, Settings, Ticket, UserCircle2, Users, X,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { BackButton, NotificationBell } from '@/components';
+import { BackButton, ErrorBoundary, NotificationBell, Spinner } from '@/components';
 import { ROLE_LABELS, ROLE_LANDING } from '@/utils/constants';
 import type { Role } from '@/types';
 
@@ -21,6 +21,13 @@ interface NavItem {
  * trong tài liệu (S1-03). Máy chủ vẫn kiểm tra lại quyền ở mọi API.
  */
 const NAV: { group: string; items: NavItem[] }[] = [
+  // QA-04: "Tổng quan" luôn là mục ĐẦU TIÊN của thanh điều hướng với mọi vai trò được phép xem
+  {
+    group: 'Tổng quan',
+    items: [
+      { to: '/quan-ly/tong-quan', label: 'Tổng quan hôm nay', icon: <Gauge size={18} />, roles: ['owner', 'admin', 'receptionist'] },
+    ],
+  },
   {
     group: 'Vận hành',
     items: [
@@ -41,7 +48,6 @@ const NAV: { group: string; items: NavItem[] }[] = [
   {
     group: 'Báo cáo',
     items: [
-      { to: '/quan-ly/tong-quan', label: 'Tổng quan hôm nay', icon: <Gauge size={18} />, roles: ['owner', 'admin', 'receptionist'] },
       { to: '/quan-ly/doanh-thu', label: 'Doanh thu', icon: <BarChart3 size={18} />, roles: ['owner', 'admin', 'receptionist'] },
       { to: '/quan-ly/phan-bo-khung-gio', label: 'Khung giờ & no-show', icon: <Clock size={18} />, roles: ['owner', 'admin'] },
     ],
@@ -131,10 +137,10 @@ export function AdminLayout() {
       {mobileOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <div className="animate-fade absolute inset-0 bg-slate-900/30 backdrop-blur-[2px]" onClick={() => setMobileOpen(false)} aria-hidden />
-          <aside className="relative z-10 flex h-full w-72 flex-col bg-white shadow-pop animate-slide-in-left">
+          <aside className="relative z-10 flex h-full w-72 max-w-[85vw] flex-col pb-[env(safe-area-inset-bottom)] bg-white shadow-pop animate-slide-in-left">
             <div className="flex h-14 items-center justify-between border-b border-slate-200 px-4">
               <span className="text-sm font-bold">Quản lý tiệm</span>
-              <button onClick={() => setMobileOpen(false)} aria-label="Đóng menu" className="p-1.5">
+              <button onClick={() => setMobileOpen(false)} aria-label="Đóng menu" className="tap-44 -mr-2 inline-flex items-center justify-center p-1.5">
                 <X size={18} />
               </button>
             </div>
@@ -147,7 +153,7 @@ export function AdminLayout() {
         <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-3
                            border-b border-slate-200 bg-white/90 px-3 backdrop-blur-md sm:px-5">
           <div className="flex items-center gap-2">
-            <button className="rounded-xl p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900 lg:hidden"
+            <button className="tap-44 inline-flex items-center justify-center rounded-xl p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900 lg:hidden"
                     onClick={() => setMobileOpen(true)} aria-label="Mở menu">
               <Menu size={20} />
             </button>
@@ -162,11 +168,11 @@ export function AdminLayout() {
               <p className="text-sm font-semibold leading-tight">{user?.fullName}</p>
               <p className="text-xs text-ink-muted">{user ? ROLE_LABELS[user.role] : ''}</p>
             </div>
-            <Link to="/quan-ly/doi-mat-khau" className="rounded-xl p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+            <Link to="/quan-ly/doi-mat-khau" className="tap-44 inline-flex items-center justify-center rounded-xl p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
                   aria-label="Đổi mật khẩu">
               <UserCircle2 size={20} />
             </Link>
-            <button onClick={handleLogout} className="rounded-xl p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+            <button onClick={handleLogout} className="tap-44 inline-flex items-center justify-center rounded-xl p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
                     aria-label="Đăng xuất" title="Đăng xuất">
               <LogOut size={20} />
             </button>
@@ -180,7 +186,9 @@ export function AdminLayout() {
                 <BackButton to={landing} />
               </div>
             )}
-            <Outlet />
+            <ErrorBoundary resetKey={location.pathname}>
+              <Suspense fallback={<Spinner />}><Outlet /></Suspense>
+            </ErrorBoundary>
           </div>
         </main>
       </div>

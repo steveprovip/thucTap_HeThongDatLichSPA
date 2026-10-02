@@ -52,7 +52,7 @@ export function NotificationBell() {
     <div className="relative" ref={boxRef}>
       <button
         onClick={toggle}
-        className="relative rounded-xl p-2 text-ink-soft hover:bg-brand-50"
+        className="tap-44 relative inline-flex items-center justify-center rounded-xl p-2 text-ink-soft hover:bg-brand-50"
         aria-label={`Thông báo${count > 0 ? `, ${count} chưa đọc` : ''}`}
       >
         <Bell size={20} />
@@ -65,7 +65,7 @@ export function NotificationBell() {
       </button>
 
       {open && (
-        <div className="animate-fade-in-scale absolute right-0 z-40 mt-2 w-[min(92vw,380px)] origin-top-right overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-pop">
+        <div className="animate-fade-in-scale fixed inset-x-3 top-16 z-40 origin-top-right sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-[380px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-pop">
           <div className="border-b border-slate-200 px-4 py-2.5 text-sm font-semibold">Thông báo</div>
           <div className="max-h-[60vh] overflow-y-auto">
             {loading && <p className="px-4 py-6 text-center text-sm text-ink-muted">Đang tải…</p>}

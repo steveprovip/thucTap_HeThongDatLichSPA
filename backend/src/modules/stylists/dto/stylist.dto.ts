@@ -3,7 +3,8 @@ import {
   ArrayMaxSize, IsArray, IsBoolean, IsEmail, IsNotEmpty, IsOptional, IsString, IsUUID,
   Matches, MaxLength, MinLength, ValidateNested,
 } from 'class-validator';
-import { VN_PHONE_REGEX } from '../../../common/utils/phone.util';
+import { VN_PHONE_MESSAGE, VN_PHONE_REGEX } from '../../../common/utils/phone.util';
+import { IsAsciiEmail } from '../../../common/validators/credential.validators';
 
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -12,7 +13,7 @@ export class CreateStylistDto {
   @IsString() @IsNotEmpty({ message: 'Vui lòng nhập họ tên thợ' }) @MinLength(2) @MaxLength(120)
   fullName!: string;
 
-  @IsOptional() @Matches(VN_PHONE_REGEX, { message: 'Số điện thoại phải gồm đúng 10 chữ số và bắt đầu bằng số 0' })
+  @IsOptional() @Matches(VN_PHONE_REGEX, { message: VN_PHONE_MESSAGE })
   phone?: string;
 
   @IsOptional() @IsString() @MaxLength(500) bio?: string;
@@ -20,7 +21,7 @@ export class CreateStylistDto {
   @IsOptional() @IsUUID('4', { message: 'Tài khoản liên kết không hợp lệ' }) userId?: string;
 
   /** Có email -> tự tạo tài khoản vai trò Thợ gắn với hồ sơ (mật khẩu tạm gửi qua email). */
-  @IsOptional() @IsEmail({}, { message: 'Email không đúng định dạng' }) @MaxLength(160)
+  @IsOptional() @IsEmail({}, { message: 'Email không đúng định dạng' }) @IsAsciiEmail() @MaxLength(160)
   email?: string;
 
   @IsOptional() @IsArray() @ArrayMaxSize(50)
@@ -29,7 +30,7 @@ export class CreateStylistDto {
 
 export class UpdateStylistDto {
   @IsOptional() @IsString() @MinLength(2) @MaxLength(120) fullName?: string;
-  @IsOptional() @Matches(VN_PHONE_REGEX, { message: 'Số điện thoại phải gồm đúng 10 chữ số và bắt đầu bằng số 0' }) phone?: string;
+  @IsOptional() @Matches(VN_PHONE_REGEX, { message: VN_PHONE_MESSAGE }) phone?: string;
   @IsOptional() @IsString() @MaxLength(500) bio?: string;
   @IsOptional() @IsBoolean() isActive?: boolean;
   @IsOptional() @IsArray() @ArrayMaxSize(50) serviceIds?: string[];

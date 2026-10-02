@@ -4,6 +4,7 @@ import {
 import { Request, Response } from 'express';
 import { QueryFailedError } from 'typeorm';
 import { MSG } from '../constants/messages.constant';
+import { MAX_AVATAR_MB } from '../constants/upload.constant';
 
 interface PgError extends Error {
   code?: string;
@@ -73,6 +74,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
     let message: string | string[] = MSG.INTERNAL_ERROR;
     let field: string | undefined;
     let errors: Record<string, string> | undefined;
+    /** Mã lỗi máy đọc được (vd. ACCOUNT_LOCKED) + dữ liệu kèm theo để giao diện xử lý riêng (QA-01, QA-09). */
+    let code: string | undefined;
+    let details: Record<string, unknown> | undefined;
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
@@ -84,7 +88,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
         message = (r.message as string | string[]) ?? exception.message;
         field = r.field as string | undefined;
         errors = r.errors as Record<string, string> | undefined;
+        code = typeof r.code === 'string' ? r.code : undefined;
+        details = typeof r.details === 'object' && r.details !== null ? (r.details as Record<string, unknown>) : undefined;
       }
+      // Multer báo "File too large" bằng tiếng Anh -> thông điệp tiếng Việt (QA-22)
+      if (status === HttpStatus.PAYLOAD_TOO_LARGE) message = MSG.FILE_TOO_LARGE(MAX_AVATAR_MB);
     } else if (exception instanceof QueryFailedError) {
       const mapped = mapDbError(exception.driverError as PgError);
       if (mapped) {
@@ -108,6 +116,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
     if (status >= 500) {
       this.logger.error(`${request.method} ${request.url} -> ${status}`);
     }
+    const retryAfter = details?.retryAfterSeconds;
+    if (typeof retryAfter === 'number' && retryAfter > 0) response.setHeader('Retry-After', String(Math.ceil(retryAfter)));
 
     response.status(status).json({
       success: false,
@@ -116,6 +126,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
       messages: Array.isArray(message) ? message : undefined,
       field,
       errors,
+      code,
+      details,
       path: request.url,
       timestamp: new Date().toISOString(),
     });

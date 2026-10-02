@@ -1,55 +1,63 @@
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
-import { ReactNode } from 'react';
+import { ComponentType, ReactNode, Suspense, lazy } from 'react';
 
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { ToastProvider } from '@/contexts/ToastContext';
 import { BookingProvider } from '@/contexts/BookingContext';
-import { Spinner } from '@/components';
+import { ErrorBoundary, Spinner } from '@/components';
 import { RoleSwitcher } from '@/components/RoleSwitcher';
 import { PublicLayout } from '@/layouts/PublicLayout';
 import { AdminLayout } from '@/layouts/AdminLayout';
 import type { Role } from '@/types';
 
+/**
+ * Tách chunk theo trang: trang chủ + đăng nhập nạp ngay, còn lại nạp khi vào route
+ * (recharts, mockBackend… không còn nằm chung một file 950 KB).
+ */
+function lazyPage<K extends string>(loader: () => Promise<Record<K, ComponentType>>, name: K) {
+  return lazy(() => loader().then((m) => ({ default: m[name] })));
+}
+
 // Trang công khai
 import { HomePage } from '@/pages/public/HomePage';
-import { BookingWizard } from '@/pages/public/BookingWizard';
-import { LookupPage } from '@/pages/public/LookupPage';
-import { ReviewPage } from '@/pages/public/ReviewPage';
+const BookingWizard = lazyPage(() => import('@/pages/public/BookingWizard'), 'BookingWizard');
+const LookupPage = lazyPage(() => import('@/pages/public/LookupPage'), 'LookupPage');
+const ReviewPage = lazyPage(() => import('@/pages/public/ReviewPage'), 'ReviewPage');
 
 // Xác thực
 import { LoginPage } from '@/pages/auth/LoginPage';
-import { ForgotPasswordPage } from '@/pages/auth/ForgotPasswordPage';
-import { ResetPasswordPage } from '@/pages/auth/ResetPasswordPage';
-import { ChangePasswordPage } from '@/pages/auth/ChangePasswordPage';
+const ForgotPasswordPage = lazyPage(() => import('@/pages/auth/ForgotPasswordPage'), 'ForgotPasswordPage');
+const ResetPasswordPage = lazyPage(() => import('@/pages/auth/ResetPasswordPage'), 'ResetPasswordPage');
+const ChangePasswordPage = lazyPage(() => import('@/pages/auth/ChangePasswordPage'), 'ChangePasswordPage');
 
 // Lễ tân / vận hành
-import { DayTimelinePage } from '@/pages/reception/DayTimelinePage';
-import { PendingPage } from '@/pages/reception/PendingPage';
-import { WalkInPage } from '@/pages/reception/WalkInPage';
-import { InvoicePage } from '@/pages/reception/InvoicePage';
-import { InvoiceListPage } from '@/pages/reception/InvoiceListPage';
-import { CustomersPage } from '@/pages/reception/CustomersPage';
-import { BulkReassignPage } from '@/pages/reception/BulkReassignPage';
-import { AppointmentsListPage } from '@/pages/reception/AppointmentsListPage';
-import { AppointmentDetailPage } from '@/pages/reception/AppointmentDetailPage';
+const DayTimelinePage = lazyPage(() => import('@/pages/reception/DayTimelinePage'), 'DayTimelinePage');
+const PendingPage = lazyPage(() => import('@/pages/reception/PendingPage'), 'PendingPage');
+const WalkInPage = lazyPage(() => import('@/pages/reception/WalkInPage'), 'WalkInPage');
+const InvoicePage = lazyPage(() => import('@/pages/reception/InvoicePage'), 'InvoicePage');
+const InvoiceListPage = lazyPage(() => import('@/pages/reception/InvoiceListPage'), 'InvoiceListPage');
+const CustomersPage = lazyPage(() => import('@/pages/reception/CustomersPage'), 'CustomersPage');
+const BulkReassignPage = lazyPage(() => import('@/pages/reception/BulkReassignPage'), 'BulkReassignPage');
+const AppointmentsListPage = lazyPage(() => import('@/pages/reception/AppointmentsListPage'), 'AppointmentsListPage');
+const AppointmentDetailPage = lazyPage(() => import('@/pages/reception/AppointmentDetailPage'), 'AppointmentDetailPage');
 
 // Thợ
-import { MySchedulePage } from '@/pages/stylist/MySchedulePage';
+const MySchedulePage = lazyPage(() => import('@/pages/stylist/MySchedulePage'), 'MySchedulePage');
 
 // Chủ tiệm
-import { DashboardPage } from '@/pages/owner/DashboardPage';
-import { RevenuePage } from '@/pages/owner/RevenuePage';
-import { SlotDensityPage } from '@/pages/owner/SlotDensityPage';
+const DashboardPage = lazyPage(() => import('@/pages/owner/DashboardPage'), 'DashboardPage');
+const RevenuePage = lazyPage(() => import('@/pages/owner/RevenuePage'), 'RevenuePage');
+const SlotDensityPage = lazyPage(() => import('@/pages/owner/SlotDensityPage'), 'SlotDensityPage');
 
 // Quản trị
-import { UsersPage } from '@/pages/admin/UsersPage';
-import { AuditLogsPage } from '@/pages/admin/AuditLogsPage';
-import { ServicesPage } from '@/pages/admin/ServicesPage';
-import { StylistsPage } from '@/pages/admin/StylistsPage';
-import { WorkingHoursPage } from '@/pages/admin/WorkingHoursPage';
-import { ShiftsPage } from '@/pages/admin/ShiftsPage';
-import { VouchersPage } from '@/pages/admin/VouchersPage';
-import { PermissionMatrixPage } from '@/pages/admin/PermissionMatrixPage';
+const UsersPage = lazyPage(() => import('@/pages/admin/UsersPage'), 'UsersPage');
+const AuditLogsPage = lazyPage(() => import('@/pages/admin/AuditLogsPage'), 'AuditLogsPage');
+const ServicesPage = lazyPage(() => import('@/pages/admin/ServicesPage'), 'ServicesPage');
+const StylistsPage = lazyPage(() => import('@/pages/admin/StylistsPage'), 'StylistsPage');
+const WorkingHoursPage = lazyPage(() => import('@/pages/admin/WorkingHoursPage'), 'WorkingHoursPage');
+const ShiftsPage = lazyPage(() => import('@/pages/admin/ShiftsPage'), 'ShiftsPage');
+const VouchersPage = lazyPage(() => import('@/pages/admin/VouchersPage'), 'VouchersPage');
+const PermissionMatrixPage = lazyPage(() => import('@/pages/admin/PermissionMatrixPage'), 'PermissionMatrixPage');
 
 /** Chặn truy cập ở phía giao diện; máy chủ vẫn kiểm tra lại quyền ở mọi API. */
 function RequireAuth({ roles, children }: { roles?: Role[]; children: ReactNode }) {
@@ -87,6 +95,8 @@ export default function App() {
     <ToastProvider>
       <AuthProvider>
         <RoleSwitcher />
+        <ErrorBoundary>
+        <Suspense fallback={<Spinner />}>
         <Routes>
           {/* ---------------- Trang công khai cho khách ---------------- */}
           <Route element={<PublicLayout />}>
@@ -162,6 +172,8 @@ export default function App() {
 
           <Route path="*" element={<NotFound />} />
         </Routes>
+        </Suspense>
+        </ErrorBoundary>
       </AuthProvider>
     </ToastProvider>
   );

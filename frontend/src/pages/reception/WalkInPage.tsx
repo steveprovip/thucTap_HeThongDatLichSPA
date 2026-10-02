@@ -11,10 +11,12 @@ import {
   Button, Card, EmptyState, Field, Input, Modal, Notice, SectionTitle, Spinner, StatusBadge, Textarea,
 } from '@/components';
 import {
-  addDaysISO, formatDate, formatDuration, formatVnd, matchSearch, minutesToTime, timeToMinutes, todayISO, VN_PHONE_REGEX,
+  addDaysISO, formatDate, formatDuration, formatVnd, matchSearch, minutesToTime, timeToMinutes, todayISO, VN_PHONE_MESSAGE,
+  VN_PHONE_REGEX,
 } from '@/utils/format';
 import { useAppointmentsSync } from '@/utils/liveSync';
 import { MAX_SERVICES_PER_BOOKING, STATUS_LABELS } from '@/utils/constants';
+import { emailError } from '@/utils/validators';
 import { useToast } from '@/contexts/ToastContext';
 import { AppointmentDrawer } from './AppointmentDrawer';
 
@@ -192,8 +194,9 @@ export function WalkInModal({ open, onClose, onCreated }: {
 
   const closeMin = timeline ? timeToMinutes(timeline.salonClose) : 24 * 60;
   const errors = {
-    phone: !VN_PHONE_REGEX.test(phone) ? 'Số điện thoại gồm 10 chữ số, bắt đầu bằng 0' : undefined,
+    phone: !VN_PHONE_REGEX.test(phone) ? VN_PHONE_MESSAGE : undefined,
     fullName: !fullName.trim() ? 'Vui lòng nhập tên khách' : undefined,
+    email: emailError(email, false),
     services: !selected.length ? 'Chọn ít nhất một dịch vụ' : undefined,
     time: mode === 'later' && (!time || date < todayISO() || (isToday && timeToMinutes(time) < timeToMinutes(nowRounded()) - 5))
       ? 'Giờ bắt đầu không được ở quá khứ' : undefined,
@@ -342,8 +345,8 @@ export function WalkInModal({ open, onClose, onCreated }: {
               <Input value={fullName} maxLength={80} placeholder="Nguyễn Văn A" invalid={!!shown.fullName}
                      onChange={(e) => setFullName(e.target.value)} />
             </Field>
-            <Field label="Email (tuỳ chọn)">
-              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+            <Field label="Email (tuỳ chọn)" error={shown.email}>
+              <Input type="email" value={email} invalid={!!shown.email} onChange={(e) => setEmail(e.target.value)} />
             </Field>
             <Field label="Ghi chú" hint={`${note.length}/300`}>
               <Textarea value={note} maxLength={300} onChange={(e) => setNote(e.target.value)} className="min-h-[64px]" />

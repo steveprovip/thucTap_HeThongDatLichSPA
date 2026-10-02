@@ -24,7 +24,7 @@ export const MSG = {
   // Tài khoản
   EMAIL_DUPLICATED: 'Email này đã được sử dụng cho một tài khoản khác',
   USER_NOT_FOUND: 'Không tìm thấy tài khoản',
-  LAST_ADMIN: 'Không thể ngưng hoạt động tài khoản quản trị cuối cùng của hệ thống',
+  LAST_ADMIN: 'Không thể ngưng hoạt động hoặc đổi vai trò tài khoản quản trị cuối cùng của hệ thống',
   CANNOT_DEACTIVATE_SELF: 'Không thể tự ngưng hoạt động tài khoản đang đăng nhập',
 
   // Dịch vụ
@@ -33,6 +33,7 @@ export const MSG = {
   SERVICE_DURATION_INVALID: 'Thời lượng phải là bội số của 15 phút và nằm trong khoảng 15 đến 240 phút',
   SERVICE_PRICE_INVALID: 'Giá phải là số nguyên dương và không vượt quá 20.000.000 đ',
   SERVICE_IN_USE: 'Dịch vụ đã có lịch hẹn tham chiếu nên không xoá được, hãy chuyển sang trạng thái ngừng bán',
+  SERVICE_IN_INVOICE: 'Dịch vụ đã xuất hiện trên phiếu tính tiền nên không xoá được, hãy chuyển sang trạng thái ngừng bán',
   CATEGORY_NOT_FOUND: 'Không tìm thấy nhóm dịch vụ',
   CATEGORY_NAME_DUPLICATED: 'Tên nhóm dịch vụ đã tồn tại',
   CATEGORY_HAS_SERVICES: (n: number) => `Nhóm này còn ${n} dịch vụ đang bán nên không xoá được`,
@@ -43,6 +44,10 @@ export const MSG = {
   STYLIST_MISSING_SKILL: (names: string) => `Thợ không thực hiện được dịch vụ: ${names}`,
   SHIFT_NOT_FOUND: 'Không tìm thấy ca làm',
   SHIFT_OVERLAP: 'Ca làm bị chồng lấn với một ca khác của cùng thợ trong ngày',
+  /** QA-07: nêu rõ TÊN CA và KHUNG GIỜ đang bị xung đột. */
+  SHIFT_OVERLAP_DETAIL: (newRange: string, label: string, range: string, day: string) =>
+    `Ca ${newRange} bị chồng lấn với "${label}" (${range}) ngày ${day}. Vui lòng chọn khung giờ khác hoặc sửa ca đã có`,
+  SHIFT_ON_HOLIDAY: (day: string, reason: string) => `${day}: tiệm nghỉ (${reason}) nên không xếp ca được`,
   SHIFT_OUT_OF_SALON_HOURS: (open: string, close: string) =>
     `Ca làm phải nằm trong giờ mở cửa của tiệm hôm đó (${open} - ${close})`,
   SHIFT_HAS_APPOINTMENTS: 'Ca làm đang chứa lịch hẹn nên không xoá được',
@@ -58,7 +63,7 @@ export const MSG = {
   SLOT_TOO_SOON: (m: number) => `Vui lòng đặt lịch trước ít nhất ${m} phút so với giờ bắt đầu`,
   MAX_SERVICES: (n: number) => `Mỗi lượt đặt chỉ được chọn tối đa ${n} dịch vụ`,
   NO_SERVICE_SELECTED: 'Vui lòng chọn ít nhất một dịch vụ',
-  PHONE_INVALID: 'Số điện thoại phải gồm đúng 10 chữ số và bắt đầu bằng số 0',
+  PHONE_INVALID: 'Số điện thoại phải gồm đúng 10 chữ số và bắt đầu bằng 03, 05, 07, 08 hoặc 09',
   TOO_MANY_ACTIVE_BOOKINGS: (n: number) =>
     `Số điện thoại này đang có ${n} lịch hẹn chưa hoàn tất, vui lòng hoàn tất hoặc huỷ bớt trước khi đặt thêm`,
   BOOKING_RATE_LIMITED: 'Bạn đã đặt quá nhiều lịch trong một giờ, vui lòng thử lại sau',
@@ -107,6 +112,18 @@ export const MSG = {
   DATE_RANGE_INVALID: 'Ngày kết thúc phải sau hoặc bằng ngày bắt đầu',
   FILE_TOO_LARGE: (mb: number) => `Tệp vượt quá dung lượng cho phép (${mb}MB)`,
   FILE_TYPE_INVALID: 'Chỉ chấp nhận ảnh định dạng JPG hoặc PNG',
+} as const;
+
+/** Mã lỗi máy đọc được, trả kèm trường `code` trong phản hồi lỗi để giao diện rẽ nhánh. */
+export const ERROR_CODES = {
+  ACCOUNT_LOCKED: 'ACCOUNT_LOCKED',
+  SHIFT_HAS_APPOINTMENTS: 'SHIFT_HAS_APPOINTMENTS',
+  SHIFT_OVERLAP: 'SHIFT_OVERLAP',
+  SHIFT_OUTSIDE_OPERATING_HOURS: 'SHIFT_OUTSIDE_OPERATING_HOURS',
+  MAX_APPOINTMENTS_EXCEEDED: 'MAX_APPOINTMENTS_EXCEEDED',
+  LOOKUP_LOCKED: 'LOOKUP_LOCKED',
+  EXCEEDS_LONGEST_SHIFT: 'EXCEEDS_LONGEST_SHIFT',
+  RATE_LIMITED: 'RATE_LIMITED',
 } as const;
 
 export const APPOINTMENT_STATUS_LABELS: Record<string, string> = {

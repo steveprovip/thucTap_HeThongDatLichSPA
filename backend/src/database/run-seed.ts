@@ -94,6 +94,11 @@ const hintFor = (err: PgError): string | null => {
 };
 
 async function main(): Promise<void> {
+  // seed.sql LUÔN đặt lại mật khẩu 8 tài khoản mẫu (Admin@123...). Chạy nhầm vào CSDL thật = mở cửa
+  // hậu cho ai đọc README. Chặn ở production trừ khi chủ động cho phép.
+  if (process.env.NODE_ENV === 'production' && process.env.SEED_ALLOW_PRODUCTION !== '1') {
+    throw Object.assign(new Error('Từ chối nạp dữ liệu mẫu khi NODE_ENV=production (đặt SEED_ALLOW_PRODUCTION=1 nếu thật sự muốn).'), { code: 'SEED_BLOCKED' });
+  }
   const sqlDir = findSqlDir();
   const client = await connectWithRetry();
   console.log(`> Kết nối ${DB.user}@${DB.host}:${DB.port}/${DB.database}`);

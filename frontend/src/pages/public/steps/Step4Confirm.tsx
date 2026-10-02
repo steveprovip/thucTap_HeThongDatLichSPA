@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Info } from 'lucide-react';
 import { Field, Input, Textarea } from '@/components';
-import { formatDuration, formatVnd, formatWeekdayDate, VN_PHONE_REGEX } from '@/utils/format';
+import { formatDuration, formatVnd, formatWeekdayDate, VN_PHONE_MESSAGE, VN_PHONE_REGEX } from '@/utils/format';
 import { useBooking } from '@/contexts/BookingContext';
 
 export interface Step4Errors {
@@ -19,7 +19,7 @@ export function Step4Confirm({ errors }: { errors: Step4Errors }) {
   const phoneError =
     errors.phone ??
     (touched.phone && customer.phone && !VN_PHONE_REGEX.test(customer.phone)
-      ? 'Số điện thoại phải gồm đúng 10 chữ số và bắt đầu bằng số 0'
+      ? VN_PHONE_MESSAGE
       : undefined);
 
   return (

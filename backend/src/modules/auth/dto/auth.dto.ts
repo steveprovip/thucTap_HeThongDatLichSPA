@@ -1,8 +1,10 @@
 import { IsBoolean, IsEmail, IsNotEmpty, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
 import { PASSWORD_REGEX } from '../../../common/utils/password.util';
+import { IsAsciiEmail, IsSafePasswordCharset } from '../../../common/validators/credential.validators';
 
 export class LoginDto {
   @IsEmail({}, { message: 'Email không đúng định dạng' })
+  @IsAsciiEmail()
   @MaxLength(160)
   email!: string;
 
@@ -31,11 +33,13 @@ export class ChangePasswordDto {
   @MinLength(8, { message: 'Mật khẩu mới phải có tối thiểu 8 ký tự' })
   @MaxLength(100)
   @Matches(PASSWORD_REGEX, { message: 'Mật khẩu phải có tối thiểu 8 ký tự, gồm cả chữ và số' })
+  @IsSafePasswordCharset()
   newPassword!: string;
 }
 
 export class ForgotPasswordDto {
   @IsEmail({}, { message: 'Email không đúng định dạng' })
+  @IsAsciiEmail()
   @MaxLength(160)
   email!: string;
 }
@@ -49,5 +53,6 @@ export class ResetPasswordDto {
   @MinLength(8, { message: 'Mật khẩu mới phải có tối thiểu 8 ký tự' })
   @MaxLength(100)
   @Matches(PASSWORD_REGEX, { message: 'Mật khẩu phải có tối thiểu 8 ký tự, gồm cả chữ và số' })
+  @IsSafePasswordCharset()
   newPassword!: string;
 }

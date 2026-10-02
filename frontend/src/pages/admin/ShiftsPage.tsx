@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarPlus, Copy, Plus, Trash2 } from 'lucide-react';
-import { getErrorMessage, stylistsApi } from '@/api';
-import type { Shift, Stylist, TimeOff } from '@/types';
+import { Link } from 'react-router-dom';
+import { CalendarPlus, Copy, Plus, Trash2, X } from 'lucide-react';
+import { getErrorCode, getErrorDetails, getErrorMessage, stylistsApi } from '@/api';
+import type { Shift, ShiftConflictAppointment, Stylist, TimeOff } from '@/types';
 import {
   Button, ConfirmDialog, Field, Input, Modal, SectionTitle, Select, Spinner,
 } from '@/components';
@@ -14,6 +15,8 @@ import { useToast } from '@/contexts/ToastContext';
 export function ShiftsPage() {
   const { user } = useAuth();
   const canEdit = user?.role === 'owner';
+  /** Khớp RolesGuard backend: Chủ tiệm và Lễ tân được khai báo / huỷ ngày nghỉ của thợ (S2-02). */
+  const canManageOff = user?.role === 'owner' || user?.role === 'receptionist';
   const toast = useToast();
 
   const [weekStart, setWeekStart] = useState(startOfWeekISO(todayISO()));
@@ -44,6 +47,10 @@ export function ShiftsPage() {
   const [offWarning, setOffWarning] = useState<{ warning: string; codes: string[] } | null>(null);
 
   const [removeTarget, setRemoveTarget] = useState<Shift | null>(null);
+  /** QA-10: huỷ nhanh khai báo nghỉ nhập nhầm. */
+  const [removeOffTarget, setRemoveOffTarget] = useState<TimeOff | null>(null);
+  /** QA-09: ca không xoá được vì đang chứa lịch hẹn -> liệt kê các lịch cần xử lý trước. */
+  const [blocked, setBlocked] = useState<{ shift: Shift; appointments: ShiftConflictAppointment[] } | null>(null);
 
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDaysISO(weekStart, i)), [weekStart]);
 
@@ -111,7 +118,7 @@ export function ShiftsPage() {
       <SectionTitle
         title="Bảng ca làm theo tuần"
         description="Ca phải nằm trong giờ mở cửa và không chồng lấn nhau. Không xoá được ca đang chứa lịch hẹn."
-        action={canEdit && (
+        action={canEdit ? (
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" icon={<Copy size={15} />} onClick={() => setCopyOpen(true)}>
               Sao chép sang tuần sau
@@ -121,6 +128,11 @@ export function ShiftsPage() {
             </Button>
             <Button size="sm" icon={<Plus size={15} />} onClick={() => setAddOpen(true)}>Thêm ca</Button>
           </div>
+        ) : canManageOff && (
+          // Lễ tân không xếp ca nhưng vẫn được khai báo / huỷ nghỉ cho thợ
+          <Button size="sm" variant="outline" icon={<CalendarPlus size={15} />} onClick={() => setOffOpen(true)}>
+            Khai báo nghỉ
+          </Button>
         )}
       />
 
@@ -158,9 +170,18 @@ export function ShiftsPage() {
                     return (
                       <td key={d} className="align-top">
                         {offs.map((o) => (
-                          <span key={o.id} className="mb-1 block rounded-lg bg-red-50 px-2 py-1 text-[11px] text-red-700">
-                            Nghỉ {o.startTime ? `${o.startTime.slice(0, 5)}–${o.endTime?.slice(0, 5)}` : 'cả ngày'}
-                            {o.reason ? ` · ${o.reason}` : ''}
+                          <span key={o.id} className="mb-1 flex items-center justify-between gap-1 rounded-lg bg-red-50 px-2 py-1 text-[11px] text-red-700">
+                            <span>
+                              Nghỉ {o.startTime ? `${o.startTime.slice(0, 5)}–${o.endTime?.slice(0, 5)}` : 'cả ngày'}
+                              {o.reason ? ` · ${o.reason}` : ''}
+                            </span>
+                            {canManageOff && (
+                              <button type="button" onClick={() => setRemoveOffTarget(o)} title="Huỷ khai báo nghỉ"
+                                      aria-label={`Huỷ khai báo nghỉ ngày ${o.offDate} của ${s.fullName}`}
+                                      className="-my-1 -mr-1.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-red-600 hover:bg-red-100">
+                                <X size={14} />
+                              </button>
+                            )}
                           </span>
                         ))}
                         {cellShifts.length === 0 && offs.length === 0 && (
@@ -174,9 +195,10 @@ export function ShiftsPage() {
                               {sh.breakStart && <em className="block text-ink-muted">nghỉ {sh.breakStart}–{sh.breakEnd}</em>}
                             </span>
                             {canEdit && (
-                              <button onClick={() => setRemoveTarget(sh)} aria-label="Xoá ca"
-                                      className="shrink-0 text-red-600 hover:underline">
-                                <Trash2 size={12} />
+                              <button type="button" onClick={() => setRemoveTarget(sh)} title="Xoá ca"
+                                      aria-label={`Xoá ca ${sh.startTime}–${sh.endTime} ngày ${sh.workDate} của ${s.fullName}`}
+                                      className="-my-1 -mr-1.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-red-600 hover:bg-red-100">
+                                <Trash2 size={14} />
                               </button>
                             )}
                           </span>
@@ -306,10 +328,54 @@ export function ShiftsPage() {
         onConfirm={async () => {
           if (!removeTarget) return;
           try { await stylistsApi.removeShift(removeTarget.id); toast.success('Đã xoá ca'); void load(); }
-          catch (e) { toast.error(getErrorMessage(e)); }
+          catch (e) {
+            const appointments = getErrorDetails(e).appointments;
+            if (getErrorCode(e) === 'SHIFT_HAS_APPOINTMENTS' && appointments?.length) {
+              setBlocked({ shift: removeTarget, appointments });
+            } else {
+              toast.error(getErrorMessage(e));
+            }
+          }
         }}
         onClose={() => setRemoveTarget(null)}
       />
+
+      <ConfirmDialog
+        open={!!removeOffTarget}
+        danger
+        title="Huỷ khai báo nghỉ"
+        confirmLabel="Huỷ khai báo"
+        message={`Huỷ khai báo nghỉ ${removeOffTarget?.startTime
+          ? `${removeOffTarget.startTime.slice(0, 5)}–${removeOffTarget.endTime?.slice(0, 5)}` : 'cả ngày'} ngày ${removeOffTarget?.offDate}?`
+          + ' Khung giờ của thợ sẽ mở lại cho khách đặt.'}
+        onConfirm={async () => {
+          if (!removeOffTarget) return;
+          try { await stylistsApi.removeTimeOff(removeOffTarget.id); toast.success('Đã huỷ khai báo nghỉ'); void load(); }
+          catch (e) { toast.error(getErrorMessage(e)); }
+        }}
+        onClose={() => setRemoveOffTarget(null)}
+      />
+
+      <Modal open={!!blocked} title="Không xoá được ca đang có lịch hẹn" onClose={() => setBlocked(null)} size="sm"
+             footer={<div className="flex justify-end"><Button onClick={() => setBlocked(null)}>Đã hiểu</Button></div>}>
+        <p className="text-sm text-ink-soft">
+          Ca {blocked?.shift.startTime}–{blocked?.shift.endTime} ngày {blocked?.shift.workDate} của {blocked?.shift.stylistName}{' '}
+          đang chứa {blocked?.appointments.length} lịch hẹn. Hãy chuyển thợ, đổi giờ hoặc huỷ các lịch dưới đây rồi xoá ca.
+        </p>
+        <ul className="mt-3 divide-y divide-slate-100 rounded-xl border border-slate-200">
+          {blocked?.appointments.map((a) => (
+            <li key={a.id} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
+              <span className="min-w-0">
+                <span className="font-mono font-semibold">{a.code}</span>
+                <span className="block truncate text-xs text-ink-muted">{a.startTime}–{a.endTime}{a.customerName ? ` · ${a.customerName}` : ''}</span>
+              </span>
+              <Link to={`/quan-ly/lich-hen/${a.id}`} className="shrink-0 text-xs font-semibold text-teal-700 hover:underline">
+                Xử lý lịch
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </Modal>
     </div>
   );
 }

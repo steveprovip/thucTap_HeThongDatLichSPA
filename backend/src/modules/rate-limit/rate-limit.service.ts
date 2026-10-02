@@ -30,41 +30,48 @@ export class RateLimitService {
     windowMinutes = 60,
     blockMinutes = 0,
   ): Promise<RateLimitResult> {
-    const now = new Date();
-    const windowStart = new Date(now.getTime() - windowMinutes * 60_000);
+    // MỘT câu lệnh nguyên tử: đọc-sửa-ghi kiểu cũ để N request song song cùng đọc hit_count cũ
+    // (vượt ngưỡng) và request đầu tiên của một IP mới đụng unique index -> lỗi 409 giả.
+    const rows: { hit_count: number; blocked_until: Date | null; was_blocked: boolean }[] = await this.repo.query(
+      `INSERT INTO rate_limits AS r (scope, identifier, hit_count, window_start, blocked_until, updated_at)
+       VALUES ($1, $2, 1, now(), NULL, now())
+       ON CONFLICT (scope, identifier) DO UPDATE SET
+         -- Hết thời gian khoá (blocked_until đã qua) thì mở cửa sổ đếm MỚI; kiểu cũ giữ nguyên bộ đếm
+         -- nên lượt đầu tiên sau khi mở khoá lại vượt ngưỡng và bị khoá tiếp ngay lập tức (QA-20).
+         hit_count     = CASE WHEN r.blocked_until > now() THEN r.hit_count
+                              WHEN r.blocked_until IS NOT NULL
+                                OR r.window_start < now() - make_interval(mins => $3) THEN 1
+                              ELSE r.hit_count + 1 END,
+         window_start  = CASE WHEN r.blocked_until > now() THEN r.window_start
+                              WHEN r.blocked_until IS NOT NULL
+                                OR r.window_start < now() - make_interval(mins => $3) THEN now()
+                              ELSE r.window_start END,
+         blocked_until = CASE WHEN r.blocked_until > now() THEN r.blocked_until ELSE NULL END,
+         updated_at    = now()
+       RETURNING hit_count, blocked_until, (blocked_until IS NOT NULL AND blocked_until > now()) AS was_blocked`,
+      [scope, identifier, windowMinutes],
+    );
+    const row = rows[0];
+    if (row.was_blocked) return { allowed: false, remaining: 0, blockedUntil: row.blocked_until };
 
-    let row = await this.repo.findOne({ where: { scope, identifier } });
-    if (!row) {
-      row = this.repo.create({ scope, identifier, hitCount: 0, windowStart: now, blockedUntil: null });
-    }
-
-    if (row.blockedUntil && row.blockedUntil > now) {
-      return { allowed: false, remaining: 0, blockedUntil: row.blockedUntil };
-    }
-
-    if (row.windowStart < windowStart) {
-      row.hitCount = 0;
-      row.windowStart = now;
-      row.blockedUntil = null;
-    }
-
-    row.hitCount += 1;
-    const allowed = row.hitCount <= limit;
+    const allowed = row.hit_count <= limit;
+    let blockedUntil: Date | null = null;
     if (!allowed && blockMinutes > 0) {
-      row.blockedUntil = new Date(now.getTime() + blockMinutes * 60_000);
+      blockedUntil = new Date(Date.now() + blockMinutes * 60_000);
+      await this.repo.update({ scope, identifier }, { blockedUntil });
     }
-    await this.repo.save(row);
-
-    return {
-      allowed,
-      remaining: Math.max(0, limit - row.hitCount),
-      blockedUntil: row.blockedUntil,
-    };
+    return { allowed, remaining: Math.max(0, limit - row.hit_count), blockedUntil };
   }
 
   /** Xoá bộ đếm khi thao tác thành công (ví dụ tra cứu đúng mã). */
   async reset(scope: string, identifier: string): Promise<void> {
     await this.repo.delete({ scope, identifier });
+  }
+
+  /** Thời điểm hết khoá nếu (scope, identifier) ĐANG bị khoá, ngược lại null. Không tăng bộ đếm. */
+  async blockedUntil(scope: string, identifier: string): Promise<Date | null> {
+    const row = await this.repo.findOne({ where: { scope, identifier } });
+    return row?.blockedUntil && row.blockedUntil.getTime() > Date.now() ? row.blockedUntil : null;
   }
 
   async peek(scope: string, identifier: string): Promise<RateLimit | null> {

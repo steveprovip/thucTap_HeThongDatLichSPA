@@ -37,6 +37,7 @@ describe('Chống đặt trùng khi nhiều khách chốt cùng lúc (S2-08)', (
     expect(slot).toBeDefined();
     const stylistId = slot.stylistIds[0];
 
+    const runBase = Number(String(Date.now()).slice(-7));
     const requests = Array.from({ length: 20 }, (_, i) =>
       request(server).post('/api/public/bookings').send({
         serviceIds: [service.id],
@@ -44,7 +45,8 @@ describe('Chống đặt trùng khi nhiều khách chốt cùng lúc (S2-08)', (
         time: slot.time,
         stylistId,
         fullName: `Khach Dong Thoi ${i}`,
-        phone: `09${String(80000000 + i).padStart(8, '0')}`,
+        // SĐT khác nhau giữa các lần chạy: lặp lại bộ kiểm thử trên cùng CSDL không chạm giới hạn 3 lịch/SĐT
+        phone: `098${String((runBase + i) % 10_000_000).padStart(7, '0')}`,
       }),
     );
 

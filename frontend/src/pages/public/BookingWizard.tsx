@@ -4,7 +4,8 @@ import { ArrowLeft, ArrowRight, Check, Clock, Wallet } from 'lucide-react';
 import { getErrorField, getErrorMessage, publicApi } from '@/api';
 import type { BookingResult } from '@/types';
 import { BackButton, Button } from '@/components';
-import { formatDuration, formatVnd, VN_PHONE_REGEX } from '@/utils/format';
+import { formatDuration, formatVnd, VN_PHONE_MESSAGE, VN_PHONE_REGEX } from '@/utils/format';
+import { emailError } from '@/utils/validators';
 import { useBooking } from '@/contexts/BookingContext';
 import { useToast } from '@/contexts/ToastContext';
 import { Step1Services } from './steps/Step1Services';
@@ -53,11 +54,10 @@ export function BookingWizard() {
     const next: Step4Errors = {};
     if (!customer.fullName.trim()) next.fullName = 'Vui lòng nhập họ tên';
     if (!VN_PHONE_REGEX.test(customer.phone)) {
-      next.phone = 'Số điện thoại phải gồm đúng 10 chữ số và bắt đầu bằng số 0';
+      next.phone = VN_PHONE_MESSAGE;
     }
-    if (customer.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(customer.email)) {
-      next.email = 'Email không đúng định dạng';
-    }
+    const invalidEmail = emailError(customer.email, false);
+    if (invalidEmail) next.email = invalidEmail;
     if (customer.note.length > 300) next.note = 'Ghi chú tối đa 300 ký tự';
     setErrors(next);
     return Object.keys(next).length === 0;
@@ -147,7 +147,7 @@ export function BookingWizard() {
       </div>
 
       {/* Thanh tổng kết + điều hướng, dính đáy màn hình trên điện thoại */}
-      <div className="fixed inset-x-0 bottom-[58px] z-20 border-t border-slate-200 bg-white/95 px-3 py-2.5 shadow-[0_-8px_24px_-12px_rgba(15,23,42,0.12)] backdrop-blur
+      <div className="fixed inset-x-0 bottom-[calc(var(--bottom-nav-h)+1px+env(safe-area-inset-bottom))] z-20 border-t border-slate-200 bg-white/95 px-3 py-2.5 shadow-[0_-8px_24px_-12px_rgba(15,23,42,0.12)] backdrop-blur
                       sm:sticky sm:bottom-4 sm:rounded-2xl sm:border sm:px-5 sm:py-3.5 sm:shadow-card">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-3 text-xs">
@@ -158,7 +158,7 @@ export function BookingWizard() {
               <Wallet size={15} className="text-teal-600" /> <span key={totalPrice} className="animate-fade-in-scale inline-block">{formatVnd(totalPrice)}</span>
             </span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex w-full items-center gap-2 sm:w-auto [&>*]:flex-1 sm:[&>*]:flex-none">
             {/* Bước 1 vẫn có đường lui về trang chủ cho khách lỡ bấm nhầm vào */}
             <Button variant="outline" size="sm" icon={<ArrowLeft size={15} />}
                     onClick={() => (step > 1 ? setStep(step - 1) : navigate('/'))}>

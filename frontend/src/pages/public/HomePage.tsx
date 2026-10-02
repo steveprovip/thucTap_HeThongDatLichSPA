@@ -66,7 +66,7 @@ export function HomePage() {
               <div className="flex -space-x-2.5">
                 {TEAM.map(member => (
                   <SmartImage key={member.src} src={member.src} alt={member.name} loading="lazy" kind="person"
-                    className="h-10 w-10 rounded-full ring-[3px] ring-white" />
+                    seed={member.name} className="h-10 w-10 rounded-full ring-[3px] ring-white" />
                 ))}
               </div>
               <div className="text-sm leading-tight">
@@ -114,7 +114,7 @@ export function HomePage() {
               <div className="stagger grid gap-5 sm:grid-cols-2 lg:grid-cols-3">{group.services.map((service, index) => (
                 <article key={service.id} style={{ '--i': index } as React.CSSProperties} className="lift group overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-card hover:border-slate-300">
                   <div className="relative">
-                    <SmartImage src={photos[service.id]} alt={service.name} loading="lazy" className="h-44"
+                    <SmartImage src={photos[service.id]} alt={service.name} loading="lazy" className="h-44" seed={service.id}
                       kind={serviceMediaKind({ name: service.name, categoryId: group.categoryId, categoryName: group.categoryName })}
                       fallbackLabel={group.categoryName}
                       imgClassName="duration-700 group-hover:scale-[1.06]" />

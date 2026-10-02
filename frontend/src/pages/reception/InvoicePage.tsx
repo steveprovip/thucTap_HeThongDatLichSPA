@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Banknote, Landmark, Lock, Plus, Printer, Receipt, Trash2 } from 'lucide-react';
 import { appointmentsApi, getErrorMessage, invoicesApi } from '@/api';
 import type { Appointment, Invoice, PaymentMethod } from '@/types';
-import { Button, Card, ConfirmDialog, Field, Input, SectionTitle, Spinner, StatusBadge } from '@/components';
+import { Button, Card, ConfirmDialog, Field, Input, SectionTitle, Spinner, StatusBadge, VietQrCode } from '@/components';
 import { formatNumber, formatVnd, parseNumber } from '@/utils/format';
 import { useToast } from '@/contexts/ToastContext';
 import { SALON } from '@/utils/constants';
@@ -34,7 +34,12 @@ export function InvoicePage() {
 
   const subtotal = lines.reduce((s, l) => s + l.unitPrice * l.quantity, 0);
   const total = Math.max(0, subtotal - discount);
+  /** QR phải mang đúng số tiền ĐÃ LƯU trên máy chủ; còn sửa dở thì giá tạm tính có thể lệch (voucher %). */
+  const unsaved = !!invoice && (invoice.subtotal !== subtotal || invoice.discountAmount !== discount
+    || (invoice.voucherCode ?? '') !== voucherCode.trim());
   const locked = invoice?.status === 'closed' || invoice?.status === 'adjusted';
+  /** Nội dung CK = mã phiếu (ASCII, không gạch nối) → khớp 1-1 với ghi chú đối soát. */
+  const transferRef = invoice ? invoice.code.replace(/[^0-9A-Za-z]/g, '').toUpperCase() : '';
 
   const load = useCallback(async () => {
     if (!appointmentId) return;
@@ -229,7 +234,10 @@ export function InvoicePage() {
             <Field label="Hình thức">
               <div className="grid grid-cols-2 gap-2" role="group" aria-label="Hình thức thanh toán">
                 {([['cash', 'Tiền mặt'], ['transfer', 'VietQR Banking']] as const).map(([value, label]) =>
-                  <button key={value} type="button" aria-pressed={paymentMethod === value} onClick={() => setPaymentMethod(value as PaymentMethod)}
+                  <button key={value} type="button" aria-pressed={paymentMethod === value} onClick={() => {
+                    setPaymentMethod(value as PaymentMethod);
+                    if (value === 'transfer' && !transferNote.trim() && transferRef) setTransferNote(transferRef);
+                  }}
                     className={`min-h-11 rounded-xl border px-2 text-sm font-semibold ${paymentMethod === value
                       ? 'border-teal-600 bg-teal-50 text-teal-800' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'}`}>{label}</button>)}
               </div>
@@ -241,6 +249,13 @@ export function InvoicePage() {
               </Field>
             )}
           </div>
+          {paymentMethod === 'transfer' && invoice && (unsaved ? (
+            <p className="mt-4 rounded-xl bg-amber-50 px-3.5 py-3 text-sm text-amber-900">
+              Phiếu có thay đổi chưa lưu. Bấm <strong>Lưu phiếu</strong> để tạo mã QR đúng số tiền thực thu.
+            </p>
+          ) : invoice.total > 0 && (
+            <VietQrCode amount={invoice.total} addInfo={transferRef} className="mt-4" />
+          ))}
 
           <div className="mt-4 flex flex-wrap gap-2">
             <Button variant="outline" loading={busy} onClick={saveLines} disabled={!invoice}>Lưu phiếu</Button>

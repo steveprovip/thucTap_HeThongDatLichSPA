@@ -21,6 +21,25 @@ export interface ApiError {
   message: string;
   field?: string;
   errors?: Record<string, string>;
+  /** Mã lỗi máy đọc được, vd. ACCOUNT_LOCKED, SHIFT_HAS_APPOINTMENTS, RATE_LIMITED. */
+  code?: string;
+  details?: ApiErrorDetails;
+}
+
+/** Dữ liệu kèm theo lỗi để giao diện xử lý riêng (QA-01, QA-09). */
+export interface ApiErrorDetails {
+  lockedUntil?: string;
+  retryAfterSeconds?: number;
+  appointments?: ShiftConflictAppointment[];
+}
+
+export interface ShiftConflictAppointment {
+  id: string;
+  code: string;
+  startTime: string;
+  endTime: string;
+  customerName: string;
+  status: AppointmentStatus;
 }
 
 export interface AuthUser {
@@ -174,6 +193,10 @@ export interface Quote {
   totalDurationMinutes: number;
   estimatedTotal: number;
   estimatedTotalText: string;
+  /** QA-13: ca dài nhất trong 7 ngày tới của các thợ làm được gói (phút, 0 = chưa xếp ca). */
+  longestShiftMinutes?: number;
+  exceedsLongestShift?: boolean;
+  warningCode?: 'EXCEEDS_LONGEST_SHIFT' | null;
   note: string;
 }
 

@@ -1,5 +1,5 @@
 import {
-  BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException,
+  BadRequestException, ConflictException, HttpException, HttpStatus, Injectable, Logger, NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -11,10 +11,13 @@ import { Stylist } from '../../database/entities/stylist.entity';
 import { ServiceItem } from '../../database/entities/service.entity';
 import { EmailKind } from '../../database/entities/email-queue.entity';
 import { NotificationType } from '../../database/entities/notification.entity';
-import { MSG } from '../../common/constants/messages.constant';
+import { ERROR_CODES, MSG } from '../../common/constants/messages.constant';
 import { Role } from '../../common/constants/roles.constant';
 import { generateBookingCode } from '../../common/utils/code.util';
-import { addMinutes, combine, formatDateTimeVN, toDateString, toTimeString } from '../../common/utils/time.util';
+import {
+  addMinutes, combine, formatDateTimeVN, timeToMinutes, toDateString, toTimeString,
+} from '../../common/utils/time.util';
+import { normalizePhone } from '../../common/utils/phone.util';
 import { AvailabilityService } from './availability.service';
 import { CustomersService } from '../customers/customers.service';
 import { StylistsService } from '../stylists/stylists.service';
@@ -42,6 +45,35 @@ export interface BookingResult {
 }
 
 const SERIALIZATION_ERRORS = new Set(['40001', '40P01']);
+
+/** Số lần tự phân lại sang thợ khác khi thợ vừa chọn bị giành mất khung giờ (QA-15). */
+const MAX_AUTO_REASSIGN = 5;
+
+/** QA-18 / QA-20: vượt hạn mức trả 429 Too Many Requests kèm Retry-After, không dùng 400/403. */
+const tooManyRequests = (
+  message: string, retryAfterSeconds: number, code: string = ERROR_CODES.RATE_LIMITED,
+): HttpException =>
+  new HttpException({ message, code, details: { retryAfterSeconds } }, HttpStatus.TOO_MANY_REQUESTS);
+
+/** QA-17: quá 3 lịch chưa hoàn tất trên một SĐT. */
+const maxAppointmentsExceeded = (active: number, max: number): BadRequestException =>
+  new BadRequestException({
+    message: MSG.TOO_MANY_ACTIVE_BOOKINGS(active),
+    field: 'phone',
+    code: ERROR_CODES.MAX_APPOINTMENTS_EXCEEDED,
+    details: { activeAppointments: active, maxActiveAppointments: max },
+  });
+
+interface PersistContext {
+  dto: CreateBookingDto;
+  params: { source: AppointmentSource; actorId?: string | null; ip: string; ignoreLeadTime?: boolean; autoConfirm?: boolean };
+  ordered: ServiceItem[];
+  totalDuration: number;
+  estimatedTotal: number;
+  startAt: Date;
+  endAt: Date;
+  now: Date;
+}
 
 @Injectable()
 export class BookingService {
@@ -96,7 +128,7 @@ export class BookingService {
     if (!params.skipRateLimit) {
       const limit = this.config.get<number>('security.bookingIpLimitPerHour')!;
       const rl = await this.rateLimit.hit('booking_ip', ip, limit, 60);
-      if (!rl.allowed) throw new BadRequestException(MSG.BOOKING_RATE_LIMITED);
+      if (!rl.allowed) throw tooManyRequests(MSG.BOOKING_RATE_LIMITED, 3600);
     }
 
     // ----- 2. Dịch vụ và tổng thời lượng
@@ -125,17 +157,32 @@ export class BookingService {
       const activeCount = await this.apptRepo.count({
         where: { customerId: existingCustomer.id, status: In(ACTIVE_STATUSES) },
       });
-      if (activeCount >= maxActive) throw new BadRequestException(MSG.TOO_MANY_ACTIVE_BOOKINGS(activeCount));
+      if (activeCount >= maxActive) throw maxAppointmentsExceeded(activeCount, maxActive);
     }
 
+    // QA-14: khách đặt online chỉ được chọn khung giờ trên lưới 15 phút (09:00, 09:15…), không nhận 09:07
+    const isOnline = params.source === AppointmentSource.ONLINE;
+    const step = this.config.get<number>('business.slotStepMinutes')!;
+    if (isOnline && timeToMinutes(dto.time) % step !== 0) throw new BadRequestException(MSG.SLOT_INVALID);
+
     // ----- 5. Chọn thợ (đích danh hoặc tự phân)
-    let stylistId = dto.stylistId ?? null;
-    if (stylistId) {
+    let stylistId: string;
+    if (dto.stylistId) {
+      stylistId = dto.stylistId;
       const stylist = await this.stylistRepo.findOne({ where: { id: stylistId } });
       if (!stylist) throw new NotFoundException(MSG.STYLIST_NOT_FOUND);
       if (!stylist.isActive) throw new BadRequestException(MSG.STYLIST_INACTIVE);
       const skill = await this.stylists.canDoAll(stylistId, dto.serviceIds);
       if (!skill.ok) throw new BadRequestException(MSG.STYLIST_MISSING_SKILL(skill.missing.join(', ')));
+      // QA-14: trước đây chọn đích danh thợ chỉ kiểm tra "không trùng lịch" trong giao dịch -> gửi thẳng API
+      // giờ ngoài ca, trong giờ nghỉ, ngày thợ xin nghỉ hay ngày tiệm đóng cửa vẫn đặt được.
+      if (isOnline) {
+        const verdict = await this.availability.checkSlot({
+          date: dto.date, time: dto.time, stylistId, totalDuration, now,
+        });
+        if (verdict === 'invalid') throw new BadRequestException(MSG.SLOT_INVALID);
+        if (verdict === 'taken') throw new ConflictException(MSG.SLOT_TAKEN);
+      }
     } else {
       const auto = await this.availability.pickAutoStylist({
         date: dto.date, time: dto.time, serviceIds: dto.serviceIds,
@@ -145,17 +192,34 @@ export class BookingService {
       stylistId = auto.id;
     }
 
-    // ----- 6. Ghi lịch trong giao dịch có khoá (thử lại khi CSDL báo xung đột tuần tự hoá)
-    const finalStylistId = stylistId as string;
+    // ----- 6. Ghi lịch. "Thợ bất kỳ" mà thợ vừa chọn bị người khác giành mất trong lúc chốt -> phân lại
+    // sang thợ rảnh kế tiếp thay vì báo khách hết chỗ (QA-15, QA-19: 20 khách cùng giây, nhiều thợ rảnh).
+    const ctx: PersistContext = { dto, params, ordered, totalDuration, estimatedTotal, startAt, endAt, now };
+    const tried: string[] = [];
+    for (;;) {
+      try {
+        return await this.persistWithRetry(ctx, stylistId);
+      } catch (e) {
+        if (dto.stylistId || !(e instanceof ConflictException) || tried.length >= MAX_AUTO_REASSIGN) throw e;
+        tried.push(stylistId);
+        const next = await this.availability.pickAutoStylist({
+          date: dto.date, time: dto.time, serviceIds: dto.serviceIds,
+          totalDuration, ignoreLeadTime: params.ignoreLeadTime, now, excludeStylistIds: tried,
+        });
+        if (!next) throw e;
+        stylistId = next.id;
+      }
+    }
+  }
+
+  /** Ghi lịch trong giao dịch có khoá; thử lại khi CSDL báo xung đột tuần tự hoá. */
+  private async persistWithRetry(ctx: PersistContext, stylistId: string): Promise<BookingResult> {
     let attempt = 0;
     // eslint-disable-next-line no-constant-condition
     while (true) {
       attempt += 1;
       try {
-        return await this.persistBooking({
-          dto, params, ordered, totalDuration, estimatedTotal, startAt, endAt,
-          stylistId: finalStylistId, now,
-        });
+        return await this.persistBooking({ ...ctx, stylistId });
       } catch (e) {
         const code = (e as { driverError?: { code?: string }; code?: string }).driverError?.code
           ?? (e as { code?: string }).code;
@@ -170,17 +234,7 @@ export class BookingService {
     }
   }
 
-  private async persistBooking(ctx: {
-    dto: CreateBookingDto;
-    params: { source: AppointmentSource; actorId?: string | null; ip: string; ignoreLeadTime?: boolean; autoConfirm?: boolean };
-    ordered: ServiceItem[];
-    totalDuration: number;
-    estimatedTotal: number;
-    startAt: Date;
-    endAt: Date;
-    stylistId: string;
-    now: Date;
-  }): Promise<BookingResult> {
+  private async persistBooking(ctx: PersistContext & { stylistId: string }): Promise<BookingResult> {
     const { dto, params, ordered, totalDuration, estimatedTotal, startAt, endAt, stylistId, now } = ctx;
 
     const result = await this.dataSource.transaction('SERIALIZABLE', async (manager) => {
@@ -193,6 +247,18 @@ export class BookingService {
       // một giao dịch khác chen ngang.
       const stillFree = await this.isRangeFree(manager, stylistId, startAt, endAt);
       if (!stillFree) throw new ConflictException(MSG.SLOT_TAKEN);
+
+      // QA-17: đếm lại số lịch chưa hoàn tất của SĐT NGAY TRONG giao dịch SERIALIZABLE. Bước kiểm tra trước đó
+      // chạy ngoài giao dịch nên N yêu cầu song song cùng một SĐT (khác thợ) từng cùng lọt qua mức 3 lịch.
+      const maxActive = this.config.get<number>('business.maxActiveBookingsPerPhone')!;
+      const activeRows: { active: number }[] = await manager.query(
+        `SELECT COUNT(*)::int AS active FROM appointments a
+           JOIN customers c ON c.id = a.customer_id
+          WHERE c.phone = $1 AND a.status IN ('pending','confirmed','arrived','in_progress')`,
+        [normalizePhone(dto.phone)],
+      );
+      const active = Number(activeRows[0]?.active ?? 0);
+      if (active >= maxActive) throw maxAppointmentsExceeded(active, maxActive);
 
       const { customer, nameConflict } = await this.customers.findOrCreateByPhone(
         { phone: dto.phone, fullName: dto.fullName, email: dto.email ?? null },
@@ -258,6 +324,9 @@ export class BookingService {
       totalDuration,
       estimatedTotal,
     };
+    // Lịch ĐÃ commit: lỗi email/thông báo phía sau không được biến thành 500 (khách tưởng đặt hỏng,
+    // bấm lại -> 409 "khung giờ đã bị chiếm" bởi chính lịch của mình).
+    try {
     if (result.customer.email) {
       const tpl = MailTemplates.bookingConfirmation(this.mail.salonInfo, mailData);
       await this.mail.enqueue({
@@ -280,6 +349,9 @@ export class BookingService {
       `${result.customer.fullName} đặt lúc ${formatDateTimeVN(startAt)} (${totalDuration} phút)`,
       result.appointment.id,
     );
+    } catch (e) {
+      this.logger.error(`Lịch ${result.appointment.code} đã lưu nhưng gửi email/thông báo lỗi: ${(e as Error).message}`);
+    }
 
     return {
       code: result.appointment.code,
@@ -368,8 +440,12 @@ export class BookingService {
       throw new BadRequestException('Vui lòng nhập mã tra cứu hoặc số điện thoại');
     }
 
-    const rl = await this.rateLimit.hit('lookup_ip', params.ip, limit, 60, blockMinutes);
-    if (!rl.allowed) throw new ForbiddenException(MSG.LOOKUP_RATE_LIMITED(blockMinutes));
+    // QA-20: IP đang bị tạm khoá thì chặn ngay, không chạy truy vấn
+    const blockedUntil = await this.rateLimit.blockedUntil('lookup_ip', params.ip);
+    if (blockedUntil) {
+      const seconds = Math.max(1, Math.ceil((blockedUntil.getTime() - Date.now()) / 1000));
+      throw tooManyRequests(MSG.LOOKUP_RATE_LIMITED(Math.ceil(seconds / 60)), seconds, ERROR_CODES.LOOKUP_LOCKED);
+    }
 
     const qb = this.apptRepo.createQueryBuilder('a');
     if (params.code) {
@@ -381,10 +457,17 @@ export class BookingService {
     }
     const appointments = await qb.orderBy('a.startAt', 'DESC').take(20).getMany();
 
-    if (!appointments.length) throw new NotFoundException(MSG.CODE_NOT_FOUND);
-
-    // Tra cứu đúng thì xoá bộ đếm để khách hợp lệ không bị chặn oan
-    await this.rateLimit.reset('lookup_ip', params.ip);
+    // QA-20: chỉ lượt tra SAI mới bị đếm vào hạn mức 10 lần/giờ; tra theo SĐT thì luôn đếm để chống dò
+    // danh sách SĐT (lộ tên, lịch hẹn, mã huỷ lịch). KHÔNG xoá bộ đếm khi tra đúng: kiểu cũ cho phép xen
+    // một mã đúng đã biết sau mỗi 9 lần đoán sai để đặt lại hạn mức và dò mã vô hạn.
+    const found = appointments.length > 0;
+    if (!found || !params.code) {
+      const rl = await this.rateLimit.hit('lookup_ip', params.ip, limit, 60, blockMinutes);
+      if (!rl.allowed) {
+        throw tooManyRequests(MSG.LOOKUP_RATE_LIMITED(blockMinutes), blockMinutes * 60, ERROR_CODES.LOOKUP_LOCKED);
+      }
+    }
+    if (!found) throw new NotFoundException(MSG.CODE_NOT_FOUND);
 
     const customerIds = Array.from(new Set(appointments.map((a) => a.customerId)));
     const stylistIds = Array.from(new Set(appointments.map((a) => a.stylistId)));

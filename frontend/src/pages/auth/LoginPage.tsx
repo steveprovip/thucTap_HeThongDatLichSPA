@@ -1,15 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ArrowRight, LogIn, LogOut, ShieldCheck } from 'lucide-react';
-import { getErrorMessage } from '@/api';
+import { ArrowRight, Lock, LogIn, LogOut, ShieldCheck } from 'lucide-react';
+import { getErrorCode, getErrorDetails, getErrorMessage } from '@/api';
 import { DEMO_MODE } from '@/api/mockBackend';
 import { Button, Card, Field, Input, Notice } from '@/components';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 import { ROLE_LABELS, ROLE_LANDING } from '@/utils/constants';
+import { emailError, passwordCharsetError } from '@/utils/validators';
 import { AuthShell, DemoRoleButtons, PasswordInput } from './AuthShell';
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/** 'mm:ss' còn lại tới lúc mở khoá. */
+const countdown = (ms: number): string => {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+};
 
 export function LoginPage() {
   const { login, logout, user, setDemoRole } = useAuth();
@@ -22,7 +27,21 @@ export function LoginPage() {
   const [busyRole, setBusyRole] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** QA-01: tài khoản đang tạm khoá -> chuyển giao diện sang trạng thái "khoá" có đếm ngược. */
+  const [lock, setLock] = useState<{ email: string; until: number } | null>(null);
+  const [now, setNow] = useState(() => Date.now());
   const justLoggedIn = useRef(false);
+
+  const locked = !!lock && lock.email === email.trim().toLowerCase() && lock.until > now;
+  useEffect(() => {
+    if (!lock) return;
+    const id = window.setInterval(() => {
+      const t = Date.now();
+      setNow(t);
+      if (t >= lock.until) setLock(null);
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [lock]);
 
   /** Trang người dùng định vào trước khi bị chuyển sang đăng nhập. */
   const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname;
@@ -38,9 +57,10 @@ export function LoginPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
+  // QA-02: chặn chữ có dấu / ký tự nguy hiểm ngay tại ô nhập, trước khi gửi lên máy chủ
   const fieldErrors = {
-    email: !email.trim() ? 'Vui lòng nhập email' : !EMAIL_RE.test(email.trim()) ? 'Email không hợp lệ' : undefined,
-    password: !password ? 'Vui lòng nhập mật khẩu' : undefined,
+    email: emailError(email),
+    password: !password ? 'Vui lòng nhập mật khẩu' : passwordCharsetError(password),
   };
   const shown: Partial<typeof fieldErrors> = touched ? fieldErrors : {};
 
@@ -53,6 +73,14 @@ export function LoginPage() {
       goLanding(u.role, u.mustChangePassword);
     } catch (err) {
       justLoggedIn.current = false;
+      if (getErrorCode(err) === 'ACCOUNT_LOCKED') {
+        const { lockedUntil, retryAfterSeconds } = getErrorDetails(err);
+        const until = lockedUntil ? Date.parse(lockedUntil) : Date.now() + (retryAfterSeconds ?? 900) * 1000;
+        setNow(Date.now());
+        setLock({ email: mail.trim().toLowerCase(), until });
+        setError(null);
+        return;
+      }
       setError(getErrorMessage(err, 'Email hoặc mật khẩu không đúng'));
     }
   };
@@ -60,7 +88,7 @@ export function LoginPage() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setTouched(true);
-    if (fieldErrors.email || fieldErrors.password) return;
+    if (fieldErrors.email || fieldErrors.password || locked) return;
     setBusy(true);
     await doLogin(email.trim(), password);
     setBusy(false);
@@ -115,9 +143,23 @@ export function LoginPage() {
                            onChange={(e) => setPassword(e.target.value)} invalid={!!shown.password || !!error} />
           </Field>
 
-          {error && <Notice tone="danger">{error}</Notice>}
+          {locked && lock ? (
+            <Notice tone="warning" icon={<Lock size={16} />} title="Tài khoản đang tạm khoá">
+              <p>
+                Bạn đã nhập sai mật khẩu quá 5 lần. Vui lòng thử lại sau{' '}
+                <strong className="font-mono tabular-nums">{countdown(lock.until - now)}</strong>{' '}
+                (mở khoá lúc {new Date(lock.until).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}).
+              </p>
+              <p className="mt-1">
+                Cần vào ngay? <Link to="/quen-mat-khau" className="font-semibold underline">Đặt lại mật khẩu</Link> hoặc
+                liên hệ quản trị viên để mở khoá.
+              </p>
+            </Notice>
+          ) : error && <Notice tone="danger">{error}</Notice>}
 
-          <Button type="submit" block loading={busy} icon={<LogIn size={17} />}>Đăng nhập</Button>
+          <Button type="submit" block loading={busy} disabled={locked} icon={locked ? <Lock size={17} /> : <LogIn size={17} />}>
+            {locked ? `Tạm khoá · ${countdown((lock?.until ?? now) - now)}` : 'Đăng nhập'}
+          </Button>
 
           <div className="flex items-center justify-between text-sm">
             <Link to="/quen-mat-khau" className="text-teal-700 hover:underline">Quên mật khẩu?</Link>

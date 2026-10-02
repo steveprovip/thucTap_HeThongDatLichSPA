@@ -1,9 +1,12 @@
 /** Dấu BOM để Excel trên Windows mở đúng tiếng Việt UTF-8 (S4-07). */
-export const UTF8_BOM = '﻿';
+export const UTF8_BOM = '\uFEFF';
 
 const escapeCell = (value: unknown): string => {
   if (value === null || value === undefined) return '';
-  const s = String(value);
+  let s = String(value);
+  // Chống CSV/Formula injection: tên khách do người ngoài nhập (vd. =HYPERLINK(...)) sẽ bị Excel
+  // thực thi như công thức khi chủ tiệm mở file xuất. Chỉ áp dụng cho chuỗi, số âm giữ nguyên.
+  if (typeof value === 'string' && /^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
 

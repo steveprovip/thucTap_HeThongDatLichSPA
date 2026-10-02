@@ -9,6 +9,19 @@ const int = (v: string | undefined, def: number): number => {
 const bool = (v: string | undefined, def = false): boolean =>
   v === undefined ? def : ['1', 'true', 'yes', 'on'].includes(v.toLowerCase());
 
+/** Production thiếu secret → dừng khởi động, không ký JWT bằng khoá mặc định công khai trong mã nguồn. */
+const secret = (name: string, devDefault: string): string => {
+  const v = process.env[name];
+  const isProd = process.env.NODE_ENV === 'production';
+  // Giá trị mẫu trong .env.example đã công khai trên git -> coi như chưa đặt
+  if (v && isProd && (v.startsWith('doi_chuoi_nay') || v.length < 32)) {
+    throw new Error(`${name} đang dùng giá trị mẫu hoặc quá ngắn (< 32 ký tự)`);
+  }
+  if (v) return v;
+  if (isProd) throw new Error(`Thiếu biến môi trường bắt buộc ${name}`);
+  return devDefault;
+};
+
 const configuration = () => ({
   app: {
     env: process.env.NODE_ENV ?? 'development',
@@ -16,6 +29,9 @@ const configuration = () => ({
     apiPrefix: process.env.API_PREFIX ?? 'api',
     timezone: process.env.APP_TIMEZONE ?? 'Asia/Ho_Chi_Minh',
     frontendUrl: process.env.FRONTEND_URL ?? 'http://localhost:5173',
+    /** Express 'trust proxy': chỉ tin X-Forwarded-For do proxy tin cậy gắn (mặc định: proxy chạy trên cùng máy, vd. Vite). */
+    trustProxy: process.env.TRUST_PROXY ?? 'loopback',
+    swaggerEnabled: bool(process.env.SWAGGER_ENABLED, process.env.NODE_ENV !== 'production'),
     salonName: process.env.SALON_NAME ?? 'Salon & Spa Hương Sen',
     salonAddress: process.env.SALON_ADDRESS ?? '128 Nguyễn Văn Cừ, Quận 5, TP. Hồ Chí Minh',
     salonHotline: process.env.SALON_HOTLINE ?? '028 3838 6868',
@@ -29,8 +45,8 @@ const configuration = () => ({
     logging: bool(process.env.DB_LOGGING, false),
   },
   jwt: {
-    accessSecret: process.env.JWT_ACCESS_SECRET ?? 'dev_access_secret',
-    refreshSecret: process.env.JWT_REFRESH_SECRET ?? 'dev_refresh_secret',
+    accessSecret: secret('JWT_ACCESS_SECRET', 'dev_access_secret'),
+    refreshSecret: secret('JWT_REFRESH_SECRET', 'dev_refresh_secret'),
     accessTtl: process.env.JWT_ACCESS_TTL ?? '30m',
     refreshTtl: process.env.JWT_REFRESH_TTL ?? '7d',
   },

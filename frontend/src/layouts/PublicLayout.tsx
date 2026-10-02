@@ -1,10 +1,11 @@
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { CalendarCheck, Home, LogIn, Phone, Search } from 'lucide-react';
 import { SALON } from '@/utils/constants';
-import { BackButton } from '@/components';
+import { Suspense } from 'react';
+import { BackButton, ErrorBoundary, Spinner } from '@/components';
 
 const navClass = ({ isActive }: { isActive: boolean }) =>
-  `flex flex-1 flex-col items-center gap-0.5 rounded-xl px-2 py-2 text-[11px] font-medium transition-colors
+  `flex h-full flex-1 flex-col items-center justify-center gap-0.5 rounded-xl px-2 text-[11px] font-medium transition-colors
    ${isActive ? 'bg-teal-50 text-teal-700' : 'text-slate-500 hover:text-slate-900'}`;
 
 /** Bố cục trang công khai, tối ưu cho màn hình rộng 360px và dùng một tay. */
@@ -43,20 +44,24 @@ export function PublicLayout() {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 pb-24 pt-4 sm:pb-8">
+      <main className="mx-auto w-full max-w-5xl flex-1 px-4 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-4 sm:pb-8">
         <div key={location.pathname} className="animate-fade">
           {showBack && (
             <div className="mb-4 animate-slide-in-right-soft">
               <BackButton to="/" />
             </div>
           )}
-          <Outlet />
+          <ErrorBoundary resetKey={location.pathname}>
+              <Suspense fallback={<Spinner />}><Outlet /></Suspense>
+            </ErrorBoundary>
         </div>
       </main>
 
       {/* Thanh điều hướng dưới cùng cho điện thoại */}
-      <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 px-2 py-1.5 backdrop-blur-md sm:hidden">
-        <div className="flex items-stretch gap-1">
+      <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 px-2 pb-[env(safe-area-inset-bottom)] backdrop-blur-md sm:hidden"
+           aria-label="Điều hướng dưới">
+        {/* Cao cố định var(--bottom-nav-h) để thanh hành động của trang đặt lịch bám đúng mép trên */}
+        <div className="flex h-[var(--bottom-nav-h)] items-stretch gap-1 py-1.5">
           <NavLink to="/" end className={navClass}><Home size={18} /> Trang chủ</NavLink>
           <NavLink to="/dat-lich" className={navClass}><CalendarCheck size={18} /> Đặt lịch</NavLink>
           <NavLink to="/tra-cuu" className={navClass}><Search size={18} /> Tra cứu</NavLink>

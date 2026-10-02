@@ -1,4 +1,4 @@
-import { ImgHTMLAttributes, ReactNode, useCallback, useEffect, useState } from 'react';
+import { ImgHTMLAttributes, ReactNode, useCallback, useEffect, useId, useState } from 'react';
 import { Droplets, Flower2, Gem, HandHeart, Leaf, Palette, Scissors, Sparkles, UserRound } from 'lucide-react';
 import { initials, KIND_ALTERNATES, stylistPhoto, type MediaKind } from '@/utils/images';
 
@@ -15,6 +15,31 @@ const LOAD_TIMEOUT_MS = 8000;
 
 const isOffline = () => typeof navigator !== 'undefined' && navigator.onLine === false;
 
+/**
+ * QA-22: nền dự phòng ĐỘC BẢN cho từng dịch vụ / thợ — sắc độ suy ra ổn định từ mã (id), nên hai dịch vụ
+ * cùng chủ đề vẫn khác màu và cùng một dịch vụ luôn ra cùng một màu, không cần mạng.
+ */
+const seedHue = (seed: string): number => [...seed].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % 360;
+
+/** Nền SVG gradient vẽ tại chỗ (không tải tệp nào) — màu riêng theo `seed`, co giãn theo khung chứa. */
+function SeedGradient({ seed }: { seed: string }) {
+  const gid = `sg${useId().replace(/:/g, '')}`;
+  const h = seedHue(seed);
+  return (
+    <svg aria-hidden className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+      <defs>
+        <linearGradient id={gid} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor={`hsl(${h} 80% 94%)`} />
+          <stop offset="1" stopColor={`hsl(${(h + 40) % 360} 70% 86%)`} />
+        </linearGradient>
+      </defs>
+      <rect width="100" height="100" fill={`url(#${gid})`} />
+      <circle cx="88" cy="10" r="26" fill="#ffffff" fillOpacity="0.45" />
+      <circle cx="8" cy="96" r="22" fill="#ffffff" fillOpacity="0.35" />
+    </svg>
+  );
+}
+
 /** Nền dự phòng theo chủ đề dịch vụ: gradient pastel + biểu tượng, không cần mạng. */
 const FALLBACK: Record<MediaKind, { gradient: string; tint: string; icon: ReactNode }> = {
   hair: { gradient: 'from-rose-100 via-orange-50 to-amber-100', tint: 'text-rose-500', icon: <Scissors aria-hidden /> },
@@ -29,10 +54,14 @@ const FALLBACK: Record<MediaKind, { gradient: string; tint: string; icon: ReactN
 };
 
 /** Nền thay thế ảnh: luôn hiển thị được kể cả khi mất mạng, không bao giờ lộ biểu tượng ảnh vỡ. */
-export function MediaFallback({ kind = 'spa', label, className = '' }: { kind?: MediaKind; label?: string; className?: string }) {
+export function MediaFallback({ kind = 'spa', label, className = '', seed, monogram }: {
+  kind?: MediaKind; label?: string; className?: string; seed?: string; monogram?: string;
+}) {
   const v = FALLBACK[kind] ?? FALLBACK.spa;
   return (
-    <div className={`animate-fade absolute inset-0 overflow-hidden bg-gradient-to-br ${v.gradient} ${className}`} role="img" aria-label={label}>
+    <div className={`animate-fade absolute inset-0 overflow-hidden bg-gradient-to-br ${v.gradient} ${className}`} role="img"
+         aria-label={label ?? monogram}>
+      {seed && <SeedGradient seed={seed} />}
       <span aria-hidden className="pointer-events-none absolute -right-6 -top-8 h-28 w-28 rounded-full bg-white/50 blur-2xl" />
       <span aria-hidden className="pointer-events-none absolute -bottom-10 -left-6 h-28 w-28 rounded-full bg-white/40 blur-2xl" />
       <span aria-hidden className="pointer-events-none absolute inset-0 opacity-[0.35] [background-image:radial-gradient(rgba(15,23,42,0.08)_1px,transparent_1px)] [background-size:14px_14px]" />
@@ -40,10 +69,12 @@ export function MediaFallback({ kind = 'spa', label, className = '' }: { kind?: 
         <span className={`flex aspect-square h-[46%] max-h-14 min-h-[22px] items-center justify-center rounded-full bg-white/75 shadow-sm ring-1 ring-white backdrop-blur-sm ${v.tint} [&>svg]:h-1/2 [&>svg]:w-1/2`}>
           {v.icon}
         </span>
-        {label && (
+        {label ? (
           <span className="max-w-[85%] truncate rounded-full bg-white/70 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600 backdrop-blur-sm">
             {label}
           </span>
+        ) : monogram && (
+          <span aria-hidden className="absolute bottom-1 right-1.5 text-[10px] font-bold tracking-wider text-slate-600/80">{monogram}</span>
         )}
       </div>
     </div>
@@ -58,8 +89,14 @@ const MAX_ALTERNATES = 2;
  * thì thử lần lượt ảnh dự phòng cùng chủ đề; mất mạng / tải quá lâu / hết ảnh dự phòng thì chuyển
  * mượt sang nền gradient theo chủ đề dịch vụ (kéo, giọt nước, lấp lánh…). Không bao giờ lộ ảnh vỡ.
  */
-export function SmartImage({ src, alt, className = '', imgClassName = '', kind = 'spa', fallbackLabel, ...rest }:
-  ImgHTMLAttributes<HTMLImageElement> & { imgClassName?: string; kind?: MediaKind; fallbackLabel?: string }) {
+export function SmartImage({ src, alt, className = '', imgClassName = '', kind = 'spa', fallbackLabel, seed, monogram, ...rest }:
+  ImgHTMLAttributes<HTMLImageElement> & {
+    imgClassName?: string; kind?: MediaKind; fallbackLabel?: string;
+    /** Mã dịch vụ / thợ để nền dự phòng mang màu riêng (QA-22). */
+    seed?: string;
+    /** Chữ viết tắt hiện trên nền dự phòng khi không có fallbackLabel. */
+    monogram?: string;
+  }) {
   const initial = (): 'loading' | 'error' => (src && !isOffline() ? 'loading' : 'error');
   const [state, setState] = useState<'loading' | 'ready' | 'error'>(initial);
   const [trackedSrc, setTrackedSrc] = useState(src);
@@ -86,7 +123,7 @@ export function SmartImage({ src, alt, className = '', imgClassName = '', kind =
   return (
     <div className={`relative overflow-hidden ${state === 'loading' ? 'skeleton-shimmer' : 'bg-slate-100'} ${className}`}>
       {state === 'error' ? (
-        <MediaFallback kind={kind} label={fallbackLabel} />
+        <MediaFallback kind={kind} label={fallbackLabel} seed={seed} monogram={monogram} />
       ) : (
         <img
           key={currentSrc}
@@ -123,9 +160,10 @@ export function StylistAvatar({ id, name, url, size = 'h-10 w-10', className = '
   }, [loaded, broken, trackedSrc]);
   if (broken) {
     return (
-      <span className={`${size} inline-flex shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-teal-100 to-teal-50 text-xs font-semibold text-teal-800 ring-2 ring-white ${className}`}
-            aria-label={name}>
-        {initials(name)}
+      <span className={`${size} relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-teal-100 to-teal-50 text-xs font-semibold text-teal-800 ring-2 ring-white ${className}`}
+            role="img" aria-label={name}>
+        <SeedGradient seed={id} />
+        <span className="relative">{initials(name ?? '')}</span>
       </span>
     );
   }

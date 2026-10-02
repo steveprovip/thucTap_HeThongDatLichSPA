@@ -126,7 +126,9 @@ export const matchSearch = (haystack: string, needle: string): boolean =>
 export const maskPhone = (phone: string): string =>
   phone && phone.length >= 7 ? `${phone.slice(0, 3)}***${phone.slice(-4)}` : phone;
 
-export const VN_PHONE_REGEX = /^0\d{9}$/;
+/** Số di động Việt Nam: đúng 10 chữ số, đầu số 03/05/07/08/09 (QA-16) — khớp backend phone.util.ts. */
+export const VN_PHONE_REGEX = /^0[35789]\d{8}$/;
+export const VN_PHONE_MESSAGE = 'Số điện thoại phải gồm đúng 10 chữ số và bắt đầu bằng 03, 05, 07, 08 hoặc 09';
 
 /** Nhãn tiền rút gọn cho trục biểu đồ: 6.500.000 -> "6,5 tr", 450.000 -> "450 k". */
 export const formatVndShort = (value: number): string => {

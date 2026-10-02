@@ -4,7 +4,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
 import { createHash } from 'crypto';
 import { User } from '../../database/entities/user.entity';
@@ -13,7 +13,7 @@ import { PasswordResetToken } from '../../database/entities/password-reset-token
 import { Stylist } from '../../database/entities/stylist.entity';
 import { AuditAction } from '../../database/entities/audit-log.entity';
 import { EmailKind } from '../../database/entities/email-queue.entity';
-import { MSG } from '../../common/constants/messages.constant';
+import { ERROR_CODES, MSG } from '../../common/constants/messages.constant';
 import { AuthUser, JwtPayload } from '../../common/types/auth.types';
 import { generateToken } from '../../common/utils/code.util';
 import { isStrongPassword } from '../../common/utils/password.util';
@@ -33,6 +33,23 @@ export interface LoginResult extends TokenPair {
 }
 
 const sha256 = (v: string): string => createHash('sha256').update(v).digest('hex');
+
+/** Email không tồn tại vẫn chạy bcrypt -> thời gian phản hồi như nhau, không dò được email nhân sự. */
+const DUMMY_HASH = bcrypt.hashSync('timing-equalizer-not-a-password', 10);
+
+/**
+ * QA-01: tài khoản bị khoá trả mã lỗi máy đọc được + thời điểm mở khoá để giao diện chuyển sang
+ * màn "tạm khoá" có đếm ngược, thay vì chỉ một dòng chữ giống hệt lỗi sai mật khẩu.
+ * Giữ HTTP 401 để không đổi hợp đồng API đã kiểm thử (auth-rbac.e2e-spec).
+ */
+const accountLocked = (until: Date): UnauthorizedException => {
+  const retryAfterSeconds = Math.max(60, Math.ceil((until.getTime() - Date.now()) / 1000));
+  return new UnauthorizedException({
+    message: MSG.ACCOUNT_LOCKED(Math.ceil(retryAfterSeconds / 60)),
+    code: ERROR_CODES.ACCOUNT_LOCKED,
+    details: { lockedUntil: until.toISOString(), retryAfterSeconds },
+  });
+};
 
 @Injectable()
 export class AuthService {
@@ -66,31 +83,36 @@ export class AuthService {
       .getOne();
 
     if (!user) {
-      // Cùng một thông điệp với trường hợp sai mật khẩu
+      // Cùng một thông điệp VÀ cùng thời gian xử lý với trường hợp sai mật khẩu
+      await bcrypt.compare(password, DUMMY_HASH);
       throw new UnauthorizedException(MSG.LOGIN_FAILED);
     }
 
-    if (user.lockedUntil && user.lockedUntil > new Date()) {
-      const remaining = Math.max(1, Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60_000));
-      throw new UnauthorizedException(MSG.ACCOUNT_LOCKED(remaining));
-    }
+    if (user.lockedUntil && user.lockedUntil > new Date()) throw accountLocked(user.lockedUntil);
 
     const matched = await bcrypt.compare(password, user.passwordHash);
     if (!matched) {
-      user.failedLoginAttempts += 1;
-      if (user.failedLoginAttempts >= maxAttempts) {
-        user.lockedUntil = new Date(Date.now() + lockMinutes * 60_000);
-        user.failedLoginAttempts = 0;
-        await this.userRepo.save(user);
+      // Tăng bộ đếm NGUYÊN TỬ trong CSDL. Kiểu cũ (đọc-cộng-ghi) để N lần thử song song cùng ghi
+      // failed_login_attempts = 1 -> dò mật khẩu song song không bao giờ bị khoá.
+      const inc = await this.userRepo
+        .createQueryBuilder()
+        .update(User)
+        .set({ failedLoginAttempts: () => 'failed_login_attempts + 1' })
+        .where('id = :id', { id: user.id })
+        .returning('failed_login_attempts')
+        .execute();
+      const attempts = Number((inc.raw as { failed_login_attempts: number }[])[0]?.failed_login_attempts ?? 0);
+      if (attempts >= maxAttempts) {
+        const lockedUntil = new Date(Date.now() + lockMinutes * 60_000);
+        await this.userRepo.update(user.id, { lockedUntil, failedLoginAttempts: 0 });
         await this.audit.write({
           actorId: user.id, actorEmail: user.email, actorRole: user.role,
           action: AuditAction.LOGIN, entityType: 'user', entityId: user.id,
           summary: `Khoá tài khoản ${lockMinutes} phút do nhập sai mật khẩu ${maxAttempts} lần`,
           ipAddress: ip,
         });
-        throw new UnauthorizedException(MSG.ACCOUNT_LOCKED(lockMinutes));
+        throw accountLocked(lockedUntil);
       }
-      await this.userRepo.save(user);
       throw new UnauthorizedException(MSG.LOGIN_FAILED);
     }
 
@@ -190,8 +212,9 @@ export class AuthService {
       throw new UnauthorizedException(MSG.TOKEN_EXPIRED);
     }
 
-    stored.revokedAt = new Date();
-    await this.refreshRepo.save(stored);
+    // Thu hồi CÓ ĐIỀU KIỆN: hai request refresh song song cùng một token chỉ MỘT cái được cấp token mới
+    const revoked = await this.refreshRepo.update({ id: stored.id, revokedAt: IsNull() }, { revokedAt: new Date() });
+    if (!revoked.affected) throw new UnauthorizedException(MSG.REFRESH_INVALID);
 
     const stylist = await this.stylistRepo.findOne({ where: { userId: user.id } });
     return this.issueTokens(user, stylist?.id ?? null, ip, userAgent);
@@ -201,7 +224,8 @@ export class AuthService {
     if (refreshToken) {
       await this.refreshRepo.update({ tokenHash: sha256(refreshToken) }, { revokedAt: new Date() });
     } else {
-      await this.refreshRepo.update({ userId, revokedAt: undefined }, { revokedAt: new Date() });
+      // undefined trong điều kiện TypeORM bị BỎ QUA -> ghi đè cả token đã thu hồi; phải dùng IsNull()
+      await this.refreshRepo.update({ userId, revokedAt: IsNull() }, { revokedAt: new Date() });
     }
     return { success: true };
   }
@@ -287,6 +311,10 @@ export class AuthService {
     const user = await this.userRepo.findOne({ where: { id: row.userId } });
     if (!user) throw new BadRequestException(MSG.RESET_TOKEN_INVALID);
 
+    // Đánh dấu đã dùng TRƯỚC khi đổi mật khẩu và có điều kiện -> một liên kết chỉ dùng được đúng 1 lần
+    const claimed = await this.resetRepo.update({ id: row.id, usedAt: IsNull() }, { usedAt: new Date() });
+    if (!claimed.affected) throw new BadRequestException(MSG.RESET_TOKEN_INVALID);
+
     user.passwordHash = await bcrypt.hash(newPassword, this.config.get<number>('security.bcryptRounds')!);
     user.mustChangePassword = false;
     user.failedLoginAttempts = 0;
@@ -294,9 +322,7 @@ export class AuthService {
     user.sessionsValidFrom = new Date();
     await this.userRepo.save(user);
 
-    row.usedAt = new Date();
-    await this.resetRepo.save(row);
-    await this.refreshRepo.update({ userId: user.id, revokedAt: undefined }, { revokedAt: new Date() });
+    await this.refreshRepo.update({ userId: user.id, revokedAt: IsNull() }, { revokedAt: new Date() });
 
     await this.audit.write({
       actorId: user.id, actorEmail: user.email, actorRole: user.role,

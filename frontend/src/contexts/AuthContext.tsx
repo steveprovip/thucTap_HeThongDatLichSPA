@@ -56,7 +56,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
-    await authApi.logout();
+    // API lỗi (mạng, token đã hết hạn…) vẫn phải xoá phiên phía giao diện; trước đây lỗi làm
+    // setUser(null) không chạy -> token đã xoá nhưng UI vẫn hiển thị đang đăng nhập.
+    try {
+      await authApi.logout();
+    } catch { /* token cục bộ đã được xoá trong authApi.logout */ }
     if (DEMO_MODE) demoRole.set('customer');
     setUser(null);
   }, []);

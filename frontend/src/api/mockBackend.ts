@@ -1,5 +1,6 @@
 import { STYLIST_PHOTOS } from '@/utils/images';
 import { DEMO_PASSWORDS } from '@/utils/constants';
+import { matchSearch } from '@/utils/format';
 import type { AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 import type {
   AppNotification, Appointment, AppointmentStatus, AuditLogRow, AuthUser, Customer, Holiday, Invoice,
@@ -9,7 +10,13 @@ import type {
 
 /** Persisted in the browser so the whole UI can be explored without a server. */
 const KEY = 'salon.demo.v5';
-export const DEMO_MODE = import.meta.env.VITE_DEMO_MODE !== 'false';
+/**
+ * Có đặt VITE_DEMO_MODE thì theo đúng giá trị. KHÔNG đặt (vd. build trên máy/CI không có .env vì .env
+ * bị gitignore) thì: dev -> demo như trước, còn bản build production -> gọi API thật. Trước đây
+ * thiếu biến = demo ở mọi nơi -> bản production âm thầm chạy dữ liệu giả trong trình duyệt.
+ */
+const DEMO_FLAG = import.meta.env.VITE_DEMO_MODE;
+export const DEMO_MODE = DEMO_FLAG ? DEMO_FLAG !== 'false' : import.meta.env.DEV;
 /** Phiên demo lưu MÃ tài khoản (không phải vai trò) để mọi kiểm tra quyền dựa trên đúng người đăng nhập. */
 const SESSION_KEY = 'salon.demoUserId';
 /** Mật khẩu mẫu theo vai trò — trùng khớp seed của máy chủ thật (database/seed.sql) và README. */
@@ -259,6 +266,14 @@ const paginate = <T,>(items: T[], params: Record<string, unknown>) => {
 const bad = (message: string, field?: string, status = 400): never => {
   throw { response: { status, data: { success: false, message, field } } };
 };
+/** QA-01: cùng hợp đồng với backend thật — mã ACCOUNT_LOCKED + thời điểm mở khoá. */
+const accountLocked = (lockedUntil: string): never => {
+  const retryAfterSeconds = Math.max(60, Math.ceil((new Date(lockedUntil).getTime() - Date.now()) / 1000));
+  throw { response: { status: 401, data: {
+    success: false, message: MSG.ACCOUNT_LOCKED(Math.ceil(retryAfterSeconds / 60)), code: 'ACCOUNT_LOCKED',
+    details: { lockedUntil, retryAfterSeconds },
+  } } };
+};
 /** Người dùng của phiên hiện tại; tài khoản bị ngưng hoạt động thì phiên hết hiệu lực ngay (S1-02). */
 const getUser = (): AuthUser | null => {
   const id = localStorage.getItem(SESSION_KEY);
@@ -478,15 +493,13 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
     const user = db.users.find(u => u.email.toLowerCase() === String(p.email ?? '').trim().toLowerCase());
     if (!user) return bad(MSG.LOGIN_FAILED, undefined, 401);
     const cred = (db.auth[user.id] ??= { password: passwordForRole(user.role), failed: 0 });
-    if (user.lockedUntil && new Date(user.lockedUntil).getTime() > Date.now()) {
-      return bad(MSG.ACCOUNT_LOCKED(Math.max(1, Math.ceil((new Date(user.lockedUntil).getTime() - Date.now()) / 60000))), undefined, 401);
-    }
+    if (user.lockedUntil && new Date(user.lockedUntil).getTime() > Date.now()) return accountLocked(user.lockedUntil);
     if (String(p.password ?? '') !== cred.password) {
       cred.failed += 1;
       if (cred.failed >= MAX_FAILED_LOGINS) {
         cred.failed = 0; user.lockedUntil = new Date(Date.now() + LOCK_MINUTES * 60000).toISOString();
         record('LOGIN', 'user', `Khoá ${user.email} ${LOCK_MINUTES} phút do nhập sai mật khẩu ${MAX_FAILED_LOGINS} lần`);
-        return bad(MSG.ACCOUNT_LOCKED(LOCK_MINUTES), undefined, 401);
+        save(); return accountLocked(user.lockedUntil);
       }
       save(); return bad(MSG.LOGIN_FAILED, undefined, 401);
     }
@@ -525,10 +538,10 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
   };
 
   if (path === '/public/catalog') {
-    const search = String(q.search ?? '').toLocaleLowerCase('vi-VN');
+    // QA-12: tìm không dấu và CHỈ theo tên dịch vụ, khớp backend thật
+    const search = String(q.search ?? '').trim();
     return db.categories.map(c => ({ categoryId: c.id, categoryName: c.name, displayOrder: c.displayOrder,
-      services: db.services.filter(s => s.isActive && s.categoryId === c.id &&
-        (!search || `${s.name} ${s.description}`.toLocaleLowerCase('vi-VN').includes(search)))
+      services: db.services.filter(s => s.isActive && s.categoryId === c.id && (!search || matchSearch(s.name, search)))
         .map(({ id, name, durationMinutes, price, priceText, description }) => ({ id, name, durationMinutes, price, priceText, description }))
     })).filter(group => group.services.length);
   }
