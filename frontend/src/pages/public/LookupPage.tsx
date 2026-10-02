@@ -8,7 +8,7 @@ import type { AppointmentStatus, PublicAppointment } from '@/types';
 import {
   Button, Card, ConfirmDialog, Field, Input, Notice, Select, Spinner, StatusBadge,
 } from '@/components';
-import { formatDuration, formatWeekdayDate, VN_PHONE_REGEX } from '@/utils/format';
+import { formatDuration, formatWeekdayDate, VN_PHONE_MESSAGE, VN_PHONE_REGEX } from '@/utils/format';
 import { SALON } from '@/utils/constants';
 import { useToast } from '@/contexts/ToastContext';
 
@@ -90,7 +90,7 @@ export function LookupPage() {
       setParams({ code });
       void search({ code });
     } else {
-      if (!VN_PHONE_REGEX.test(phone)) return setError('Số điện thoại phải gồm đúng 10 chữ số, bắt đầu bằng 0');
+      if (!VN_PHONE_REGEX.test(phone)) return setError(VN_PHONE_MESSAGE);
       setParams({});
       void search({ phone });
     }

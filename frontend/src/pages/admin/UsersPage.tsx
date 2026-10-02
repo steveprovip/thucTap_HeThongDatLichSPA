@@ -7,7 +7,8 @@ import {
   TempPasswordDialog, type TempCredential,
 } from '@/components';
 import { ROLE_LABELS } from '@/utils/constants';
-import { formatDateTime, VN_PHONE_REGEX } from '@/utils/format';
+import { formatDateTime, VN_PHONE_MESSAGE, VN_PHONE_REGEX } from '@/utils/format';
+import { emailError } from '@/utils/validators';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 
@@ -69,14 +70,15 @@ export function UsersPage() {
   const save = async () => {
     setError(null);
     if (!fullName.trim()) return setError('Vui lòng nhập họ tên');
-    if (phone && !VN_PHONE_REGEX.test(phone)) return setError('Số điện thoại phải gồm đúng 10 chữ số');
+    if (phone && !VN_PHONE_REGEX.test(phone)) return setError(VN_PHONE_MESSAGE);
     setSaving(true);
     try {
       if (editing) {
         await usersApi.update(editing.id, { fullName: fullName.trim(), phone: phone || undefined, role, isActive });
         toast.success('Đã cập nhật tài khoản');
       } else {
-        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return setError('Email không đúng định dạng');
+        const invalidEmail = emailError(email); // QA-02
+        if (invalidEmail) return setError(invalidEmail);
         const created = await usersApi.create({
           fullName: fullName.trim(), email: email.trim(), phone: phone || undefined, role, isActive,
         });

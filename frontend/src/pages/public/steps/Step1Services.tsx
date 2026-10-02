@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Check, Clock, Search } from 'lucide-react';
+import { AlertTriangle, Check, Clock, Search } from 'lucide-react';
 import { getErrorMessage, publicApi } from '@/api';
-import type { PublicCatalogGroup } from '@/types';
+import type { PublicCatalogGroup, Quote } from '@/types';
 import { EmptyState, Input, ListSkeleton, SmartImage } from '@/components';
-import { assignServiceImages, serviceMediaKind } from '@/utils/images';
+import { assignServiceImages, initials, serviceMediaKind } from '@/utils/images';
 import { formatDuration } from '@/utils/format';
 import { MAX_SERVICES_PER_BOOKING } from '@/utils/constants';
 import { useBooking } from '@/contexts/BookingContext';
@@ -30,6 +30,18 @@ export function Step1Services() {
     return () => { alive = false; window.clearTimeout(timer); };
   }, [search, toast]);
 
+  // QA-13: hỏi máy chủ tổng thời lượng so với ca dài nhất trong tuần ngay khi giỏ thay đổi
+  const [quote, setQuote] = useState<Quote | null>(null);
+  const cartKey = selected.map((s) => s.id).join(',');
+  useEffect(() => {
+    if (!cartKey) { setQuote(null); return; }
+    let alive = true;
+    publicApi.quote(cartKey.split(','))
+      .then((q) => { if (alive) setQuote(q); })
+      .catch(() => { if (alive) setQuote(null); }); // cảnh báo là phụ, lỗi mạng không chặn khách chọn dịch vụ
+    return () => { alive = false; };
+  }, [cartKey]);
+
   const selectedIds = useMemo(() => new Set(selected.map((s) => s.id)), [selected]);
   const atLimit = selected.length >= MAX_SERVICES_PER_BOOKING;
   const photos = useMemo(
@@ -53,6 +65,16 @@ export function Step1Services() {
       {atLimit && (
         <p className="rounded-xl bg-amber-50 px-3.5 py-2.5 text-xs text-amber-800">
           Bạn đã chọn tối đa {MAX_SERVICES_PER_BOOKING} dịch vụ. Bỏ bớt một dịch vụ nếu muốn đổi.
+        </p>
+      )}
+
+      {quote?.exceedsLongestShift && (
+        <p role="alert" className="flex items-start gap-2 rounded-xl bg-amber-50 px-3.5 py-2.5 text-xs text-amber-900">
+          <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+          <span>
+            Tổng thời lượng {formatDuration(quote.totalDurationMinutes)} vượt quá ca làm dài nhất trong tuần
+            ({formatDuration(quote.longestShiftMinutes ?? 0)}). Bạn nên tách thành hai lần hẹn để tiệm phục vụ trọn vẹn.
+          </span>
         </p>
       )}
 
@@ -87,6 +109,7 @@ export function Step1Services() {
                         {isOn && <Check size={14} strokeWidth={3} className="animate-fade-in-scale" />}
                       </span>
                       <SmartImage src={photos[s.id]} alt="" loading="lazy" className="hidden h-16 w-16 shrink-0 rounded-xl xs:block"
+                                  seed={s.id} monogram={initials(s.name)}
                                   kind={serviceMediaKind({ name: s.name, categoryId: group.categoryId, categoryName: group.categoryName })} />
                       <span className="min-w-0 flex-1">
                         <span className="block font-semibold text-slate-900">{s.name}</span>

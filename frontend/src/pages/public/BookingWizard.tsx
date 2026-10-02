@@ -4,7 +4,8 @@ import { ArrowLeft, ArrowRight, Check, Clock, Wallet } from 'lucide-react';
 import { getErrorField, getErrorMessage, publicApi } from '@/api';
 import type { BookingResult } from '@/types';
 import { BackButton, Button } from '@/components';
-import { formatDuration, formatVnd, VN_PHONE_REGEX } from '@/utils/format';
+import { formatDuration, formatVnd, VN_PHONE_MESSAGE, VN_PHONE_REGEX } from '@/utils/format';
+import { emailError } from '@/utils/validators';
 import { useBooking } from '@/contexts/BookingContext';
 import { useToast } from '@/contexts/ToastContext';
 import { Step1Services } from './steps/Step1Services';
@@ -53,11 +54,10 @@ export function BookingWizard() {
     const next: Step4Errors = {};
     if (!customer.fullName.trim()) next.fullName = 'Vui lòng nhập họ tên';
     if (!VN_PHONE_REGEX.test(customer.phone)) {
-      next.phone = 'Số điện thoại phải gồm đúng 10 chữ số và bắt đầu bằng số 0';
+      next.phone = VN_PHONE_MESSAGE;
     }
-    if (customer.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(customer.email)) {
-      next.email = 'Email không đúng định dạng';
-    }
+    const invalidEmail = emailError(customer.email, false);
+    if (invalidEmail) next.email = invalidEmail;
     if (customer.note.length > 300) next.note = 'Ghi chú tối đa 300 ký tự';
     setErrors(next);
     return Object.keys(next).length === 0;

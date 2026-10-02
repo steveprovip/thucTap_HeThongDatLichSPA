@@ -1,5 +1,5 @@
 import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
-import type { ApiError } from '@/types';
+import type { ApiError, ApiErrorDetails } from '@/types';
 import { DEMO_MODE, mockAdapter } from './mockBackend';
 import { affectsAppointments, notifyAppointmentsChanged } from '@/utils/liveSync';
 
@@ -113,6 +113,13 @@ export const getErrorField = (error: unknown): string | undefined =>
 
 export const getFieldErrors = (error: unknown): Record<string, string> =>
   (error as AxiosError<ApiError>)?.response?.data?.errors ?? {};
+
+/** Mã lỗi máy đọc được (vd. ACCOUNT_LOCKED) để rẽ nhánh giao diện thay vì so chuỗi thông điệp. */
+export const getErrorCode = (error: unknown): string | undefined =>
+  (error as AxiosError<ApiError>)?.response?.data?.code;
+
+export const getErrorDetails = (error: unknown): ApiErrorDetails =>
+  (error as AxiosError<ApiError>)?.response?.data?.details ?? {};
 
 /** Bóc lớp vỏ { success, data } của API. */
 export const unwrap = <T>(res: { data: { data: T } }): T => res.data.data;

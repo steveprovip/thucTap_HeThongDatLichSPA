@@ -7,6 +7,13 @@ import { addDaysISO, formatDuration, formatWeekdayDate, todayISO } from '@/utils
 import { useBooking } from '@/contexts/BookingContext';
 import { useToast } from '@/contexts/ToastContext';
 
+/** Nhóm khung giờ theo buổi; mọi khung giờ đều rơi vào đúng một nhóm. */
+const SESSIONS: { label: string; test: (t: string) => boolean }[] = [
+  { label: 'Sáng', test: (t) => t < '12:00' },
+  { label: 'Chiều', test: (t) => t >= '12:00' && t < '17:00' },
+  { label: 'Tối', test: (t) => t >= '17:00' },
+];
+
 /** Bước 2 — chọn ngày rồi chọn khung giờ còn đủ chỗ cho tổng thời lượng (S2-05). */
 export function Step2Slot() {
   const { selected, date, setDate, time, setTime, totalDuration, setStylistId } = useBooking();
@@ -33,7 +40,8 @@ export function Step2Slot() {
 
   useEffect(() => { void load(date); }, [date, load]);
 
-  const quickDays = Array.from({ length: 7 }, (_, i) => addDaysISO(todayISO(), i));
+  // DateNav 14 ngày tới (fresha-luxury-ui-engine)
+  const quickDays = Array.from({ length: 14 }, (_, i) => addDaysISO(todayISO(), i));
 
   const pick = (t: string) => {
     setTime(t);
@@ -127,21 +135,32 @@ export function Step2Slot() {
       ) : (
         <div>
           <p className="field-label">Khung giờ còn trống ({data.slots.length})</p>
-          <div className="grid grid-cols-3 gap-2 xs:grid-cols-4 sm:grid-cols-6">
-            {data.slots.map((s) => (
-              <button
-                key={s.time}
-                onClick={() => pick(s.time)}
-                aria-pressed={time === s.time}
-                className={`min-h-[44px] rounded-xl border text-sm font-semibold transition-colors
-                  ${time === s.time
-                    ? 'border-teal-600 bg-teal-600 text-white shadow-sm'
-                    : 'border-slate-200 bg-white text-slate-800 hover:border-teal-600 hover:text-teal-700'}`}
-              >
-                {s.time}
-              </button>
-            ))}
-          </div>
+          {SESSIONS.map((session) => {
+            const group = data.slots.filter((s) => session.test(s.time));
+            if (!group.length) return null;
+            return (
+              <section key={session.label} className="mb-3 last:mb-0" aria-label={`Buổi ${session.label}`}>
+                <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  {session.label} <span className="font-normal normal-case">({group.length})</span>
+                </p>
+                <div className="grid grid-cols-3 gap-2 xs:grid-cols-4 sm:grid-cols-6">
+                  {group.map((s) => (
+                    <button
+                      key={s.time}
+                      onClick={() => pick(s.time)}
+                      aria-pressed={time === s.time}
+                      className={`min-h-[44px] rounded-xl border text-sm font-semibold transition-colors
+                        ${time === s.time
+                          ? 'border-teal-600 bg-teal-600 text-white shadow-sm'
+                          : 'border-slate-200 bg-white text-slate-800 hover:border-teal-600 hover:text-teal-700'}`}
+                    >
+                      {s.time}
+                    </button>
+                  ))}
+                </div>
+              </section>
+            );
+          })}
           {time && (
             <p className="mt-3 rounded-xl bg-green-50 px-3.5 py-2.5 text-xs text-green-900">
               Đã chọn <strong>{time}</strong> ngày {formatWeekdayDate(`${date}T00:00:00+07:00`)} — dự kiến xong lúc{' '}

@@ -5,9 +5,9 @@ import { authApi, getErrorMessage } from '@/api';
 import { DEMO_MODE } from '@/api/mockBackend';
 import { Button, Card, Field, Input, Notice } from '@/components';
 import { useToast } from '@/contexts/ToastContext';
+import { emailError as validateEmail } from '@/utils/validators';
 import { AuthShell } from './AuthShell';
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const RESEND_COOLDOWN_S = 60;
 const MAX_SENDS_PER_HOUR = 3;
 
@@ -26,7 +26,7 @@ export function ForgotPasswordPage() {
     return () => window.clearTimeout(id);
   }, [cooldown]);
 
-  const emailError = !email.trim() ? 'Vui lòng nhập email' : !EMAIL_RE.test(email.trim()) ? 'Email không hợp lệ' : undefined;
+  const emailError = validateEmail(email); // QA-02: chặn chữ có dấu / ký tự đặc biệt nguy hiểm
   const recentSends = sends.filter((t) => Date.now() - t < 3600_000);
   const limitReached = recentSends.length >= MAX_SENDS_PER_HOUR;
 

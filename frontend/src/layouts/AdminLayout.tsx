@@ -21,6 +21,13 @@ interface NavItem {
  * trong tài liệu (S1-03). Máy chủ vẫn kiểm tra lại quyền ở mọi API.
  */
 const NAV: { group: string; items: NavItem[] }[] = [
+  // QA-04: "Tổng quan" luôn là mục ĐẦU TIÊN của thanh điều hướng với mọi vai trò được phép xem
+  {
+    group: 'Tổng quan',
+    items: [
+      { to: '/quan-ly/tong-quan', label: 'Tổng quan hôm nay', icon: <Gauge size={18} />, roles: ['owner', 'admin', 'receptionist'] },
+    ],
+  },
   {
     group: 'Vận hành',
     items: [
@@ -41,7 +48,6 @@ const NAV: { group: string; items: NavItem[] }[] = [
   {
     group: 'Báo cáo',
     items: [
-      { to: '/quan-ly/tong-quan', label: 'Tổng quan hôm nay', icon: <Gauge size={18} />, roles: ['owner', 'admin', 'receptionist'] },
       { to: '/quan-ly/doanh-thu', label: 'Doanh thu', icon: <BarChart3 size={18} />, roles: ['owner', 'admin', 'receptionist'] },
       { to: '/quan-ly/phan-bo-khung-gio', label: 'Khung giờ & no-show', icon: <Clock size={18} />, roles: ['owner', 'admin'] },
     ],

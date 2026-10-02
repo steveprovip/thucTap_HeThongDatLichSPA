@@ -1,4 +1,5 @@
 import type { AppointmentStatus } from '@/types';
+import { PASSWORD_CHARSET_RE } from './validators';
 
 export const SALON = {
   name: import.meta.env.VITE_SALON_NAME || 'Salon & Spa Hương Sen',
@@ -99,4 +100,6 @@ export const PASSWORD_RULES: { id: string; label: string; test: (pw: string) => 
   { id: 'len', label: 'Tối thiểu 8 ký tự', test: (pw) => pw.length >= 8 },
   { id: 'letter', label: 'Có ít nhất một chữ cái', test: (pw) => /[A-Za-z]/.test(pw) },
   { id: 'digit', label: 'Có ít nhất một chữ số', test: (pw) => /\d/.test(pw) },
+  // QA-02: không chữ có dấu, khoảng trắng hay < > " ' ` \
+  { id: 'charset', label: 'Không dấu, không khoảng trắng, không < > " \' ` \\', test: (pw) => pw.length > 0 && PASSWORD_CHARSET_RE.test(pw) },
 ];

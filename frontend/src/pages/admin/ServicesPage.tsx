@@ -5,7 +5,7 @@ import {
 import { catalogApi, getErrorMessage, stylistsApi } from '@/api';
 import type { ServiceCategory, ServiceItem, Stylist } from '@/types';
 import { Button, Card, ConfirmDialog, EmptyState, Field, Input, Modal, Notice, SectionTitle, Select, SmartImage, Textarea, Toggle, TableSkeleton } from '@/components';
-import { assignServiceImages, serviceMediaKind } from '@/utils/images';
+import { assignServiceImages, initials, serviceMediaKind } from '@/utils/images';
 import { formatDuration, formatNumber, formatVnd, matchSearch, parseNumber } from '@/utils/format';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
@@ -316,7 +316,7 @@ export function ServicesPage() {
                   <td className="min-w-[260px]">
                     <div className="flex items-center gap-3">
                       <SmartImage src={photos[s.id]} alt="" loading="lazy" className="h-11 w-11 shrink-0 rounded-xl"
-                                  kind={serviceMediaKind(s)} />
+                                  kind={serviceMediaKind(s)} seed={s.id} monogram={initials(s.name)} />
                       <div className="min-w-0">
                         <span className="font-medium text-ink">{s.name}</span>
                         {s.description && <span className="block text-xs text-ink-muted">{s.description}</span>}
