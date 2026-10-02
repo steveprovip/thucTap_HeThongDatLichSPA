@@ -1,0 +1,28 @@
+{
+  "name": "salon-spa-booking",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Hệ thống đặt lịch Salon - Spa: quản lý lịch hẹn, ca làm, thanh toán và báo cáo",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "install:all": "npm install --prefix backend && npm install --prefix frontend",
+    "db:up": "docker compose up -d postgres maildev pgadmin",
+    "db:down": "docker compose down",
+    "db:reset": "docker compose down -v && docker compose up -d postgres maildev pgadmin",
+    "db:schema": "docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U salon -d salon_booking -f /docker-entrypoint-initdb.d/01_schema.sql",
+    "db:seed": "npm run seed --prefix backend",
+    "dev:backend": "npm run start:dev --prefix backend",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "start:all": "concurrently -n \"API,WEB\" -c \"cyan,magenta\" \"npm:dev:backend\" \"npm:dev:frontend\"",
+    "start:launch": "node scripts/launcher.mjs run",
+    "build": "npm run build --prefix backend && npm run build --prefix frontend",
+    "test": "npm run test --prefix backend",
+    "test:e2e": "npm run test:e2e --prefix backend",
+    "lint": "npm run lint --prefix backend && npm run lint --prefix frontend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}

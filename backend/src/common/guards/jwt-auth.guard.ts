@@ -1,0 +1,33 @@
+import { ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import { AuthGuard } from '@nestjs/passport';
+import { Observable } from 'rxjs';
+import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
+import { MSG } from '../constants/messages.constant';
+
+@Injectable()
+export class JwtAuthGuard extends AuthGuard('jwt') {
+  constructor(private readonly reflector: Reflector) {
+    super();
+  }
+
+  canActivate(context: ExecutionContext): boolean | Promise<boolean> | Observable<boolean> {
+    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (isPublic) return true;
+    return super.canActivate(context);
+  }
+
+  handleRequest<TUser>(err: unknown, user: TUser, info: unknown): TUser {
+    // Giữ nguyên thông điệp cụ thể từ JwtStrategy (vd. tài khoản đã ngưng hoạt động)
+    if (err instanceof UnauthorizedException) throw err;
+    if (err || !user) {
+      const message =
+        info && (info as Error).name === 'TokenExpiredError' ? MSG.TOKEN_EXPIRED : MSG.TOKEN_INVALID;
+      throw new UnauthorizedException(message);
+    }
+    return user;
+  }
+}

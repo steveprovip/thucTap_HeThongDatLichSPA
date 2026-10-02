@@ -1,0 +1,80 @@
+# =============================================================================
+#  HỆ THỐNG ĐẶT LỊCH SALON - SPA
+#  Hạ tầng phát triển & staging: PostgreSQL 15 + PgAdmin 4 + Maildev (SMTP test)
+#  Chạy:  docker compose up -d
+# =============================================================================
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: salon_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-salon}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-salon123}
+      POSTGRES_DB: ${POSTGRES_DB:-salon_booking}
+      TZ: Asia/Ho_Chi_Minh
+      PGTZ: Asia/Ho_Chi_Minh
+      LANG: en_US.utf8
+    command:
+      - "postgres"
+      - "-c"
+      - "timezone=Asia/Ho_Chi_Minh"
+      - "-c"
+      - "max_connections=200"
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - salon_pgdata:/var/lib/postgresql/data
+      # Nạp tự động lần đầu khởi tạo volume: schema rồi seed (thứ tự theo tên file)
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      - ./database/seed.sql:/docker-entrypoint-initdb.d/02_seed.sql:ro
+    healthcheck:
+      # Kiểm tra qua TCP (-h 127.0.0.1) chứ KHÔNG qua Unix socket: lần đầu dựng volume,
+      # entrypoint chạy init script trên một máy chủ TẠM chỉ mở socket rồi khởi động lại.
+      # Kiểm tra qua socket sẽ báo "healthy" quá sớm -> backend/seed kết nối bị ECONNREFUSED.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+      start_period: 120s
+    networks: [salon_net]
+
+  pgadmin:
+    image: dpage/pgadmin4:8.12
+    container_name: salon_pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@salon.local}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin123}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+    ports:
+      - "${PGADMIN_PORT:-5050}:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - salon_pgadmin:/var/lib/pgadmin
+    networks: [salon_net]
+
+  maildev:
+    # Hộp thư ảo để kiểm thử email xác nhận / nhắc lịch / liên kết đánh giá
+    image: maildev/maildev:2.1.0
+    container_name: salon_maildev
+    restart: unless-stopped
+    environment:
+      MAILDEV_INCOMING_USER: ""
+      MAILDEV_INCOMING_PASS: ""
+      TZ: Asia/Ho_Chi_Minh
+    ports:
+      - "${MAILDEV_WEB_PORT:-1080}:1080"   # Giao diện web đọc email
+      - "${MAILDEV_SMTP_PORT:-1025}:1025"  # Cổng SMTP cho backend
+    networks: [salon_net]
+
+volumes:
+  salon_pgdata:
+  salon_pgadmin:
+
+networks:
+  salon_net:
+    driver: bridge

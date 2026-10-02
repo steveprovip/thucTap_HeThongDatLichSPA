@@ -1,0 +1,138 @@
+import { ImgHTMLAttributes, ReactNode, useCallback, useEffect, useState } from 'react';
+import { Droplets, Flower2, Gem, HandHeart, Leaf, Palette, Scissors, Sparkles, UserRound } from 'lucide-react';
+import { initials, KIND_ALTERNATES, stylistPhoto, type MediaKind } from '@/utils/images';
+
+/**
+ * Ảnh đã nằm sẵn trong cache có thể bắn onLoad TRƯỚC khi useEffect chạy; nếu effect sau đó đặt lại
+ * trạng thái "loading" thì ảnh kẹt ở opacity-0 mãi mãi. Vì vậy chỉ reset khi src thật sự đổi
+ * (so sánh ngay khi render) và đọc img.complete lúc gắn phần tử.
+ */
+const readyState = (img: HTMLImageElement | null): 'ready' | 'error' | null =>
+  img?.complete ? (img.naturalWidth > 0 ? 'ready' : 'error') : null;
+
+/** Quá thời gian này mà ảnh CDN vẫn chưa về (mạng chập chờn / offline) thì hiện nền dự phòng. */
+const LOAD_TIMEOUT_MS = 8000;
+
+const isOffline = () => typeof navigator !== 'undefined' && navigator.onLine === false;
+
+/** Nền dự phòng theo chủ đề dịch vụ: gradient pastel + biểu tượng, không cần mạng. */
+const FALLBACK: Record<MediaKind, { gradient: string; tint: string; icon: ReactNode }> = {
+  hair: { gradient: 'from-rose-100 via-orange-50 to-amber-100', tint: 'text-rose-500', icon: <Scissors aria-hidden /> },
+  wash: { gradient: 'from-sky-100 via-cyan-50 to-teal-100', tint: 'text-sky-600', icon: <Droplets aria-hidden /> },
+  skin: { gradient: 'from-teal-100 via-emerald-50 to-amber-50', tint: 'text-teal-600', icon: <Sparkles aria-hidden /> },
+  massage: { gradient: 'from-amber-100 via-orange-50 to-rose-100', tint: 'text-amber-600', icon: <HandHeart aria-hidden /> },
+  combo: { gradient: 'from-violet-100 via-fuchsia-50 to-amber-50', tint: 'text-violet-600', icon: <Gem aria-hidden /> },
+  nail: { gradient: 'from-pink-100 via-rose-50 to-violet-100', tint: 'text-pink-600', icon: <Flower2 aria-hidden /> },
+  makeup: { gradient: 'from-rose-100 via-pink-50 to-amber-50', tint: 'text-rose-500', icon: <Palette aria-hidden /> },
+  spa: { gradient: 'from-teal-100 via-teal-50 to-amber-50', tint: 'text-teal-600', icon: <Leaf aria-hidden /> },
+  person: { gradient: 'from-slate-100 via-teal-50 to-slate-100', tint: 'text-teal-700', icon: <UserRound aria-hidden /> },
+};
+
+/** Nền thay thế ảnh: luôn hiển thị được kể cả khi mất mạng, không bao giờ lộ biểu tượng ảnh vỡ. */
+export function MediaFallback({ kind = 'spa', label, className = '' }: { kind?: MediaKind; label?: string; className?: string }) {
+  const v = FALLBACK[kind] ?? FALLBACK.spa;
+  return (
+    <div className={`animate-fade absolute inset-0 overflow-hidden bg-gradient-to-br ${v.gradient} ${className}`} role="img" aria-label={label}>
+      <span aria-hidden className="pointer-events-none absolute -right-6 -top-8 h-28 w-28 rounded-full bg-white/50 blur-2xl" />
+      <span aria-hidden className="pointer-events-none absolute -bottom-10 -left-6 h-28 w-28 rounded-full bg-white/40 blur-2xl" />
+      <span aria-hidden className="pointer-events-none absolute inset-0 opacity-[0.35] [background-image:radial-gradient(rgba(15,23,42,0.08)_1px,transparent_1px)] [background-size:14px_14px]" />
+      <div className="relative flex h-full w-full flex-col items-center justify-center gap-2">
+        <span className={`flex aspect-square h-[46%] max-h-14 min-h-[22px] items-center justify-center rounded-full bg-white/75 shadow-sm ring-1 ring-white backdrop-blur-sm ${v.tint} [&>svg]:h-1/2 [&>svg]:w-1/2`}>
+          {v.icon}
+        </span>
+        {label && (
+          <span className="max-w-[85%] truncate rounded-full bg-white/70 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600 backdrop-blur-sm">
+            {label}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Số ảnh dự phòng cùng chủ đề được thử khi ảnh chính bị gỡ / lỗi, trước khi dùng nền gradient. */
+const MAX_ALTERNATES = 2;
+
+/**
+ * Ảnh có khung shimmer khi đang tải, hiện dần khi xong. Khi ảnh chính lỗi (ảnh bị gỡ khỏi CDN)
+ * thì thử lần lượt ảnh dự phòng cùng chủ đề; mất mạng / tải quá lâu / hết ảnh dự phòng thì chuyển
+ * mượt sang nền gradient theo chủ đề dịch vụ (kéo, giọt nước, lấp lánh…). Không bao giờ lộ ảnh vỡ.
+ */
+export function SmartImage({ src, alt, className = '', imgClassName = '', kind = 'spa', fallbackLabel, ...rest }:
+  ImgHTMLAttributes<HTMLImageElement> & { imgClassName?: string; kind?: MediaKind; fallbackLabel?: string }) {
+  const initial = (): 'loading' | 'error' => (src && !isOffline() ? 'loading' : 'error');
+  const [state, setState] = useState<'loading' | 'ready' | 'error'>(initial);
+  const [trackedSrc, setTrackedSrc] = useState(src);
+  const [attempt, setAttempt] = useState(0);
+  if (src !== trackedSrc) { setTrackedSrc(src); setState(initial()); setAttempt(0); }
+  const candidates = [src, ...(KIND_ALTERNATES[kind] ?? []).filter((u) => u !== src).slice(0, MAX_ALTERNATES)].filter(Boolean);
+  const currentSrc = candidates[attempt];
+  const imgRef = useCallback((img: HTMLImageElement | null) => {
+    const s = readyState(img); if (s === 'ready') setState('ready');
+  }, []);
+  /** Ảnh hiện tại lỗi → thử ảnh dự phòng kế tiếp; hết thì dùng nền gradient. */
+  const handleError = () => {
+    if (isOffline() || attempt + 1 >= candidates.length) { setState('error'); return; }
+    setAttempt((n) => n + 1); setState('loading');
+  };
+
+  // Mạng treo (không lỗi mà cũng không về) → không để khung shimmer chạy mãi
+  useEffect(() => {
+    if (state !== 'loading') return;
+    const timer = window.setTimeout(() => setState((s) => (s === 'loading' ? 'error' : s)), LOAD_TIMEOUT_MS);
+    return () => window.clearTimeout(timer);
+  }, [state, trackedSrc, attempt]);
+
+  return (
+    <div className={`relative overflow-hidden ${state === 'loading' ? 'skeleton-shimmer' : 'bg-slate-100'} ${className}`}>
+      {state === 'error' ? (
+        <MediaFallback kind={kind} label={fallbackLabel} />
+      ) : (
+        <img
+          key={currentSrc}
+          ref={imgRef}
+          src={currentSrc}
+          alt={alt}
+          onLoad={() => setState('ready')}
+          onError={handleError}
+          className={`h-full w-full object-cover transition-[opacity,transform] duration-700 ease-out
+            ${state === 'ready' ? 'opacity-100' : 'opacity-0'} ${imgClassName}`}
+          {...rest}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Ảnh đại diện thợ, có chữ viết tắt khi không tải được ảnh. */
+export function StylistAvatar({ id, name, url, size = 'h-10 w-10', className = '' }: {
+  id: string; name: string; url?: string | null; size?: string; className?: string;
+}) {
+  const src = stylistPhoto(id, url);
+  const [broken, setBroken] = useState(isOffline);
+  const [loaded, setLoaded] = useState(false);
+  const [trackedSrc, setTrackedSrc] = useState(src);
+  if (src !== trackedSrc) { setTrackedSrc(src); setBroken(isOffline()); setLoaded(false); }
+  const imgRef = useCallback((img: HTMLImageElement | null) => {
+    const s = readyState(img); if (s === 'ready') setLoaded(true); else if (s === 'error') setBroken(true);
+  }, []);
+  useEffect(() => {
+    if (loaded || broken) return;
+    const timer = window.setTimeout(() => setBroken(true), LOAD_TIMEOUT_MS);
+    return () => window.clearTimeout(timer);
+  }, [loaded, broken, trackedSrc]);
+  if (broken) {
+    return (
+      <span className={`${size} inline-flex shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-teal-100 to-teal-50 text-xs font-semibold text-teal-800 ring-2 ring-white ${className}`}
+            aria-label={name}>
+        {initials(name)}
+      </span>
+    );
+  }
+  return (
+    <span className={`${size} relative inline-block shrink-0 overflow-hidden rounded-full ring-2 ring-white ${loaded ? 'bg-slate-100' : 'skeleton-shimmer'} ${className}`}>
+      <img ref={imgRef} src={src} alt={name} loading="lazy" onLoad={() => setLoaded(true)} onError={() => setBroken(true)}
+           className={`h-full w-full object-cover transition-opacity duration-500 ${loaded ? 'opacity-100' : 'opacity-0'}`} />
+    </span>
+  );
+}

@@ -1,0 +1,156 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    @apply bg-surface-page text-ink font-sans antialiased;
+    margin: 0;
+  }
+  /* Vùng chạm tối thiểu 44px để dùng một tay trên điện thoại */
+  button, [role='button'], a.btn { touch-action: manipulation; }
+  :focus-visible { @apply outline-none ring-2 ring-teal-500/40 ring-offset-2 ring-offset-white; }
+  input[type='date'], input[type='time'] { color-scheme: light; }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 min-h-[44px] text-sm font-medium
+           transition-all duration-200 ease-[cubic-bezier(0.34,1.56,0.64,1)] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 select-none;
+  }
+  .btn-primary { @apply btn bg-teal-600 text-white shadow-sm hover:bg-teal-700 active:bg-teal-800; }
+  .btn-secondary { @apply btn border border-slate-200 bg-slate-100 text-slate-800 hover:bg-slate-200; }
+  .btn-outline { @apply btn border border-slate-300 bg-white text-slate-800 hover:border-slate-400 hover:bg-slate-50; }
+  .btn-ghost { @apply btn text-slate-600 hover:bg-slate-100 hover:text-slate-900; }
+  .btn-danger { @apply btn bg-red-600 text-white shadow-sm hover:bg-red-700; }
+  .btn-sm { @apply min-h-[36px] px-3 text-xs rounded-lg; }
+
+  .card { @apply rounded-2xl border border-slate-200/80 bg-white shadow-card; }
+  .field-label { @apply block text-sm font-medium text-slate-700 mb-1.5; }
+  .field-input {
+    @apply w-full rounded-xl border border-slate-300 bg-white px-3.5 min-h-[44px] text-sm text-slate-900
+           placeholder:text-slate-400 focus:border-teal-600 focus:outline-none
+           focus:ring-2 focus:ring-teal-500/20 disabled:bg-slate-50 disabled:text-slate-500;
+  }
+  .field-error { @apply mt-1 text-xs text-red-600; }
+  .chip { @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium; }
+
+  .table-wrap { @apply overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm; }
+  .table { @apply w-full text-sm text-slate-700; }
+  .table thead th {
+    @apply bg-slate-50 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-700
+           border-b border-slate-200 whitespace-nowrap;
+  }
+  .table tbody td { @apply border-t border-slate-100 px-4 py-3 align-middle; }
+  .table tbody tr:first-child td { @apply border-t-0; }
+  .table tbody tr { @apply transition-colors; }
+  .table tbody tr { animation: fadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) backwards; }
+  .table tbody tr:nth-child(2) { animation-delay: 30ms; }
+  .table tbody tr:nth-child(3) { animation-delay: 60ms; }
+  .table tbody tr:nth-child(4) { animation-delay: 90ms; }
+  .table tbody tr:nth-child(5) { animation-delay: 120ms; }
+  .table tbody tr:nth-child(6) { animation-delay: 150ms; }
+  .table tbody tr:nth-child(7) { animation-delay: 180ms; }
+  .table tbody tr:nth-child(8) { animation-delay: 210ms; }
+  .table tbody tr:nth-child(9) { animation-delay: 240ms; }
+  .table tbody tr:nth-child(10) { animation-delay: 270ms; }
+  .table tbody tr:nth-child(11) { animation-delay: 300ms; }
+  .table tbody tr:nth-child(12) { animation-delay: 330ms; }
+  .table tbody tr:hover { @apply bg-slate-50/80; }
+
+  /* Vùng ngoài ca làm: sọc chéo nhạt */
+  .off-shift {
+    background-color: #F8FAFC;
+    background-image: repeating-linear-gradient(135deg, rgba(148, 163, 184, 0.14) 0 1px, transparent 1px 9px);
+  }
+}
+
+/* ================= Motion system ================= */
+@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fadeInScale { from { opacity: 0; transform: translateY(8px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes fadeOnly { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideInLeft { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+@keyframes slideInRight { from { transform: translateX(100%); } to { transform: translateX(0); } }
+@keyframes toastIn { from { opacity: 0; transform: translateX(24px) scale(0.98); } to { opacity: 1; transform: translateX(0) scale(1); } }
+@keyframes pulseSubtle { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.85; transform: scale(1.03); } }
+@keyframes ping { 75%, 100% { transform: scale(2.4); opacity: 0; } }
+@keyframes shimmer { 100% { transform: translateX(100%); } }
+@keyframes kenBurns { from { transform: scale(1.08); } to { transform: scale(1); } }
+@keyframes slideInRightSoft { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes slideInLeftSoft { from { opacity: 0; transform: translateX(-14px); } to { opacity: 1; transform: translateX(0); } }
+
+.animate-fade-in { animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) backwards; }
+.animate-fade-in-scale { animation: fadeInScale 0.35s cubic-bezier(0.16, 1, 0.3, 1) backwards; }
+.animate-fade { animation: fadeOnly 0.25s ease-out backwards; }
+.animate-slide-in-left { animation: slideInLeft 0.35s cubic-bezier(0.16, 1, 0.3, 1) backwards; }
+.animate-slide-in-right { animation: slideInRight 0.35s cubic-bezier(0.16, 1, 0.3, 1) backwards; }
+.animate-toast-in { animation: toastIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) backwards; }
+.animate-pulse-subtle { animation: pulseSubtle 3s ease-in-out infinite; }
+.animate-ping-soft { animation: ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite; }
+.animate-ken-burns { animation: kenBurns 1.6s cubic-bezier(0.16, 1, 0.3, 1) backwards; }
+.animate-slide-in-right-soft { animation: slideInRightSoft 0.4s cubic-bezier(0.16, 1, 0.3, 1) backwards; }
+.animate-slide-in-left-soft { animation: slideInLeftSoft 0.4s cubic-bezier(0.16, 1, 0.3, 1) backwards; }
+
+/* Xuất hiện lần lượt: đặt --i trên từng phần tử con.
+   Dùng fill-mode 'backwards' để sau khi chạy xong không giữ transform (không phá hover/position: fixed). */
+.stagger > * { animation: fadeIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) backwards; animation-delay: calc(var(--i, 0) * 55ms); }
+.stagger > :nth-child(2) { --i: 1; }
+.stagger > :nth-child(3) { --i: 2; }
+.stagger > :nth-child(4) { --i: 3; }
+.stagger > :nth-child(5) { --i: 4; }
+.stagger > :nth-child(6) { --i: 5; }
+.stagger > :nth-child(7) { --i: 6; }
+.stagger > :nth-child(8) { --i: 7; }
+.stagger > :nth-child(9) { --i: 8; }
+.stagger > :nth-child(10) { --i: 9; }
+.stagger > :nth-child(11) { --i: 10; }
+.stagger > :nth-child(12) { --i: 11; }
+
+.skeleton-shimmer {
+  position: relative; overflow: hidden; background-color: #E2E8F0;
+}
+.skeleton-shimmer::after {
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
+  transform: translateX(-100%);
+  background-image: linear-gradient(90deg, rgba(255,255,255,0) 0, rgba(255,255,255,0.5) 50%, rgba(255,255,255,0) 100%);
+  animation: shimmer 1.5s infinite; content: '';
+}
+
+/* Hiệu ứng nhấc thẻ khi rê chuột */
+.lift { transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s ease, border-color 0.2s ease; }
+.lift:hover { transform: translateY(-3px); box-shadow: 0 16px 40px -12px rgba(15, 23, 42, 0.16), 0 4px 10px -4px rgba(15, 23, 42, 0.06); }
+.press { transition: transform 0.15s ease; }
+.press:active { transform: scale(0.98); }
+/* Thẻ tương tác: nhấc nhẹ khi rê chuột, nảy khi nhấn (hover:-translate-y-1 hover:shadow-lg) */
+.hover-lift { transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s ease; }
+.hover-lift:hover { transform: translateY(-4px); box-shadow: 0 10px 15px -3px rgba(15, 23, 42, 0.08), 0 4px 6px -4px rgba(15, 23, 42, 0.06); }
+.hover-lift:active { transform: translateY(-1px) scale(0.99); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important; animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important; scroll-behavior: auto !important;
+  }
+}
+
+/* Thanh cuộn mảnh cho lưới lịch ngày */
+.thin-scroll::-webkit-scrollbar { height: 8px; width: 8px; }
+.thin-scroll::-webkit-scrollbar-thumb { @apply bg-slate-300 rounded-full; }
+.thin-scroll::-webkit-scrollbar-track { @apply bg-transparent; }
+
+@media print {
+  .no-print { display: none !important; }
+  body:has(.ticket-print) * { visibility: hidden; }
+  .ticket-print, .ticket-print * { visibility: visible !important; }
+  .ticket-print { position: absolute; inset: 0 auto auto 0; width: 100%; border: 0; color: #111827; background: #fff; box-shadow: none; }
+  .ticket-print .from-emerald-500 { background: #0f766e !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .ticket-print button, .ticket-print a { display: none !important; }
+  body:has(.receipt-print) * { visibility: hidden; }
+  .receipt-print, .receipt-print * { visibility: visible !important; }
+  .receipt-print { position: absolute; inset: 0 auto auto 0; width: 100%; color: #111827; background: #fff; border: 0; box-shadow: none; }
+  .receipt-print .text-ink-muted { color: #4b5563; }
+}
+
+/* Ẩn bộ chuyển vai trò demo khi đang mở hộp thoại để không che nút hành động */
+body:has([aria-modal='true']) .role-switcher { display: none; }
