@@ -5,6 +5,7 @@ import { AppointmentSource } from '../../database/entities/appointment.entity';
 import { Public } from '../../common/decorators/public.decorator';
 import { ClientIp } from '../../common/decorators/client-ip.decorator';
 import { formatVnd } from '../../common/utils/currency.util';
+import { ERROR_CODES } from '../../common/constants/messages.constant';
 import {
   AvailabilityQueryDto, CancelByCodeDto, CreateBookingDto, LookupDto, QuoteDto,
 } from './dto/booking.dto';
@@ -33,6 +34,8 @@ export class PublicBookingController {
     const services = await this.availability.loadServices(dto.serviceIds);
     const totalDuration = services.reduce((s, x) => s + x.durationMinutes, 0);
     const estimatedTotal = services.reduce((s, x) => s + x.price, 0);
+    // QA-13: cảnh báo ngay ở giỏ dịch vụ khi tổng thời lượng vượt ca dài nhất trong tuần
+    const warning = await this.availability.cartWarning(dto.serviceIds, totalDuration);
     return {
       services: services.map((s) => ({
         id: s.id, name: s.name, durationMinutes: s.durationMinutes, price: s.price,
@@ -41,6 +44,9 @@ export class PublicBookingController {
       totalDurationMinutes: totalDuration,
       estimatedTotal,
       estimatedTotalText: formatVnd(estimatedTotal),
+      longestShiftMinutes: warning.longestShiftMinutes,
+      exceedsLongestShift: warning.exceedsLongestShift,
+      warningCode: warning.exceedsLongestShift ? ERROR_CODES.EXCEEDS_LONGEST_SHIFT : null,
       note: 'Đây là số tiền tạm tính, giá cuối do tiệm chốt khi thanh toán.',
     };
   }

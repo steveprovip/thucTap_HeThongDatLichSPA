@@ -36,11 +36,15 @@ export class RateLimitService {
       `INSERT INTO rate_limits AS r (scope, identifier, hit_count, window_start, blocked_until, updated_at)
        VALUES ($1, $2, 1, now(), NULL, now())
        ON CONFLICT (scope, identifier) DO UPDATE SET
+         -- Hết thời gian khoá (blocked_until đã qua) thì mở cửa sổ đếm MỚI; kiểu cũ giữ nguyên bộ đếm
+         -- nên lượt đầu tiên sau khi mở khoá lại vượt ngưỡng và bị khoá tiếp ngay lập tức (QA-20).
          hit_count     = CASE WHEN r.blocked_until > now() THEN r.hit_count
-                              WHEN r.window_start < now() - make_interval(mins => $3) THEN 1
+                              WHEN r.blocked_until IS NOT NULL
+                                OR r.window_start < now() - make_interval(mins => $3) THEN 1
                               ELSE r.hit_count + 1 END,
          window_start  = CASE WHEN r.blocked_until > now() THEN r.window_start
-                              WHEN r.window_start < now() - make_interval(mins => $3) THEN now()
+                              WHEN r.blocked_until IS NOT NULL
+                                OR r.window_start < now() - make_interval(mins => $3) THEN now()
                               ELSE r.window_start END,
          blocked_until = CASE WHEN r.blocked_until > now() THEN r.blocked_until ELSE NULL END,
          updated_at    = now()
@@ -62,6 +66,12 @@ export class RateLimitService {
   /** Xoá bộ đếm khi thao tác thành công (ví dụ tra cứu đúng mã). */
   async reset(scope: string, identifier: string): Promise<void> {
     await this.repo.delete({ scope, identifier });
+  }
+
+  /** Thời điểm hết khoá nếu (scope, identifier) ĐANG bị khoá, ngược lại null. Không tăng bộ đếm. */
+  async blockedUntil(scope: string, identifier: string): Promise<Date | null> {
+    const row = await this.repo.findOne({ where: { scope, identifier } });
+    return row?.blockedUntil && row.blockedUntil.getTime() > Date.now() ? row.blockedUntil : null;
   }
 
   async peek(scope: string, identifier: string): Promise<RateLimit | null> {

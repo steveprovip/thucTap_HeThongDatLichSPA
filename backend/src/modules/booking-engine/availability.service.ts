@@ -91,8 +91,8 @@ export class AvailabilityService {
       const items = services
         .filter((s) => s.categoryId === cat.id)
         .filter((s) => (servedBy.get(s.id) ?? 0) > 0)
-        .filter((s) => !term || normalizeSearch(s.name).includes(term) ||
-          normalizeSearch(s.description ?? '').includes(term))
+        // QA-12: chỉ so khớp TÊN dịch vụ (không dấu); mô tả dài làm kết quả nhiễu nên bỏ qua
+        .filter((s) => !term || normalizeSearch(s.name).includes(term))
         .map<PublicServiceView>((s) => ({
           id: s.id,
           name: s.name,
@@ -116,6 +116,31 @@ export class AvailabilityService {
   /** Các thợ làm được toàn bộ dịch vụ đã chọn (S2-06). */
   async capableStylists(serviceIds: string[]): Promise<Stylist[]> {
     return this.stylists.findCapableStylists(serviceIds);
+  }
+
+  /**
+   * QA-13: độ dài ca dài nhất (đã trừ nghỉ giữa ca) của các thợ làm được gói dịch vụ, trong 7 ngày
+   * tính từ `fromDate`. Trước đây chỉ xét ca của ĐÚNG ngày đang chọn nên ngày thợ nghỉ thì không cảnh báo,
+   * còn ngày toàn ca ngắn lại cảnh báo sai dù trong tuần vẫn có ca đủ dài.
+   */
+  async longestShiftInWeek(stylistIds: string[], fromDate: string): Promise<number> {
+    if (!stylistIds.length) return 0;
+    const shifts = await this.stylists.getShiftsBetween(fromDate, addDays(fromDate, 6), stylistIds);
+    return longestShiftLength(shifts.map<ShiftInput>((s) => ({
+      startTime: trimSeconds(s.startTime),
+      endTime: trimSeconds(s.endTime),
+      breakStart: s.breakStart ? trimSeconds(s.breakStart) : null,
+      breakEnd: s.breakEnd ? trimSeconds(s.breakEnd) : null,
+    })));
+  }
+
+  /** Cảnh báo giỏ dịch vụ ngay ở bước chọn dịch vụ (S2-04 / QA-13). */
+  async cartWarning(serviceIds: string[], totalDuration: number, fromDate?: string): Promise<{
+    longestShiftMinutes: number; exceedsLongestShift: boolean;
+  }> {
+    const capable = await this.capableStylists(serviceIds);
+    const longest = await this.longestShiftInWeek(capable.map((s) => s.id), fromDate ?? todaySalon());
+    return { longestShiftMinutes: longest, exceedsLongestShift: longest > 0 && totalDuration > longest };
   }
 
   async loadServices(serviceIds: string[]): Promise<ServiceItem[]> {
@@ -217,7 +242,6 @@ export class AvailabilityService {
     if (params.stylistId) candidates = candidates.filter((s) => s.id === params.stylistId);
 
     const slotMap = new Map<string, string[]>();
-    let longest = 0;
 
     if (!salonClosed) {
       for (const stylist of candidates) {
@@ -229,7 +253,6 @@ export class AvailabilityService {
           excludeAppointmentId: params.excludeAppointmentId,
           now: params.now,
         });
-        longest = Math.max(longest, longestShiftLength(input.shifts));
         for (const time of computeAvailableSlots(input)) {
           const arr = slotMap.get(time) ?? [];
           arr.push(stylist.id);
@@ -241,6 +264,8 @@ export class AvailabilityService {
     const slots: SlotView[] = Array.from(slotMap.entries())
       .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([time, stylistIds]) => ({ time, stylistIds }));
+
+    const longest = await this.longestShiftInWeek(candidates.map((s) => s.id), params.date);
 
     const suggestedDates = slots.length === 0
       ? await this.findNearestAvailableDates({
@@ -282,7 +307,8 @@ export class AvailabilityService {
 
     const found: string[] = [];
     const today = todaySalon(params.now);
-    let cursor = params.fromDate < today ? today : params.fromDate;
+    // Vòng lặp cộng 1 ngày trước khi xét: ngày gửi lên đã qua thì phải xét luôn HÔM NAY
+    let cursor = params.fromDate < today ? addDays(today, -1) : params.fromDate;
 
     for (let i = 1; i <= 30 && found.length < count; i += 1) {
       cursor = addDays(cursor, 1);
@@ -303,6 +329,33 @@ export class AvailabilityService {
     return found;
   }
 
+  /**
+   * Phân loại một khung giờ của một thợ:
+   *  - 'invalid': nằm ngoài ca / giờ mở cửa / giờ nghỉ / quá sát hiện tại -> khách gửi giờ không có trong danh sách
+   *  - 'taken'  : hợp lệ nhưng đã có lịch khác chiếm
+   *  - 'ok'     : nhận được
+   */
+  async checkSlot(params: {
+    date: string;
+    time: string;
+    stylistId: string;
+    totalDuration: number;
+    ignoreLeadTime?: boolean;
+    excludeAppointmentId?: string;
+    now?: Date;
+  }): Promise<'ok' | 'taken' | 'invalid'> {
+    const input = await this.buildCalcInput({
+      date: params.date,
+      stylistId: params.stylistId,
+      totalDuration: params.totalDuration,
+      ignoreLeadTime: params.ignoreLeadTime,
+      excludeAppointmentId: params.excludeAppointmentId,
+      now: params.now,
+    });
+    if (input.salonClosed || !isSlotAvailable({ ...input, busy: [] }, params.time)) return 'invalid';
+    return isSlotAvailable(input, params.time) ? 'ok' : 'taken';
+  }
+
   /** Kiểm tra một khung giờ cụ thể của một thợ có còn nhận được không. */
   async canBook(params: {
     date: string;
@@ -313,16 +366,7 @@ export class AvailabilityService {
     excludeAppointmentId?: string;
     now?: Date;
   }): Promise<boolean> {
-    const input = await this.buildCalcInput({
-      date: params.date,
-      stylistId: params.stylistId,
-      totalDuration: params.totalDuration,
-      ignoreLeadTime: params.ignoreLeadTime,
-      excludeAppointmentId: params.excludeAppointmentId,
-      now: params.now,
-    });
-    if (input.salonClosed) return false;
-    return isSlotAvailable(input, params.time);
+    return (await this.checkSlot(params)) === 'ok';
   }
 
   /**
@@ -336,8 +380,11 @@ export class AvailabilityService {
     totalDuration: number;
     ignoreLeadTime?: boolean;
     now?: Date;
+    /** Thợ đã thử và bị giành mất khung giờ trong lúc chốt lịch (QA-15). */
+    excludeStylistIds?: string[];
   }): Promise<Stylist | null> {
-    const candidates = await this.capableStylists(params.serviceIds);
+    const excluded = new Set(params.excludeStylistIds ?? []);
+    const candidates = (await this.capableStylists(params.serviceIds)).filter((s) => !excluded.has(s.id));
     const loads = await this.stylists.countAppointmentsByStylist(params.date);
 
     const available: Stylist[] = [];
