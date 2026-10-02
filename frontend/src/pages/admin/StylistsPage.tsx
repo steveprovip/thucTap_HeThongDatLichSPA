@@ -10,9 +10,8 @@ import {
   TempPasswordDialog, type TempCredential,
 } from '@/components';
 import {
-  addDaysISO, formatDate, matchSearch, startOfWeekISO, timeToMinutes, todayISO, VN_PHONE_MESSAGE, VN_PHONE_REGEX,
+  addDaysISO, formatDate, matchSearch, startOfWeekISO, timeToMinutes, todayISO, VN_PHONE_REGEX,
 } from '@/utils/format';
-import { emailError } from '@/utils/validators';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 
@@ -154,8 +153,8 @@ export function StylistsPage() {
 
   const fieldErrors = {
     fullName: !fullName.trim() ? 'Vui lòng nhập họ tên thợ' : undefined,
-    phone: phone && !VN_PHONE_REGEX.test(phone) ? VN_PHONE_MESSAGE : undefined,
-    email: !editing ? emailError(email, false) : undefined, // QA-02
+    phone: phone && !VN_PHONE_REGEX.test(phone) ? 'Số điện thoại phải gồm đúng 10 chữ số, bắt đầu bằng 0' : undefined,
+    email: !editing && email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) ? 'Email không đúng định dạng' : undefined,
     skills: serviceIds.length === 0 ? 'Chọn ít nhất một dịch vụ thợ làm được' : undefined,
   };
   const shown: Partial<typeof fieldErrors> = touched ? fieldErrors : {};
@@ -536,3 +535,4 @@ function UsageBar({ rate }: { rate: number }) {
     </div>
   );
 }
+//Giu nguyen stylist
