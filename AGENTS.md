@@ -1,4 +1,4 @@
-# CLAUDE.md — Quy Định & Hướng Dẫn Kỹ Thuật Cho Claude Agent (Opus 5.5 Extra Cowork)
+# AGENTS.md — Quy Định & Hướng Dẫn Kỹ Thuật Dự Án
 
 ## 1. Tổng Quan Dự Án & Phạm Vi
 - **Tên dự án**: Hệ Thống Đặt Lịch & Quản Lý Salon Spa (`thucTap_HeThongDatLichSPA` tại `F:\hoc_tap\thuc_tap\du_an`).
