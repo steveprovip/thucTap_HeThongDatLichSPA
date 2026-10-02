@@ -1,3 +1,8 @@
+process.env.TZ = 'Asia/Ho_Chi_Minh';
+process.env.MAIL_WORKER_ENABLED = process.env.MAIL_WORKER_ENABLED ?? 'false';
+process.env.BOOKING_IP_LIMIT_PER_HOUR = process.env.BOOKING_IP_LIMIT_PER_HOUR ?? '1000';
+process.env.LOOKUP_IP_LIMIT_PER_HOUR = process.env.LOOKUP_IP_LIMIT_PER_HOUR ?? '1000';
+
 import { INestApplication, ValidationPipe, BadRequestException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { ValidationError } from 'class-validator';
@@ -6,10 +11,6 @@ import { MSG } from '../src/common/constants/messages.constant';
 
 /** Dựng ứng dụng thật (có kết nối CSDL) cho các bộ kiểm thử end-to-end. */
 export async function createTestApp(): Promise<INestApplication> {
-  process.env.TZ = 'Asia/Ho_Chi_Minh';
-  process.env.MAIL_WORKER_ENABLED = process.env.MAIL_WORKER_ENABLED ?? 'false';
-  process.env.BOOKING_IP_LIMIT_PER_HOUR = process.env.BOOKING_IP_LIMIT_PER_HOUR ?? '1000';
-  process.env.LOOKUP_IP_LIMIT_PER_HOUR = process.env.LOOKUP_IP_LIMIT_PER_HOUR ?? '1000';
 
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
   const app = moduleRef.createNestApplication();
