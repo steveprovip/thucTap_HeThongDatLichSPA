@@ -13,7 +13,7 @@ import { PasswordResetToken } from '../../database/entities/password-reset-token
 import { Stylist } from '../../database/entities/stylist.entity';
 import { AuditAction } from '../../database/entities/audit-log.entity';
 import { EmailKind } from '../../database/entities/email-queue.entity';
-import { MSG } from '../../common/constants/messages.constant';
+import { ERROR_CODES, MSG } from '../../common/constants/messages.constant';
 import { AuthUser, JwtPayload } from '../../common/types/auth.types';
 import { generateToken } from '../../common/utils/code.util';
 import { isStrongPassword } from '../../common/utils/password.util';
@@ -36,6 +36,20 @@ const sha256 = (v: string): string => createHash('sha256').update(v).digest('hex
 
 /** Email không tồn tại vẫn chạy bcrypt -> thời gian phản hồi như nhau, không dò được email nhân sự. */
 const DUMMY_HASH = bcrypt.hashSync('timing-equalizer-not-a-password', 10);
+
+/**
+ * QA-01: tài khoản bị khoá trả mã lỗi máy đọc được + thời điểm mở khoá để giao diện chuyển sang
+ * màn "tạm khoá" có đếm ngược, thay vì chỉ một dòng chữ giống hệt lỗi sai mật khẩu.
+ * Giữ HTTP 401 để không đổi hợp đồng API đã kiểm thử (auth-rbac.e2e-spec).
+ */
+const accountLocked = (until: Date): UnauthorizedException => {
+  const retryAfterSeconds = Math.max(60, Math.ceil((until.getTime() - Date.now()) / 1000));
+  return new UnauthorizedException({
+    message: MSG.ACCOUNT_LOCKED(Math.ceil(retryAfterSeconds / 60)),
+    code: ERROR_CODES.ACCOUNT_LOCKED,
+    details: { lockedUntil: until.toISOString(), retryAfterSeconds },
+  });
+};
 
 @Injectable()
 export class AuthService {
@@ -74,10 +88,7 @@ export class AuthService {
       throw new UnauthorizedException(MSG.LOGIN_FAILED);
     }
 
-    if (user.lockedUntil && user.lockedUntil > new Date()) {
-      const remaining = Math.max(1, Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60_000));
-      throw new UnauthorizedException(MSG.ACCOUNT_LOCKED(remaining));
-    }
+    if (user.lockedUntil && user.lockedUntil > new Date()) throw accountLocked(user.lockedUntil);
 
     const matched = await bcrypt.compare(password, user.passwordHash);
     if (!matched) {
@@ -92,17 +103,15 @@ export class AuthService {
         .execute();
       const attempts = Number((inc.raw as { failed_login_attempts: number }[])[0]?.failed_login_attempts ?? 0);
       if (attempts >= maxAttempts) {
-        await this.userRepo.update(user.id, {
-          lockedUntil: new Date(Date.now() + lockMinutes * 60_000),
-          failedLoginAttempts: 0,
-        });
+        const lockedUntil = new Date(Date.now() + lockMinutes * 60_000);
+        await this.userRepo.update(user.id, { lockedUntil, failedLoginAttempts: 0 });
         await this.audit.write({
           actorId: user.id, actorEmail: user.email, actorRole: user.role,
           action: AuditAction.LOGIN, entityType: 'user', entityId: user.id,
           summary: `Khoá tài khoản ${lockMinutes} phút do nhập sai mật khẩu ${maxAttempts} lần`,
           ipAddress: ip,
         });
-        throw new UnauthorizedException(MSG.ACCOUNT_LOCKED(lockMinutes));
+        throw accountLocked(lockedUntil);
       }
       throw new UnauthorizedException(MSG.LOGIN_FAILED);
     }

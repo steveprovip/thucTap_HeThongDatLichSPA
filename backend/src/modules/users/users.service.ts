@@ -3,7 +3,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, IsNull, Repository } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
 import { User } from '../../database/entities/user.entity';
 import { Stylist } from '../../database/entities/stylist.entity';
@@ -145,25 +145,38 @@ export class UsersService {
 
     const willDeactivate = dto.isActive === false && user.isActive;
     const willLoseAdmin = dto.role !== undefined && dto.role !== Role.ADMIN && user.role === Role.ADMIN;
+    // Chỉ admin ĐANG hoạt động mới làm giảm số admin hoạt động (admin đã ngưng đổi vai trò vẫn được phép)
+    const reducesActiveAdmins = (willDeactivate || willLoseAdmin) && user.role === Role.ADMIN && user.isActive;
 
-    if ((willDeactivate || willLoseAdmin) && user.role === Role.ADMIN) {
-      const activeAdmins = await this.userRepo.count({ where: { role: Role.ADMIN, isActive: true } });
-      if (activeAdmins <= 1) throw new BadRequestException(MSG.LAST_ADMIN);
+    if (willDeactivate && id === actorId && !reducesActiveAdmins) {
+      throw new BadRequestException(MSG.CANNOT_DEACTIVATE_SELF);
     }
-    if (willDeactivate && id === actorId) throw new BadRequestException(MSG.CANNOT_DEACTIVATE_SELF);
 
     if (dto.fullName !== undefined) user.fullName = dto.fullName.trim();
     if (dto.phone !== undefined) user.phone = dto.phone;
     if (dto.role !== undefined) user.role = dto.role;
     if (dto.isActive !== undefined) user.isActive = dto.isActive;
+    if (willDeactivate) user.sessionsValidFrom = new Date();
 
-    // Ngưng hoạt động: vô hiệu hoá mọi phiên đang mở ngay lập tức (S1-02)
+    // QA-03: kiểm tra "admin cuối cùng" và ghi thay đổi trong CÙNG một giao dịch có khoá các dòng admin.
+    // Kiểu cũ (đếm rồi mới lưu) để hai admin ngưng hoạt động lẫn nhau cùng lúc -> hệ thống mất hết admin.
+    const saved = await this.dataSource.transaction(async (manager) => {
+      if (reducesActiveAdmins) {
+        const admins: { id: string }[] = await manager.query(
+          'SELECT id FROM users WHERE role = $1 AND is_active = TRUE FOR UPDATE',
+          [Role.ADMIN],
+        );
+        if (!admins.some((a) => a.id !== id)) throw new BadRequestException(MSG.LAST_ADMIN);
+        if (willDeactivate && id === actorId) throw new BadRequestException(MSG.CANNOT_DEACTIVATE_SELF);
+      }
+      return manager.save(User, user);
+    });
+
+    // Ngưng hoạt động: vô hiệu hoá mọi phiên đang mở ngay lập tức (S1-02).
+    // undefined trong điều kiện TypeORM bị BỎ QUA -> phải dùng IsNull() để chỉ thu hồi token còn hiệu lực.
     if (willDeactivate) {
-      user.sessionsValidFrom = new Date();
-      await this.refreshRepo.update({ userId: id, revokedAt: undefined }, { revokedAt: new Date() });
+      await this.refreshRepo.update({ userId: id, revokedAt: IsNull() }, { revokedAt: new Date() });
     }
-
-    const saved = await this.userRepo.save(user);
 
     // Đồng bộ họ tên / SĐT / trạng thái sang hồ sơ thợ để hai màn hình luôn khớp nhau
     let stylist = await this.stylistRepo.findOne({ where: { userId: id } });
@@ -203,7 +216,7 @@ export class UsersService {
     user.lockedUntil = null;
     user.sessionsValidFrom = new Date();
     await this.userRepo.save(user);
-    await this.refreshRepo.update({ userId: id, revokedAt: undefined }, { revokedAt: new Date() });
+    await this.refreshRepo.update({ userId: id, revokedAt: IsNull() }, { revokedAt: new Date() });
 
     const tpl = MailTemplates.accountCreated(this.mail.salonInfo, user.fullName, user.email, tempPassword);
     await this.mail.enqueue({
