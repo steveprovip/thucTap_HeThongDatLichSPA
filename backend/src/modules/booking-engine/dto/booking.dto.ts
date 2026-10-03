@@ -1,26 +1,29 @@
 import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize, ArrayMinSize, ArrayUnique, IsArray, IsBoolean, IsEmail, IsEnum, IsInt, IsNotEmpty,
-  IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min,
+  IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, ValidateNested,
 } from 'class-validator';
 import { VN_PHONE_MESSAGE, VN_PHONE_REGEX } from '../../../common/utils/phone.util';
 import { IsAsciiEmail } from '../../../common/validators/credential.validators';
+import { IsCalendarDate } from '../../../common/validators/date.validators';
 import { AppointmentStatus } from '../../../database/entities/appointment.entity';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
+/** Chấp nhận cả "a,b,c" trên query string lẫn mảng trong body. */
+const toIdList = ({ value }: { value: unknown }): unknown =>
+  Array.isArray(value) ? value : String(value ?? '').split(',').map((v) => v.trim()).filter(Boolean);
+
 export class AvailabilityQueryDto {
   @Matches(DATE_RE, { message: 'Ngày phải theo định dạng yyyy-MM-dd' })
   date!: string;
 
-  /** Chấp nhận cả "a,b,c" trên query string lẫn mảng trong body. */
-  @Transform(({ value }) =>
-    Array.isArray(value) ? value : String(value ?? '').split(',').map((v) => v.trim()).filter(Boolean),
-  )
+  @Transform(toIdList)
   @IsArray()
   @ArrayMinSize(1, { message: 'Vui lòng chọn ít nhất một dịch vụ' })
   @ArrayMaxSize(5, { message: 'Mỗi lượt đặt chỉ được chọn tối đa 5 dịch vụ' })
+  @ArrayUnique({ message: 'Mỗi dịch vụ chỉ được chọn một lần' })
   @IsUUID('4', { each: true, message: 'Mã dịch vụ không hợp lệ' })
   serviceIds!: string[];
 
@@ -32,6 +35,16 @@ export class AvailabilityQueryDto {
 export class StaffAvailabilityQueryDto extends AvailabilityQueryDto {
   @IsOptional() @IsUUID('4', { message: 'Lịch hẹn không hợp lệ' })
   excludeAppointmentId?: string;
+}
+
+/** GET /public/stylists?serviceIds=a,b — trước đây đọc chuỗi thô nên mã không phải UUID rơi xuống CSDL (500). */
+export class CapableStylistsQueryDto {
+  @Transform(toIdList)
+  @IsArray()
+  @ArrayMaxSize(5, { message: 'Mỗi lượt đặt chỉ được chọn tối đa 5 dịch vụ' })
+  @ArrayUnique({ message: 'Mỗi dịch vụ chỉ được chọn một lần' })
+  @IsUUID('4', { each: true, message: 'Mã dịch vụ không hợp lệ' })
+  serviceIds!: string[];
 }
 
 export class QuoteDto {
@@ -52,6 +65,7 @@ export class CreateBookingDto {
   serviceIds!: string[];
 
   @Matches(DATE_RE, { message: 'Ngày hẹn phải theo định dạng yyyy-MM-dd' })
+  @IsCalendarDate({ message: 'Ngày hẹn không hợp lệ' })
   date!: string;
 
   @Matches(TIME_RE, { message: 'Giờ hẹn phải theo định dạng HH:mm' })
@@ -103,7 +117,9 @@ export class RejectDto {
 
 export class RescheduleDto {
   @IsOptional() @IsUUID('4', { message: 'Thợ không hợp lệ' }) stylistId?: string;
-  @IsOptional() @Matches(DATE_RE, { message: 'Ngày hẹn phải theo định dạng yyyy-MM-dd' }) date?: string;
+  @IsOptional() @Matches(DATE_RE, { message: 'Ngày hẹn phải theo định dạng yyyy-MM-dd' })
+  @IsCalendarDate({ message: 'Ngày hẹn không hợp lệ' })
+  date?: string;
   @IsOptional() @Matches(TIME_RE, { message: 'Giờ hẹn phải theo định dạng HH:mm' }) time?: string;
 }
 
@@ -115,11 +131,14 @@ export class BulkReassignItemDto {
 
 export class BulkReassignDto {
   @IsArray() @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => BulkReassignItemDto)
   items!: BulkReassignItemDto[];
 }
 
 export class DayScheduleQuery {
   @Matches(DATE_RE, { message: 'Ngày phải theo định dạng yyyy-MM-dd' })
+  @IsCalendarDate({ message: 'Ngày không hợp lệ' })
   date!: string;
 
   @IsOptional() @IsUUID('4') stylistId?: string;

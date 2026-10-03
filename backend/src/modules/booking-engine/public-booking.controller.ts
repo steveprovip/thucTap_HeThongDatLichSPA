@@ -7,7 +7,7 @@ import { ClientIp } from '../../common/decorators/client-ip.decorator';
 import { formatVnd } from '../../common/utils/currency.util';
 import { ERROR_CODES } from '../../common/constants/messages.constant';
 import {
-  AvailabilityQueryDto, CancelByCodeDto, CreateBookingDto, LookupDto, QuoteDto,
+  AvailabilityQueryDto, CancelByCodeDto, CapableStylistsQueryDto, CreateBookingDto, LookupDto, QuoteDto,
 } from './dto/booking.dto';
 
 /**
@@ -53,9 +53,8 @@ export class PublicBookingController {
 
   /** S2-06: danh sách thợ làm được toàn bộ dịch vụ đã chọn. */
   @Get('stylists')
-  async stylists(@Query('serviceIds') serviceIds: string) {
-    const ids = (serviceIds ?? '').split(',').map((s) => s.trim()).filter(Boolean);
-    const list = await this.availability.capableStylists(ids);
+  async stylists(@Query() query: CapableStylistsQueryDto) {
+    const list = await this.availability.capableStylists(query.serviceIds);
     return list.map((s) => ({
       id: s.id, fullName: s.fullName, avatarUrl: s.avatarUrl, bio: s.bio,
     }));

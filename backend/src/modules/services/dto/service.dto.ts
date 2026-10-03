@@ -1,6 +1,6 @@
 import { Transform, Type } from 'class-transformer';
 import {
-  IsBoolean, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Max, MaxLength, Min,
+  ArrayMaxSize, ArrayUnique, IsArray, IsBoolean, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Max, MaxLength, Min,
 } from 'class-validator';
 
 export class CreateCategoryDto {
@@ -40,7 +40,8 @@ export class CreateServiceDto {
   @IsOptional() @IsBoolean() isActive?: boolean;
 
   /** Danh sách thợ đảm nhận được dịch vụ này. */
-  @IsOptional() stylistIds?: string[];
+  @IsOptional() @IsArray() @ArrayMaxSize(50) @ArrayUnique() @IsUUID('4', { each: true, message: 'Mã thợ không hợp lệ' })
+  stylistIds?: string[];
 }
 
 export class UpdateServiceDto {
@@ -51,7 +52,8 @@ export class UpdateServiceDto {
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(20000000, { message: 'Giá tối đa là 20.000.000 đ' }) price?: number;
   @IsOptional() @IsString() @MaxLength(500) description?: string;
   @IsOptional() @IsBoolean() isActive?: boolean;
-  @IsOptional() stylistIds?: string[];
+  @IsOptional() @IsArray() @ArrayMaxSize(50) @ArrayUnique() @IsUUID('4', { each: true, message: 'Mã thợ không hợp lệ' })
+  stylistIds?: string[];
 }
 
 export class ListServicesQuery {
