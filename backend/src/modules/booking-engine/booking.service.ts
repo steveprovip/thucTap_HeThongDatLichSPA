@@ -432,20 +432,30 @@ export class BookingService {
   // =========================================================================
   //  TRA CỨU CÔNG KHAI (S2-09)
   // =========================================================================
-  async lookup(params: { code?: string; phone?: string; ip: string }) {
+  /** QA-20: IP đang bị tạm khoá "đoán mã" thì chặn ngay, không chạy truy vấn (dùng chung cho tra cứu và huỷ). */
+  private async assertNotLookupLocked(ip: string): Promise<void> {
+    const blockedUntil = await this.rateLimit.blockedUntil('lookup_ip', ip);
+    if (!blockedUntil) return;
+    const seconds = Math.max(1, Math.ceil((blockedUntil.getTime() - Date.now()) / 1000));
+    throw tooManyRequests(MSG.LOOKUP_RATE_LIMITED(Math.ceil(seconds / 60)), seconds, ERROR_CODES.LOOKUP_LOCKED);
+  }
+
+  /** QA-20: ghi nhận một lượt đoán sai / dò SĐT; vượt hạn mức thì khoá IP (một bộ đếm chung cho tra cứu và huỷ). */
+  private async countLookupAttempt(ip: string): Promise<void> {
     const limit = this.config.get<number>('security.lookupIpLimitPerHour')!;
     const blockMinutes = this.config.get<number>('security.lookupBlockMinutes')!;
+    const rl = await this.rateLimit.hit('lookup_ip', ip, limit, 60, blockMinutes);
+    if (!rl.allowed) {
+      throw tooManyRequests(MSG.LOOKUP_RATE_LIMITED(blockMinutes), blockMinutes * 60, ERROR_CODES.LOOKUP_LOCKED);
+    }
+  }
 
+  async lookup(params: { code?: string; phone?: string; ip: string }) {
     if (!params.code && !params.phone) {
       throw new BadRequestException('Vui lòng nhập mã tra cứu hoặc số điện thoại');
     }
 
-    // QA-20: IP đang bị tạm khoá thì chặn ngay, không chạy truy vấn
-    const blockedUntil = await this.rateLimit.blockedUntil('lookup_ip', params.ip);
-    if (blockedUntil) {
-      const seconds = Math.max(1, Math.ceil((blockedUntil.getTime() - Date.now()) / 1000));
-      throw tooManyRequests(MSG.LOOKUP_RATE_LIMITED(Math.ceil(seconds / 60)), seconds, ERROR_CODES.LOOKUP_LOCKED);
-    }
+    await this.assertNotLookupLocked(params.ip);
 
     const qb = this.apptRepo.createQueryBuilder('a');
     if (params.code) {
@@ -461,12 +471,7 @@ export class BookingService {
     // danh sách SĐT (lộ tên, lịch hẹn, mã huỷ lịch). KHÔNG xoá bộ đếm khi tra đúng: kiểu cũ cho phép xen
     // một mã đúng đã biết sau mỗi 9 lần đoán sai để đặt lại hạn mức và dò mã vô hạn.
     const found = appointments.length > 0;
-    if (!found || !params.code) {
-      const rl = await this.rateLimit.hit('lookup_ip', params.ip, limit, 60, blockMinutes);
-      if (!rl.allowed) {
-        throw tooManyRequests(MSG.LOOKUP_RATE_LIMITED(blockMinutes), blockMinutes * 60, ERROR_CODES.LOOKUP_LOCKED);
-      }
-    }
+    if (!found || !params.code) await this.countLookupAttempt(params.ip);
     if (!found) throw new NotFoundException(MSG.CODE_NOT_FOUND);
 
     const customerIds = Array.from(new Set(appointments.map((a) => a.customerId)));
@@ -490,12 +495,17 @@ export class BookingService {
   // =========================================================================
   //  KHÁCH TỰ HUỶ (S3-05)
   // =========================================================================
-  // ip giữ trong chữ ký để controller truyền vào (dành cho giới hạn tần suất sau này)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async cancelByCode(code: string, reason: string | undefined, ip: string) {
     const cutoff = this.config.get<number>('business.cancelCutoffMinutes')!;
+
+    // QA-20: endpoint huỷ dùng chung hạn mức "đoán mã" với tra cứu. Trước đây không giới hạn nên 404 (sai mã)
+    // khác 400/200 (đúng mã) trở thành cửa sau dò mã vô hạn, né hoàn toàn cơ chế khoá LOOKUP_LOCKED.
+    await this.assertNotLookupLocked(ip);
     const appt = await this.apptRepo.findOne({ where: { code: code.trim().toUpperCase() } });
-    if (!appt) throw new NotFoundException(MSG.CODE_NOT_FOUND);
+    if (!appt) {
+      await this.countLookupAttempt(ip);
+      throw new NotFoundException(MSG.CODE_NOT_FOUND);
+    }
 
     if (appt.status === AppointmentStatus.CANCELLED) throw new BadRequestException(MSG.ALREADY_CANCELLED);
     if (!ACTIVE_STATUSES.includes(appt.status)) {
