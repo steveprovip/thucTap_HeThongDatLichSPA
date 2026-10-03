@@ -1,10 +1,11 @@
 import { Type } from 'class-transformer';
 import {
-  ArrayMaxSize, IsArray, IsBoolean, IsEmail, IsNotEmpty, IsOptional, IsString, IsUUID,
+  ArrayMaxSize, ArrayUnique, IsArray, IsBoolean, IsEmail, IsNotEmpty, IsOptional, IsString, IsUUID,
   Matches, MaxLength, MinLength, ValidateNested,
 } from 'class-validator';
 import { VN_PHONE_MESSAGE, VN_PHONE_REGEX } from '../../../common/utils/phone.util';
 import { IsAsciiEmail } from '../../../common/validators/credential.validators';
+import { IsCalendarDate } from '../../../common/validators/date.validators';
 
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -24,7 +25,7 @@ export class CreateStylistDto {
   @IsOptional() @IsEmail({}, { message: 'Email không đúng định dạng' }) @IsAsciiEmail() @MaxLength(160)
   email?: string;
 
-  @IsOptional() @IsArray() @ArrayMaxSize(50)
+  @IsOptional() @IsArray() @ArrayMaxSize(50) @ArrayUnique() @IsUUID('4', { each: true, message: 'Mã dịch vụ không hợp lệ' })
   serviceIds?: string[];
 }
 
@@ -33,11 +34,13 @@ export class UpdateStylistDto {
   @IsOptional() @Matches(VN_PHONE_REGEX, { message: VN_PHONE_MESSAGE }) phone?: string;
   @IsOptional() @IsString() @MaxLength(500) bio?: string;
   @IsOptional() @IsBoolean() isActive?: boolean;
-  @IsOptional() @IsArray() @ArrayMaxSize(50) serviceIds?: string[];
+  @IsOptional() @IsArray() @ArrayMaxSize(50) @ArrayUnique() @IsUUID('4', { each: true, message: 'Mã dịch vụ không hợp lệ' })
+  serviceIds?: string[];
 }
 
 export class ShiftItemDto {
   @Matches(DATE_RE, { message: 'Ngày làm việc phải theo định dạng yyyy-MM-dd' })
+  @IsCalendarDate({ message: 'Ngày làm việc không hợp lệ' })
   workDate!: string;
 
   @Matches(TIME_RE, { message: 'Giờ bắt đầu ca phải theo định dạng HH:mm' })
@@ -65,16 +68,22 @@ export class CreateShiftsDto {
 export class UpdateShiftDto {
   @IsOptional() @Matches(TIME_RE, { message: 'Giờ bắt đầu ca phải theo định dạng HH:mm' }) startTime?: string;
   @IsOptional() @Matches(TIME_RE, { message: 'Giờ kết thúc ca phải theo định dạng HH:mm' }) endTime?: string;
-  @IsOptional() breakStart?: string | null;
-  @IsOptional() breakEnd?: string | null;
+  @IsOptional() @Matches(TIME_RE, { message: 'Giờ bắt đầu nghỉ giữa ca phải theo định dạng HH:mm' })
+  breakStart?: string | null;
+
+  @IsOptional() @Matches(TIME_RE, { message: 'Giờ kết thúc nghỉ giữa ca phải theo định dạng HH:mm' })
+  breakEnd?: string | null;
+
   @IsOptional() @IsString() @MaxLength(255) note?: string;
 }
 
 export class CopyWeekDto {
   @Matches(DATE_RE, { message: 'Ngày đầu tuần nguồn phải theo định dạng yyyy-MM-dd' })
+  @IsCalendarDate({ message: 'Ngày đầu tuần nguồn không hợp lệ' })
   sourceWeekStart!: string;
 
   @Matches(DATE_RE, { message: 'Ngày đầu tuần đích phải theo định dạng yyyy-MM-dd' })
+  @IsCalendarDate({ message: 'Ngày đầu tuần đích không hợp lệ' })
   targetWeekStart!: string;
 
   @IsOptional() @IsUUID('4') stylistId?: string;
@@ -85,6 +94,7 @@ export class CopyWeekDto {
 
 export class CreateTimeOffDto {
   @Matches(DATE_RE, { message: 'Ngày nghỉ phải theo định dạng yyyy-MM-dd' })
+  @IsCalendarDate({ message: 'Ngày nghỉ không hợp lệ' })
   offDate!: string;
 
   @IsOptional() @Matches(TIME_RE, { message: 'Giờ bắt đầu nghỉ phải theo định dạng HH:mm' })
