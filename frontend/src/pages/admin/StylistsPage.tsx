@@ -4,7 +4,7 @@ import {
 } from 'lucide-react';
 import { appointmentsApi, catalogApi, getErrorMessage, stylistsApi } from '@/api';
 import { DEMO_MODE } from '@/api/mockBackend';
-import type { Appointment, ServiceCategory, ServiceItem, Shift, Stylist } from '@/types';
+import type { Appointment, ServiceCategory, ServiceItem, Shift, Stylist, StylistGender } from '@/types';
 import {
   Button, Card, EmptyState, Field, Input, Modal, Notice, SectionTitle, Spinner, StylistAvatar, Textarea, Toggle,
   TempPasswordDialog, type TempCredential,
@@ -18,6 +18,7 @@ import { useToast } from '@/contexts/ToastContext';
 
 const MAX_AVATAR_MB = 2;
 const AVATAR_PX = 256;
+const GENDER_OPTIONS: ReadonlyArray<readonly [StylistGender, string]> = [['male', 'Nam'], ['female', 'Nữ']];
 
 interface Capacity {
   shiftMinutes: number;
@@ -79,6 +80,7 @@ export function StylistsPage() {
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [bio, setBio] = useState('');
+  const [gender, setGender] = useState<StylistGender | null>(null);
   const [isActive, setIsActive] = useState(true);
   const [serviceIds, setServiceIds] = useState<string[]>([]);
   const [avatar, setAvatar] = useState<string | null>(null);
@@ -143,11 +145,11 @@ export function StylistsPage() {
     !query.trim() || matchSearch(`${s.fullName} ${s.phone ?? ''} ${s.serviceNames.join(' ')}`, query));
 
   const openCreate = () => {
-    setEditing(null); setFullName(''); setPhone(''); setEmail(''); setBio(''); setIsActive(true);
+    setEditing(null); setFullName(''); setPhone(''); setEmail(''); setBio(''); setGender(null); setIsActive(true);
     setServiceIds([]); setAvatar(null); setAvatarFile(null); setSkillQuery(''); setTouched(false); setError(null); setOpen(true);
   };
   const openEdit = (s: Stylist) => {
-    setEditing(s); setFullName(s.fullName); setPhone(s.phone ?? ''); setEmail(s.email ?? ''); setBio(s.bio ?? '');
+    setEditing(s); setFullName(s.fullName); setPhone(s.phone ?? ''); setEmail(s.email ?? ''); setBio(s.bio ?? ''); setGender(s.gender);
     setIsActive(s.isActive); setServiceIds([...s.serviceIds]); setAvatar(s.avatarUrl); setAvatarFile(null); setSkillQuery('');
     setTouched(false); setError(null); setOpen(true);
   };
@@ -155,6 +157,7 @@ export function StylistsPage() {
   const fieldErrors = {
     fullName: !fullName.trim() ? 'Vui lòng nhập họ tên thợ' : undefined,
     phone: phone && !VN_PHONE_REGEX.test(phone) ? VN_PHONE_MESSAGE : undefined,
+    gender: !gender ? 'Vui lòng chọn giới tính Nam hoặc Nữ' : undefined,
     email: !editing ? emailError(email, false) : undefined, // QA-02
     skills: serviceIds.length === 0 ? 'Chọn ít nhất một dịch vụ thợ làm được' : undefined,
   };
@@ -173,11 +176,11 @@ export function StylistsPage() {
   const save = async () => {
     setTouched(true);
     setError(null);
-    if (fieldErrors.fullName || fieldErrors.phone || fieldErrors.email || fieldErrors.skills) return;
+    if (fieldErrors.fullName || fieldErrors.phone || fieldErrors.gender || fieldErrors.email || fieldErrors.skills || !gender) return;
     setSaving(true);
     try {
       const payload = {
-        fullName: fullName.trim(), phone: phone || undefined, bio: bio.trim() || undefined, isActive, serviceIds,
+        fullName: fullName.trim(), phone: phone || undefined, gender, bio: bio.trim() || undefined, isActive, serviceIds,
       };
       let id: string;
       if (editing) {
@@ -284,7 +287,7 @@ export function StylistsPage() {
             return (
               <Card key={s.id} className={`flex flex-col p-4 ${s.isActive ? '' : 'opacity-70'}`}>
                 <div className="flex items-start gap-3">
-                  <StylistAvatar id={s.id} name={s.fullName} url={s.avatarUrl} size="h-14 w-14" className="shadow-sm" />
+                  <StylistAvatar id={s.id} name={s.fullName} url={s.avatarUrl} gender={s.gender} size="h-14 w-14" className="shadow-sm" />
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-bold">{s.fullName}</p>
                     <p className="text-xs text-ink-muted">{s.phone ?? 'Chưa có số điện thoại'}</p>
@@ -349,7 +352,7 @@ export function StylistsPage() {
                   <tr key={s.id}>
                     <td>
                       <div className="flex items-center gap-2.5">
-                        <StylistAvatar id={s.id} name={s.fullName} url={s.avatarUrl} size="h-9 w-9" />
+                        <StylistAvatar id={s.id} name={s.fullName} url={s.avatarUrl} gender={s.gender} size="h-9 w-9" />
                         <div><p className="font-medium">{s.fullName}</p><p className="text-xs text-ink-muted">{s.phone ?? '—'}</p></div>
                       </div>
                     </td>
@@ -416,6 +419,7 @@ export function StylistsPage() {
                 {avatar && DEMO_MODE && <Button size="sm" variant="ghost" onClick={() => setAvatar(null)}>Gỡ ảnh</Button>}
               </div>
               <p className="mt-1 text-xs text-ink-muted">JPG/PNG, tối đa {MAX_AVATAR_MB}MB · tự cắt vuông {AVATAR_PX}px</p>
+              {!avatar && <p className="text-xs text-ink-muted">Không tải ảnh: hệ thống tự chọn ảnh phù hợp giới tính.</p>}
             </div>
           </div>
 
@@ -428,6 +432,18 @@ export function StylistsPage() {
                      onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))} />
             </Field>
           </div>
+          <Field label="Giới tính" required error={shown.gender}>
+            <div className="flex gap-2" role="radiogroup" aria-label="Giới tính">
+              {GENDER_OPTIONS.map(([value, label]) => (
+                <button key={value} type="button" role="radio" aria-checked={gender === value} onClick={() => setGender(value)}
+                        className={`min-h-[44px] flex-1 rounded-xl border px-4 text-sm font-semibold transition
+                          ${gender === value ? 'border-teal-600 bg-teal-50 text-teal-800' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'}
+                          ${shown.gender && !gender ? 'border-red-400' : ''}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </Field>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label={editing ? 'Email đăng nhập' : 'Email đăng nhập (tuỳ chọn)'} error={shown.email}
                    hint={editing

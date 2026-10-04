@@ -233,7 +233,7 @@ export function BulkReassignPage() {
                   <button key={s.id} type="button" aria-pressed={on} onClick={() => setStylistId(s.id)}
                           className={`flex items-center gap-3 rounded-xl border p-3 text-left transition-colors
                             ${on ? 'border-red-400 bg-red-50' : 'border-slate-200 hover:border-slate-400'}`}>
-                    <StylistAvatar id={s.id} name={s.fullName} url={s.avatarUrl} size="h-10 w-10" />
+                    <StylistAvatar id={s.id} name={s.fullName} url={s.avatarUrl} gender={s.gender} size="h-10 w-10" />
                     <span className="min-w-0">
                       <span className="block truncate text-sm font-semibold">{s.fullName}</span>
                       <span className={`text-xs ${count ? 'text-teal-700' : 'text-ink-muted'}`}>

@@ -200,7 +200,7 @@ export function DayTimelinePage() {
               {data.columns.map((col) => (
                 <div key={col.stylistId} className="w-[176px] shrink-0 border-r border-slate-100 last:border-r-0 lg:min-w-[176px] lg:flex-1">
                   <div className="sticky top-0 z-10 flex h-14 items-center gap-2.5 border-b border-slate-200 bg-white/95 px-2.5 backdrop-blur">
-                    <StylistAvatar id={col.stylistId} name={col.stylistName} url={col.avatarUrl} size="h-8 w-8" className="shadow-sm" />
+                    <StylistAvatar id={col.stylistId} name={col.stylistName} url={col.avatarUrl} gender={col.gender} size="h-8 w-8" className="shadow-sm" />
                     <span className="min-w-0 truncate text-sm font-semibold text-slate-900">{col.stylistName}</span>
                   </div>
 
