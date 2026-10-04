@@ -4,9 +4,9 @@ Dành cho tester **Trương Khánh**. Làm lần lượt từng bước, không 
 
 ## 0. Vì sao lần trước thấy "lỗi"
 
-`frontend/.env` bị gitignore nên máy mới clone **không có tệp này**. Khi đó `npm run dev` rơi vào **chế độ Demo**: toàn bộ dữ liệu giả nằm trong trình duyệt (`localStorage`), **không gọi NestJS/PostgreSQL**. Bản Demo cũ không có các luật QA-01 → QA-08, nên 8 lỗi lặp lại dù backend thật đã xử lý đúng (đã khoá bằng test tự động chạy trên PostgreSQL 16).
+`frontend/.env` bị gitignore nên máy mới clone **không có tệp này**. Trước đây `npm run dev` khi đó rơi vào **chế độ Demo**: toàn bộ dữ liệu giả nằm trong trình duyệt (`localStorage`), **không gọi NestJS/PostgreSQL**. Bản Demo cũ không có các luật QA-01 → QA-08, nên 8 lỗi lặp lại dù backend thật đã xử lý đúng (đã khoá bằng test tự động chạy trên PostgreSQL 16).
 
-Bản này sửa cả hai phía: backend thêm **giới tính thợ**; bản Demo được đưa về **đúng 8 luật như backend** (khoá dữ liệu nâng lên `salon.demo.v6`). Runbook dưới đây chạy ở chế độ **API thật** (khuyến nghị). Mục 9 là cách chạy Demo.
+Bản này sửa tận gốc: giao diện **mặc định gọi API thật** (Demo chỉ bật khi `VITE_DEMO_MODE=true`), `run_project.bat` / `run_project.sh` tự tạo `.env` và luôn ép `VITE_DEMO_MODE=false`; backend thêm **giới tính thợ**; bản Demo được đưa về **đúng 8 luật như backend** (khoá dữ liệu nâng lên `salon.demo.v6`). **Cách nhanh nhất: bật Docker Desktop rồi chạy mục 6 (một lệnh), bỏ qua mục 4 và 5.** Mục 4 và 5 là cách làm từng bước bằng tay. Mục 9 là cách chạy Demo.
 
 ## 1. Yêu cầu máy
 
@@ -34,7 +34,7 @@ Dọn cơ sở dữ liệu cũ (xoá volume Postgres):
 docker compose down -v
 ```
 
-## 4. Cấu hình môi trường (bắt buộc)
+## 4. Cấu hình môi trường (chỉ khi không dùng `run_project`)
 
 **Windows (cmd hoặc PowerShell):**
 
@@ -50,7 +50,7 @@ cp frontend/.env.example frontend/.env
 cp backend/.env.example backend/.env
 ```
 
-Mở `frontend/.env`, kiểm tra đúng dòng `VITE_DEMO_MODE=false`. Thiếu tệp này là nguyên nhân gốc của lần lỗi trước.
+Mở `frontend/.env`, kiểm tra đúng dòng `VITE_DEMO_MODE=false`.
 
 ## 5. Cài gói và dựng cơ sở dữ liệu
 
@@ -70,11 +70,13 @@ Kết quả đúng: lệnh in ra danh sách tài khoản mẫu và kết thúc k
 
 ## 6. Chạy hệ thống
 
+**Một lệnh (khuyên dùng):** bật Docker Desktop rồi nhấp đúp `run_project.bat` (Windows) / chạy `./run_project.sh` (macOS, Linux). Script tự tạo `.env`, dựng PostgreSQL và Maildev bằng Docker, đợi PostgreSQL sẵn sàng, cài gói còn thiếu, nạp lược đồ + dữ liệu mẫu, đợi `GET /health` = 200 rồi mở `http://localhost:5173`. Nhấn Ctrl+C trong cửa sổ đó để dừng toàn bộ.
+
+Làm bằng tay (sau khi đã xong mục 4 và 5):
+
 ```bash
 npm run start:all
 ```
-
-Hoặc nhấp đúp `run_project.bat` (Windows) / `./run_project.sh` (macOS, Linux): script tự tạo `.env` còn thiếu, đợi `GET /health` = 200 rồi mở trình duyệt.
 
 Kiểm tra:
 
@@ -82,7 +84,7 @@ Kiểm tra:
 curl http://localhost:3000/health
 ```
 
-Mở `http://localhost:5173`. **Dấu hiệu đang ở API thật:** góc dưới bên phải **không** có ô *"Chế độ demo · Xem vai trò"*. Có ô đó là đang ở Demo, quay lại bước 4.
+Mở `http://localhost:5173`. **Dấu hiệu đang ở API thật:** góc dưới bên phải **không** có ô *"Chế độ demo · Xem vai trò"*. Có ô đó là đang ở Demo: dừng hệ thống, chạy lại bằng `run_project.bat` / `run_project.sh`.
 
 Tài khoản đăng nhập (mật khẩu theo README): `owner@salon.vn / Owner@123`, `reception@salon.vn / Reception@123`, `admin@salon.vn / Admin@123`, `stylist1@salon.vn … stylist5@salon.vn / Stylist@123`. Email xác nhận xem ở Maildev: `http://localhost:1080`.
 
@@ -135,7 +137,8 @@ Kết quả mong đợi: `npm test` 98/98, `npm run test:e2e` 55/55 (8 bộ), li
 
 | Hiện tượng | Cách xử lý |
 |---|---|
-| Vẫn thấy ô *"Chế độ demo"* | `frontend/.env` thiếu hoặc `VITE_DEMO_MODE` khác `false`; sửa rồi **dừng và chạy lại** `npm run start:all` (Vite chỉ đọc `.env` lúc khởi động) |
+| Vẫn thấy ô *"Chế độ demo"* | Bạn đang chạy Demo (`dev:demo`) hoặc `frontend/.env` đặt `VITE_DEMO_MODE=true`. Dừng hẳn rồi chạy lại bằng `run_project.bat` / `run_project.sh` (luôn ép API thật); Vite chỉ đọc `.env` lúc khởi động |
+| Cửa sổ báo *"Máy chưa cài Docker"* hoặc *"Docker không phản hồi"* | Cài / bật Docker Desktop, đợi biểu tượng cá voi ở trạng thái *Engine running* rồi chạy lại. Không dùng được Docker thì tự cài PostgreSQL và chạy với `SALON_SKIP_DOCKER=1` (cmd: `set SALON_SKIP_DOCKER=1&& run_project.bat`) |
 | `npm run db:seed` báo `ECONNREFUSED` | Postgres chưa healthy: `docker compose ps`, đợi rồi chạy lại. Chạy lại seed bao nhiêu lần cũng an toàn |
 | Cổng 5432 / 3000 / 5173 đã bị chiếm | Tắt tiến trình đang chiếm, hoặc đổi cổng như mục 1 |
 | Thêm thợ báo thiếu giới tính dù đã chọn | Bạn đang chạy backend cũ: dừng hẳn `npm run start:all`, `git pull`, chạy lại và nhớ `npm run db:seed` |
