@@ -10,6 +10,7 @@ import { AppointmentStatus } from '../../../database/entities/appointment.entity
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+const CODE_LENGTH_MESSAGE = 'Mã tra cứu gồm 8 ký tự chữ hoặc số';
 
 /** Chấp nhận cả "a,b,c" trên query string lẫn mảng trong body. */
 const toIdList = ({ value }: { value: unknown }): unknown =>
@@ -94,13 +95,13 @@ export class WalkInBookingDto extends CreateBookingDto {
 }
 
 export class LookupDto {
-  @IsOptional() @IsString() @MaxLength(8) code?: string;
+  @IsOptional() @IsString() @MaxLength(8, { message: CODE_LENGTH_MESSAGE }) code?: string;
   @IsOptional() @Matches(VN_PHONE_REGEX, { message: VN_PHONE_MESSAGE })
   phone?: string;
 }
 
 export class CancelByCodeDto {
-  @IsString() @IsNotEmpty({ message: 'Thiếu mã tra cứu' }) @MaxLength(8)
+  @IsString() @IsNotEmpty({ message: 'Thiếu mã tra cứu' }) @MaxLength(8, { message: CODE_LENGTH_MESSAGE })
   code!: string;
 
   @IsOptional() @IsString() @MaxLength(255) reason?: string;
