@@ -23,19 +23,20 @@ run_project.bat
 ./run_project.sh
 ```
 
-Chỉ cần **bật Docker Desktop** rồi nhấp đúp `run_project.bat` (hoặc chạy `./run_project.sh`). Script sẽ:
+Máy mới clone chỉ cần **bật Docker Desktop** rồi nhấp đúp `run_project.bat` (hoặc chạy `./run_project.sh`), không phải làm gì thêm. Hai tệp này chỉ kiểm tra Node.js ≥ 20 rồi giao cho `scripts/launcher.mjs start` (dùng chung mọi hệ điều hành), lần lượt:
 
-1. Kiểm tra Node.js ≥ 20 và chờ Docker sẵn sàng (tối đa 2 phút; Windows/macOS tự thử mở Docker Desktop).
-2. `docker compose up -d` — PostgreSQL 15 (healthcheck qua TCP) + PgAdmin + Maildev.
-3. Tạo các tệp `.env` còn thiếu; **tự cài lại gói khi `package.json`/`package-lock.json` đổi** (vd. sau `git pull`).
-4. Kiểm tra cổng 3000/5173 còn trống; nếu hệ thống đang chạy ở cửa sổ khác thì chỉ mở trình duyệt.
-5. Nạp lược đồ + dữ liệu mẫu (tự chờ PostgreSQL tới 120 giây, chạy lại bao nhiêu lần cũng an toàn).
+1. Kiểm tra Node.js ≥ 20.
+2. Tạo các tệp `.env` còn thiếu (gốc, `backend`, `frontend`), sinh khoá JWT ngẫu nhiên thay giá trị mẫu và **ghi `VITE_DEMO_MODE=false`**: launcher luôn chạy với **API thật**, không bao giờ rơi vào chế độ Demo.
+3. Chờ Docker sẵn sàng (tối đa 2 phút; Windows/macOS tự thử mở Docker Desktop), `docker compose up -d` — PostgreSQL (healthcheck qua TCP) + PgAdmin + Maildev — rồi chờ PostgreSQL báo `healthy`. Chưa cài Docker thì in hướng dẫn tiếng Việt: cài Docker Desktop, hoặc dùng PostgreSQL riêng với `SALON_SKIP_DOCKER=1`.
+4. **Cài gói khi chưa có `node_modules` hoặc khi `package.json`/`package-lock.json` đổi** (vd. sau `git pull`). Kiểm tra cổng 3000/5173 còn trống: đang bận thì nêu rõ cổng nào và lệnh tìm chương trình đang chiếm; nếu hệ thống đang chạy ở cửa sổ khác thì chỉ mở trình duyệt.
+5. Nạp lược đồ `schema.sql` + dữ liệu mẫu `seed.sql` (chạy lại bao nhiêu lần cũng an toàn).
 6. Chạy API + giao diện dưới **một tiến trình giám sát** (`node scripts/launcher.mjs run`, không qua
    concurrently/npm): **trình duyệt chỉ mở khi `GET /health` trả 200** (API biên dịch xong và truy vấn được
    CSDL) và Vite đã phản hồi; dịch vụ nào sập (vd. `exited with code 3221226505`) được **tự khởi động lại**
    (tối đa 5 lần / 10 phút, kèm giải thích mã lỗi); Ctrl+C dừng sạch cả cây tiến trình, giải phóng cổng 3000/5173.
 
-Biến tuỳ chọn: `SALON_SKIP_DOCKER=1` (dùng PostgreSQL riêng theo `backend/.env`), `SALON_NO_BROWSER=1`.
+Biến tuỳ chọn: `SALON_SKIP_DOCKER=1` (dùng PostgreSQL riêng theo `backend/.env`), `SALON_NO_BROWSER=1` (không tự mở trình duyệt),
+`SALON_DB_TIMEOUT` (giây chờ PostgreSQL, mặc định 120), `SALON_OPEN_TIMEOUT` (giây chờ `/health`, mặc định 300).
 Máy đã cài sẵn PostgreSQL chiếm cổng 5432? Đặt `POSTGRES_PORT=5433` trong `.env` và `DB_PORT=5433` trong `backend/.env`.
 
 | Thành phần | Địa chỉ |
@@ -71,9 +72,10 @@ Demo không cần máy chủ (`npm run dev:demo`, dữ liệu trong trình duy�
   thoại *“Nhân sự mới đã được tạo thành công!”* kèm nút **Sao chép mật khẩu**, đồng thời được gửi qua email
   (xem ở Maildev http://localhost:1080). Lần đăng nhập đầu tiên bắt buộc đổi mật khẩu. Nút 🔑 *Cấp lại mật khẩu tạm*
   hoạt động tương tự.
-- Chạy `npm run dev` khi **thiếu `frontend/.env`** (tệp bị gitignore, máy mới clone không có) sẽ vào **chế độ Demo**:
-  dữ liệu giả trong trình duyệt, không gọi backend. Muốn test API thật: `copy frontend\.env.example frontend\.env`
-  (`VITE_DEMO_MODE=false`) hoặc dùng `run_project.bat`. Bản Demo có ô *"Chế độ demo · Xem vai trò"* ở góc dưới bên phải.
+- Chế độ **Demo** (dữ liệu giả trong trình duyệt, không gọi backend) **chỉ bật khi `VITE_DEMO_MODE=true`**, tức
+  `npm --prefix frontend run dev:demo`. Mặc định — kể cả máy mới clone chưa có `frontend/.env` (tệp bị gitignore) — giao diện
+  gọi **API thật**, và `run_project.bat` / `run_project.sh` luôn ép `VITE_DEMO_MODE=false`. Bản Demo có ô
+  *"Chế độ demo · Xem vai trò"* ở góc dưới bên phải.
   Quy trình test lại lỗi QA: [`docs/RUNBOOK-TEST-LAI-QA-04102027.md`](docs/RUNBOOK-TEST-LAI-QA-04102027.md).
 - Bản demo lưu dữ liệu trong `localStorage` (khoá `salon.demo.v6`). Muốn về dữ liệu mẫu ban đầu: xoá khoá đó
   trong DevTools → Application → Local Storage rồi tải lại trang.
@@ -221,6 +223,7 @@ Chạy NestJS + PostgreSQL với `seed.sql`, đăng nhập từng vai trò và m
 | `node_modules` cũ sau `git pull` gây lỗi build | Chỉ cài gói khi chưa có thư mục `node_modules` | Cài lại khi hash `package.json` + `package-lock.json` đổi |
 | `[WEB] npm run dev:frontend exited with code 3221226505`, trang web chết dù API vẫn chạy | 3221226505 = `0xC0000409`: Node.js trên Windows abort ở tầng native (assertion libuv khi đóng handle, nodejs/node#56645) — không bắt được bằng JavaScript. concurrently chỉ báo mã thoát rồi bỏ mặc. Bản vá v1.2.4 (`await new Promise(() => {})`) không có tác dụng: Promise treo không giữ được event loop, tiến trình OPEN vẫn thoát ngay | Tiến trình giám sát `launcher.mjs run`: chạy thẳng `node vite.js` / `node nest.js` (bỏ 4 tầng cmd/npm), stdin giữ mở, mở trình duyệt ngay trong tiến trình (không còn tiến trình phụ thoát giữa chừng), giải mã mã thoát, tự khởi động lại, dừng cả cây bằng `taskkill /T` / nhóm tiến trình |
 | Vòng lặp liên kết `node_modules/salon-spa-booking → ..` | Phụ thuộc thừa `"salon-spa-booking": "file:.."` trong backend/frontend | Gỡ bỏ |
+| Máy mới clone, chạy `npm run dev` vào chế độ Demo: dữ liệu giả, bỏ qua mọi luật của backend | `frontend/.env` bị gitignore nên thiếu `VITE_DEMO_MODE`, và thiếu biến thì `DEMO_MODE` mặc định bật khi chạy dev | `DEMO_MODE` chỉ bật khi `VITE_DEMO_MODE=true`. `launcher.mjs start` tự tạo `.env`, ghi `VITE_DEMO_MODE=false`, chờ Docker và PostgreSQL, nạp dữ liệu rồi mới chạy; `run_project.bat` / `.sh` rút gọn còn lớp vỏ gọi launcher |
 
 ---
 
