@@ -1,6 +1,6 @@
 # Runbook test lại lỗi QA Sprint 2 (04/10/2027)
 
-Dành cho tester **Trương Khánh**. Làm lần lượt từng bước, không bỏ bước.
+Dành cho tester **Trương Khánh**. Làm lần lượt từng bước, không bỏ bước. Bản **v1.3.3** (nhánh `fix/qa-round3-0410`) bổ sung 7 lỗi mới ở mục 7b.
 
 ## 0. Vì sao lần trước thấy "lỗi"
 
@@ -17,8 +17,8 @@ Bản này sửa tận gốc: giao diện **mặc định gọi API thật** (De
 
 ```bash
 git fetch origin
-git checkout fix/qa-round2-0410
-git pull origin fix/qa-round2-0410
+git checkout fix/qa-round3-0410
+git pull origin fix/qa-round3-0410
 git log --oneline -3
 ```
 
@@ -26,7 +26,7 @@ Nếu nhánh đã được merge vào `develop` thì: `git checkout develop && g
 
 ## 3. Dọn dữ liệu cũ
 
-Trong trình duyệt đang dùng để test: mở `http://localhost:5173`, nhấn **F12 → Application → Local Storage → http://localhost:5173**, xoá các khoá `salon.demo.v5`, `salon.demo.v6`, `salon.demoUserId` (hoặc bấm *Clear All*).
+Trong trình duyệt đang dùng để test: mở `http://localhost:5173`, nhấn **F12 → Application → Local Storage → http://localhost:5173**, xoá các khoá `salon.demo.v5`, `salon.demo.v6`, `salon.demoUserId`, `salon.bookingDraft` (hoặc bấm *Clear All*).
 
 Dọn cơ sở dữ liệu cũ (xoá volume Postgres):
 
@@ -104,6 +104,20 @@ Dữ liệu mẫu thật: thứ 2–6 mở cửa **08:30 – 20:00**, thứ 7 v�
 | 8 | QA-07 khoá tra cứu | **Xoá bộ đếm** (mục 8). Trang *Tra cứu lịch hẹn* → nhập mã sai (ví dụ `AAAAAAAA`) **11 lần** | 10 lần đầu: "Không tìm thấy lịch hẹn với mã tra cứu này". Lần 11 trả **429**: **"Bạn đã tra cứu sai quá nhiều lần, vui lòng thử lại sau 30 phút"**. Trong 30 phút nhập mã đúng và bấm huỷ lịch cũng bị chặn |
 | 9 | QA-08 thợ không có ca | Trang khách → chọn dịch vụ → chọn một **ngày thứ 2** → chọn đích danh **Nguyễn Thu Hà**. Thử thêm một ngày xa hơn 30 ngày tới (chưa có ca) | Thu Hà **không có khung giờ nào**, không hiện là rảnh. Chọn "Thợ bất kỳ" thì không bao giờ được gán cho Thu Hà. Ngày chưa có ca nào thì không có khung giờ cho mọi thợ. Gửi thẳng API đặt lịch cũng bị từ chối |
 
+## 7b. Kiểm thử 7 lỗi vòng 3 (bản v1.3.3)
+
+Đăng nhập `reception@salon.vn` cho lỗi 2, các lỗi còn lại thử ở trang khách (không cần đăng nhập). Mã tra cứu giờ gồm **đúng 8 ký tự chữ hoặc số** (ví dụ `K7M2QP4X`), không còn tiền tố `SL-`.
+
+| # | Lỗi | Cách thử | Kết quả đúng |
+|---|---|---|---|
+| A | Chọn 2 dịch vụ nhưng hiện "đã chọn 5/5" | Giả lập bản nháp cũ: F12 → Console, dán `localStorage.setItem('salon.bookingDraft', JSON.stringify({selected:[1,2,3,4,5].map(i=>({id:'cu-'+i,name:'Cũ '+i,durationMinutes:30,price:100000,priceText:'100.000đ'}))}))` rồi nhấn F5. Sau đó tick 2 dịch vụ bất kỳ và tải lại trang (F5) | Sau F5 đầu tiên **không dịch vụ nào bị tick** và không có dòng "đã chọn tối đa 5 dịch vụ". Tick 2 dịch vụ: chỉ đúng 2 dịch vụ được tô đậm, các dịch vụ còn lại **không bị mờ**, sang bước 2 tổng thời lượng bằng đúng 2 dịch vụ đó; tải lại trang vẫn giữ đúng 2 |
+| B | Không xử lý được lịch / không thêm được khách vãng lai | Lễ tân → **Khách vãng lai** → nhập tên, SĐT, chọn dịch vụ, chọn thợ **đang có ca** và giờ trong ca (từ giờ hiện tại trở đi) → tạo. Vào Lịch ngày mở lịch vừa tạo, xem **lịch sử khách**, rồi bấm **Check-in → Bắt đầu → Hoàn tất**. Thử thêm: chọn giờ ngoài ca của thợ, và tạo trùng giờ với một lịch đã có | Lịch tạo thành công, vào thẳng **Đã xác nhận**, mở chi tiết và lịch sử khách không bị trắng trang. Check-in chỉ nhận trong khoảng 60 phút trước đến 60 phút sau giờ hẹn. Ngoài ca: **"Khung giờ không hợp lệ hoặc không còn trống"**. Trùng giờ: **"Khung giờ vừa có người đặt, vui lòng chọn khung giờ khác"** |
+| C | Cảnh báo tách 2 lần đặt sai lúc | Dựng tình huống như dòng 5 ở mục 7 (dịch vụ 240 phút + thợ ca 3 giờ). Thử thêm một giỏ có tổng thời lượng **bằng đúng** ca dài nhất | Chỉ cảnh báo khi tổng thời lượng **lớn hơn** ca dài nhất trong 7 ngày tới của các thợ làm được dịch vụ đó. Bằng hoặc ngắn hơn thì không cảnh báo |
+| D | Tối đa 3 lịch chưa hoàn tất / SĐT | Đặt 3 lịch cùng một SĐT (kể cả 1 lịch do lễ tân tạo ở quầy), rồi đặt lịch thứ 4. Huỷ 1 lịch rồi đặt lại | Lịch thứ 4 bị từ chối: **"Số điện thoại này đang có 3 lịch hẹn chưa hoàn tất, vui lòng hoàn tất hoặc huỷ bớt trước khi đặt thêm"**. Huỷ hoặc hoàn tất bớt 1 lịch thì đặt thêm được |
+| E | 5 lượt đặt / IP / giờ | **Xoá bộ đếm** (mục 8), đặt 6 lịch trong 1 giờ bằng 6 SĐT khác nhau | Lượt 6 trả **HTTP 429**, mã **`RATE_LIMITED`**, header **`Retry-After: 3600`**. Lịch lễ tân tạo ở quầy không bị giới hạn này |
+| F | Khoá tra cứu 30 phút | **Xoá bộ đếm** (mục 8), nhập mã sai 8 ký tự (ví dụ `AAAAAAAA`) **11 lần**. Thử thêm mã dài hơn 8 ký tự (ví dụ `SL-000911`) | 10 lần đầu "Không tìm thấy lịch hẹn…". Lần 11 trả **429**, mã **`LOOKUP_LOCKED`**, **`Retry-After` ≈ 1800 giây**, thông báo **"Bạn đã tra cứu sai quá nhiều lần, vui lòng thử lại sau 30 phút"**. Trong lúc khoá, mã đúng cũng không tra được; đủ 30 phút thì mở lại. Mã dài quá 8 ký tự báo **"Mã tra cứu gồm 8 ký tự chữ hoặc số"** và **không** tính là một lần sai |
+| G | Thợ không có ca vẫn hiện rảnh / bị tự gán ở bước 3 | Giống dòng 9 ở mục 7. Thêm: chọn xong giờ rồi quay lại bước 2 đổi sang ngày thợ đó không có ca, sang bước 3. Với lễ tân: tạo khách vãng lai chọn thợ không có ca hôm đó | Bước 3 không liệt kê thợ không có ca là rảnh; thợ đã chọn từ trước mà không còn rảnh thì tự bỏ chọn về **"Thợ bất kỳ"**. "Thợ bất kỳ" không bao giờ gán thợ không có ca. Quầy cũng bị từ chối như dòng B |
+
 ## 8. Đặt lại bộ đếm giới hạn (QA-06, QA-07)
 
 Giới hạn tính theo IP; test trên cùng một máy nên dùng chung một IP. Muốn thử lại ngay không chờ hết giờ:
@@ -112,7 +126,7 @@ Giới hạn tính theo IP; test trên cùng một máy nên dùng chung một I
 docker compose exec -T postgres psql -U salon -d salon_booking -c "DELETE FROM rate_limits;"
 ```
 
-Cần đặt lại giữa lần thử mục 7 và 8, và sau khi thử xong để không ảnh hưởng người khác.
+Cần đặt lại giữa các lần thử ở mục 7 và 7b, và sau khi thử xong để không ảnh hưởng người khác.
 
 ## 9. Chạy Demo (không cần máy chủ)
 
@@ -131,7 +145,7 @@ npm run lint
 npm --prefix frontend run build
 ```
 
-Kết quả mong đợi: `npm test` 98/98, `npm run test:e2e` 55/55 (8 bộ), lint không lỗi và không cảnh báo, build thành công. Các test e2e tự xoá bộ đếm giới hạn trước và sau khi chạy.
+Kết quả mong đợi: `npm test` 100/100, `npm run test:e2e` 55/55 (8 bộ), lint không lỗi và không cảnh báo, build thành công. Các test e2e tự xoá bộ đếm giới hạn trước và sau khi chạy.
 
 ## 11. Nếu gặp lỗi
 
@@ -142,6 +156,8 @@ Kết quả mong đợi: `npm test` 98/98, `npm run test:e2e` 55/55 (8 bộ), li
 | `npm run db:seed` báo `ECONNREFUSED` | Postgres chưa healthy: `docker compose ps`, đợi rồi chạy lại. Chạy lại seed bao nhiêu lần cũng an toàn |
 | Cổng 5432 / 3000 / 5173 đã bị chiếm | Tắt tiến trình đang chiếm, hoặc đổi cổng như mục 1 |
 | Thêm thợ báo thiếu giới tính dù đã chọn | Bạn đang chạy backend cũ: dừng hẳn `npm run start:all`, `git pull`, chạy lại và nhớ `npm run db:seed` |
+| Tra cứu báo "Mã tra cứu gồm 8 ký tự chữ hoặc số" | Mã tra cứu mới gồm đúng 8 ký tự (vd. `K7M2QP4X`), không có tiền tố `SL-`. Lấy mã ở trang xác nhận hoặc email trong Maildev |
+| Bước 1 vẫn hiện số dịch vụ lạ | Xoá khoá `salon.bookingDraft` trong Local Storage rồi tải lại trang. Bản mới tự dọn bản nháp cũ khi tải danh mục dịch vụ |
 | Bị 429 sớm hơn lượt thứ 6 | Mọi lượt thử đặt trong cùng một giờ (kể cả lượt bị từ chối vì trùng giờ, sai SĐT) đều tính vào hạn mức. Xoá bộ đếm theo mục 8 rồi thử lại |
 | Mãi không bị 429 / khoá | Kiểm tra `backend/.env`: `BOOKING_IP_LIMIT_PER_HOUR=5`, `LOOKUP_IP_LIMIT_PER_HOUR=10`, `LOOKUP_BLOCK_MINUTES=30`, `MAX_ACTIVE_BOOKINGS_PER_PHONE=3` (giá trị trong `.env.example`), rồi chạy lại backend |
 
