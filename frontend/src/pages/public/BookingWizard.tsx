@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Check, Clock, Wallet } from 'lucide-react';
 import { getErrorField, getErrorMessage, publicApi } from '@/api';
-import type { BookingResult } from '@/types';
+import type { BookingResult, Quote } from '@/types';
 import { BackButton, Button } from '@/components';
 import { formatDuration, formatVnd, VN_PHONE_MESSAGE, VN_PHONE_REGEX } from '@/utils/format';
 import { emailError } from '@/utils/validators';
@@ -13,6 +13,7 @@ import { Step2Slot } from './steps/Step2Slot';
 import { Step3Stylist } from './steps/Step3Stylist';
 import { Step4Confirm, Step4Errors } from './steps/Step4Confirm';
 import { BookingSuccess } from './steps/BookingSuccess';
+import { SplitBookingWarning } from './steps/SplitBookingWarning';
 
 const STEPS = [
   { n: 1, label: 'Dịch vụ' },
@@ -42,6 +43,18 @@ export function BookingWizard() {
       if (service && !selected.some(item => item.id === serviceId)) booking.toggleService(service);
     }).catch(error => toast.error(getErrorMessage(error)));
   }, [searchParams, booking, selected, toast]);
+
+  // QA-01: hỏi máy chủ tổng thời lượng so với ca dài nhất trong tuần ngay khi giỏ thay đổi
+  const [quote, setQuote] = useState<Quote | null>(null);
+  const cartKey = selected.map((s) => s.id).join(',');
+  useEffect(() => {
+    if (!cartKey) { setQuote(null); return; }
+    let alive = true;
+    publicApi.quote(cartKey.split(','))
+      .then((q) => { if (alive) setQuote(q); })
+      .catch(() => { if (alive) setQuote(null); }); // cảnh báo là phụ, lỗi mạng không chặn khách đặt lịch
+    return () => { alive = false; };
+  }, [cartKey]);
 
   const canNext = useMemo(() => {
     if (step === 1) return selected.length > 0;
@@ -104,7 +117,7 @@ export function BookingWizard() {
   }
 
   return (
-    <div className="space-y-4 pb-28 sm:pb-4">
+    <div className={`space-y-4 ${quote?.exceedsLongestShift ? 'pb-60' : 'pb-28'} sm:pb-4`}>
       {/* Lỗi 8: nút quay lại rõ ràng ở đầu wizard — lùi một bước, ở bước 1 thì về trang trước */}
       <BackButton
         label={step > 1 ? `Quay lại bước ${step - 1}` : 'Quay lại'}
@@ -150,6 +163,8 @@ export function BookingWizard() {
       <div className="fixed inset-x-0 bottom-[calc(var(--bottom-nav-h)+1px+env(safe-area-inset-bottom))] z-20 border-t border-slate-200 bg-white/95 px-3 py-2.5 shadow-[0_-8px_24px_-12px_rgba(15,23,42,0.12)] backdrop-blur
                       sm:sticky sm:bottom-4 sm:rounded-2xl sm:border sm:px-5 sm:py-3.5 sm:shadow-card">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2">
+          {/* Cố định ngay trên giỏ dịch vụ và nút "Tiếp tục", ở mọi bước */}
+          <SplitBookingWarning quote={quote} className="w-full" />
           <div className="flex items-center gap-3 text-xs">
             <span className="inline-flex items-center gap-1 text-slate-600">
               <Clock size={14} /> {selected.length} dịch vụ · {formatDuration(totalDuration)}

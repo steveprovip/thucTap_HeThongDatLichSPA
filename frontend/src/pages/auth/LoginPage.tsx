@@ -7,14 +7,9 @@ import { Button, Card, Field, Input, Notice } from '@/components';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 import { ROLE_LABELS, ROLE_LANDING } from '@/utils/constants';
+import { formatCountdown } from '@/utils/format';
 import { emailError, passwordCharsetError } from '@/utils/validators';
 import { AuthShell, DemoRoleButtons, PasswordInput } from './AuthShell';
-
-/** 'mm:ss' còn lại tới lúc mở khoá. */
-const countdown = (ms: number): string => {
-  const s = Math.max(0, Math.ceil(ms / 1000));
-  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
-};
 
 export function LoginPage() {
   const { login, logout, user, setDemoRole } = useAuth();
@@ -147,7 +142,7 @@ export function LoginPage() {
             <Notice tone="warning" icon={<Lock size={16} />} title="Tài khoản đang tạm khoá">
               <p>
                 Bạn đã nhập sai mật khẩu quá 5 lần. Vui lòng thử lại sau{' '}
-                <strong className="font-mono tabular-nums">{countdown(lock.until - now)}</strong>{' '}
+                <strong className="font-mono tabular-nums">{formatCountdown(lock.until - now)}</strong>{' '}
                 (mở khoá lúc {new Date(lock.until).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}).
               </p>
               <p className="mt-1">
@@ -158,7 +153,7 @@ export function LoginPage() {
           ) : error && <Notice tone="danger">{error}</Notice>}
 
           <Button type="submit" block loading={busy} disabled={locked} icon={locked ? <Lock size={17} /> : <LogIn size={17} />}>
-            {locked ? `Tạm khoá · ${countdown((lock?.until ?? now) - now)}` : 'Đăng nhập'}
+            {locked ? `Tạm khoá · ${formatCountdown((lock?.until ?? now) - now)}` : 'Đăng nhập'}
           </Button>
 
           <div className="flex items-center justify-between text-sm">

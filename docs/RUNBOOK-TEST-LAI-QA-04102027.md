@@ -1,6 +1,6 @@
 # Runbook test lại lỗi QA Sprint 2 (04/10/2027)
 
-Dành cho tester **Trương Khánh**. Làm lần lượt từng bước, không bỏ bước. Bản **v1.3.3** (nhánh `fix/qa-round3-0410`) bổ sung 7 lỗi mới ở mục 7b.
+Dành cho tester **Trương Khánh**. Làm lần lượt từng bước, không bỏ bước. Bản **v1.3.4** (nhánh `fix/qa-round4-0410`) bổ sung 7 lỗi vòng 3 ở mục 7b và 2 lỗi vòng 4 ở mục 7c.
 
 ## 0. Vì sao lần trước thấy "lỗi"
 
@@ -17,8 +17,8 @@ Bản này sửa tận gốc: giao diện **mặc định gọi API thật** (De
 
 ```bash
 git fetch origin
-git checkout fix/qa-round3-0410
-git pull origin fix/qa-round3-0410
+git checkout fix/qa-round4-0410
+git pull origin fix/qa-round4-0410
 git log --oneline -3
 ```
 
@@ -26,7 +26,7 @@ Nếu nhánh đã được merge vào `develop` thì: `git checkout develop && g
 
 ## 3. Dọn dữ liệu cũ
 
-Trong trình duyệt đang dùng để test: mở `http://localhost:5173`, nhấn **F12 → Application → Local Storage → http://localhost:5173**, xoá các khoá `salon.demo.v5`, `salon.demo.v6`, `salon.demoUserId`, `salon.bookingDraft` (hoặc bấm *Clear All*).
+Trong trình duyệt đang dùng để test: mở `http://localhost:5173`, nhấn **F12 → Application → Local Storage → http://localhost:5173**, xoá các khoá `salon.demo.v5`, `salon.demo.v6`, `salon.demoUserId`, `salon.bookingDraft`, `salon.lookupLockedUntil` (hoặc bấm *Clear All*).
 
 Dọn cơ sở dữ liệu cũ (xoá volume Postgres):
 
@@ -98,10 +98,10 @@ Dữ liệu mẫu thật: thứ 2–6 mở cửa **08:30 – 20:00**, thứ 7 v�
 | 2 | QA-01 ca ngoài giờ mở cửa | Ca làm → thêm ca cho một thợ vào **thứ 2–6** từ **08:00 đến 12:00**. Thử thêm 09:00–21:00 | Bị từ chối: **"Ca làm phải nằm trong giờ mở cửa của tiệm hôm đó (08:30 - 20:00)"**. Sửa một ca có sẵn sang 07:00 cũng bị chặn |
 | 3 | QA-02 xoá ca đang có lịch | Lễ tân → Lịch ngày, tìm ngày có lịch hẹn của một thợ. Owner → Ca làm → xoá đúng ca của thợ đó ngày đó | Không xoá được. Hiện cửa sổ **liệt kê các lịch liên quan** (mã, giờ, tên khách) kèm hướng xử lý. Ca vẫn còn |
 | 4 | QA-03 danh mục khách | Owner → Dịch vụ → tạo dịch vụ mới, **không gán thợ**. Mở `http://localhost:5173` (không đăng nhập) | Dịch vụ **không hiện** ở trang khách. Gán một thợ đang hoạt động thì hiện. Cho thợ duy nhất nghỉ việc thì lại ẩn |
-| 5 | QA-04 tách 2 lần đặt | Dữ liệu mẫu không đủ để vượt 8 giờ (tối đa 5 dịch vụ, mỗi dịch vụ ≤ 120 phút), nên dựng tình huống: (a) Owner → Dịch vụ → thêm **"Liệu trình thử nghiệm"** 240 phút, giá 500000, chưa gán thợ. (b) Hồ sơ thợ → thêm thợ **"Thợ Thử Ca Ngắn"**, chọn giới tính, tick **chỉ** dịch vụ vừa tạo. (c) Ca làm → thêm cho thợ đó **một ca 3 giờ** (09:00–12:00) vào một ngày thường trong 7 ngày tới. (d) Trang khách → chọn "Liệu trình thử nghiệm" | Ngay bước chọn dịch vụ hiện **cảnh báo nên tách thành 2 lần hẹn**: dịch vụ 4 giờ vượt ca dài nhất 3 giờ. Bỏ ca đó (hoặc kéo dài ca lên 4 giờ trở lên) thì cảnh báo biến mất |
+| 5 | QA-04 tách 2 lần đặt | Dữ liệu mẫu không đủ để vượt 8 giờ (tối đa 5 dịch vụ, mỗi dịch vụ ≤ 120 phút), nên dựng tình huống: (a) Owner → Dịch vụ → thêm **"Liệu trình thử nghiệm"** 240 phút, giá 500000, chưa gán thợ. (b) Hồ sơ thợ → thêm thợ **"Thợ Thử Ca Ngắn"**, chọn giới tính, tick **chỉ** dịch vụ vừa tạo. (c) Ca làm → thêm cho thợ đó **một ca 09:00–13:00**, giữ nguyên giờ nghỉ mặc định 12:00–13:00 (làm việc thực tế **3 giờ**), vào một ngày thường trong 7 ngày tới. (d) Trang khách → chọn "Liệu trình thử nghiệm" | Trong thanh dính đáy, ngay trên nút *Tiếp tục*, hiện khung vàng **khuyên tách thành 2 hoặc nhiều lần hẹn** (xem mục 7c): dịch vụ 4 giờ vượt ca dài nhất 3 giờ. Bỏ ca đó (hoặc kéo dài ca để làm việc thực tế từ 4 giờ trở lên) thì cảnh báo biến mất |
 | 6 | QA-05 tối đa 3 lịch / SĐT | Đặt lịch với **cùng một SĐT** (ví dụ `0987654321`) ba lần ở ba khung giờ khác nhau, rồi đặt lần thứ tư | Lần 4 bị từ chối: **"Số điện thoại này đang có 3 lịch hẹn chưa hoàn tất, vui lòng hoàn tất hoặc huỷ bớt trước khi đặt thêm"** |
 | 7 | QA-06 5 lượt đặt / IP / giờ | **Xoá bộ đếm** (mục 8), rồi đặt 6 lịch trong vòng 1 giờ bằng **6 SĐT khác nhau**. Mở F12 → Network để xem phản hồi | 5 lượt đầu thành công. Lượt 6 trả **HTTP 429**, header **`Retry-After: 3600`**, thông báo **"Bạn đã đặt quá nhiều lịch trong một giờ, vui lòng thử lại sau"** |
-| 8 | QA-07 khoá tra cứu | **Xoá bộ đếm** (mục 8). Trang *Tra cứu lịch hẹn* → nhập mã sai (ví dụ `AAAAAAAA`) **11 lần** | 10 lần đầu: "Không tìm thấy lịch hẹn với mã tra cứu này". Lần 11 trả **429**: **"Bạn đã tra cứu sai quá nhiều lần, vui lòng thử lại sau 30 phút"**. Trong 30 phút nhập mã đúng và bấm huỷ lịch cũng bị chặn |
+| 8 | QA-07 khoá tra cứu | **Xoá bộ đếm** (mục 8). Trang *Tra cứu lịch hẹn* → nhập mã sai (ví dụ `AAAAAAAA`) **11 lần** | 10 lần đầu: "Không tìm thấy lịch hẹn với mã tra cứu này". Lần 11 trả **429**: **"Bạn đã tra cứu sai quá nhiều lần, vui lòng thử lại sau 30 phút"**. Trong 30 phút nhập mã đúng và bấm huỷ lịch cũng bị chặn. Giao diện khoá luôn nút Tra cứu (xem mục 7c) |
 | 9 | QA-08 thợ không có ca | Trang khách → chọn dịch vụ → chọn một **ngày thứ 2** → chọn đích danh **Nguyễn Thu Hà**. Thử thêm một ngày xa hơn 30 ngày tới (chưa có ca) | Thu Hà **không có khung giờ nào**, không hiện là rảnh. Chọn "Thợ bất kỳ" thì không bao giờ được gán cho Thu Hà. Ngày chưa có ca nào thì không có khung giờ cho mọi thợ. Gửi thẳng API đặt lịch cũng bị từ chối |
 
 ## 7b. Kiểm thử 7 lỗi vòng 3 (bản v1.3.3)
@@ -118,6 +118,13 @@ Dữ liệu mẫu thật: thứ 2–6 mở cửa **08:30 – 20:00**, thứ 7 v�
 | F | Khoá tra cứu 30 phút | **Xoá bộ đếm** (mục 8), nhập mã sai 8 ký tự (ví dụ `AAAAAAAA`) **11 lần**. Thử thêm mã dài hơn 8 ký tự (ví dụ `SL-000911`) | 10 lần đầu "Không tìm thấy lịch hẹn…". Lần 11 trả **429**, mã **`LOOKUP_LOCKED`**, **`Retry-After` ≈ 1800 giây**, thông báo **"Bạn đã tra cứu sai quá nhiều lần, vui lòng thử lại sau 30 phút"**. Trong lúc khoá, mã đúng cũng không tra được; đủ 30 phút thì mở lại. Mã dài quá 8 ký tự báo **"Mã tra cứu gồm 8 ký tự chữ hoặc số"** và **không** tính là một lần sai |
 | G | Thợ không có ca vẫn hiện rảnh / bị tự gán ở bước 3 | Giống dòng 9 ở mục 7. Thêm: chọn xong giờ rồi quay lại bước 2 đổi sang ngày thợ đó không có ca, sang bước 3. Với lễ tân: tạo khách vãng lai chọn thợ không có ca hôm đó | Bước 3 không liệt kê thợ không có ca là rảnh; thợ đã chọn từ trước mà không còn rảnh thì tự bỏ chọn về **"Thợ bất kỳ"**. "Thợ bất kỳ" không bao giờ gán thợ không có ca. Quầy cũng bị từ chối như dòng B |
 
+## 7c. Kiểm thử 2 lỗi vòng 4 (bản v1.3.4)
+
+| # | Lỗi | Cách thử | Kết quả đúng |
+|---|---|---|---|
+| H | Thiếu khuyên tách 2 hoặc nhiều lần hẹn khi dịch vụ vượt ca dài nhất | Dựng tình huống như dòng 5 ở mục 7 (dịch vụ 240 phút + thợ chỉ có ca làm thực tế 3 giờ), vào trang khách và chọn dịch vụ đó. Ở Demo: chọn "Uốn sóng lơi", "Một ngày thư giãn", "Nhuộm màu thời trang", "Liệu trình phục hồi tóc". Bấm **Tiếp tục** sang các bước sau, rồi bỏ bớt dịch vụ | Khung **vàng đậm** nằm trong thanh dính đáy, **ngay trên số dịch vụ, tổng tiền và nút Tiếp tục**, với đúng câu: *"⚠️ Tổng thời lượng dịch vụ (4 giờ) vượt quá ca làm việc dài nhất trong tuần (3 giờ). Quý khách nên tách thành 2 hoặc nhiều lần hẹn khác nhau để tiệm phục vụ trọn vẹn nhất!"* (Demo hiện 8 giờ 30 phút và 8 giờ). Khung vẫn hiện ở các bước 2, 3, 4 và biến mất khi tổng thời lượng không còn vượt ca |
+| I | Nhập sai mã tra cứu quá 10 lần vẫn bấm Tra cứu được | **Xoá bộ đếm** (mục 8) và xoá khoá `salon.lookupLockedUntil` trong Local Storage. Trang *Tra cứu lịch hẹn* → nhập mã sai 8 ký tự (ví dụ `AAAAAAAA`, `AAAAAAAB`…) và bấm Tra cứu **11 lần**. Sau đó thử bấm nút, gõ vào ô nhập, đổi tab, rồi nhấn F5 | Lần 11 hiện khung vàng *"Bạn đã thử sai quá 10 lần. Chức năng tra cứu tạm khóa trong 30 phút để bảo mật thông tin."* kèm **đếm ngược mm:ss** (bắt đầu 30:00, giảm mỗi giây) và giờ mở lại. Nút đổi thành xám **"Tạm khoá · mm:ss"** và không bấm được; ô nhập và hai tab *Theo mã / Theo số điện thoại* bị khoá; không còn thẻ "Không tìm thấy lịch hẹn". Nhấn F5 vẫn khoá. Hết đếm ngược thì tự mở lại |
+
 ## 8. Đặt lại bộ đếm giới hạn (QA-06, QA-07)
 
 Giới hạn tính theo IP; test trên cùng một máy nên dùng chung một IP. Muốn thử lại ngay không chờ hết giờ:
@@ -126,7 +133,7 @@ Giới hạn tính theo IP; test trên cùng một máy nên dùng chung một I
 docker compose exec -T postgres psql -U salon -d salon_booking -c "DELETE FROM rate_limits;"
 ```
 
-Cần đặt lại giữa các lần thử ở mục 7 và 7b, và sau khi thử xong để không ảnh hưởng người khác.
+Giao diện tra cứu còn nhớ mốc khoá trong Local Storage (khoá `salon.lookupLockedUntil`): xoá khoá này nếu nút Tra cứu vẫn xám sau khi đã xoá bộ đếm. Cần đặt lại giữa các lần thử ở mục 7, 7b và 7c, và sau khi thử xong để không ảnh hưởng người khác.
 
 ## 9. Chạy Demo (không cần máy chủ)
 
@@ -158,6 +165,8 @@ Kết quả mong đợi: `npm test` 100/100, `npm run test:e2e` 55/55 (8 bộ), 
 | Thêm thợ báo thiếu giới tính dù đã chọn | Bạn đang chạy backend cũ: dừng hẳn `npm run start:all`, `git pull`, chạy lại và nhớ `npm run db:seed` |
 | Tra cứu báo "Mã tra cứu gồm 8 ký tự chữ hoặc số" | Mã tra cứu mới gồm đúng 8 ký tự (vd. `K7M2QP4X`), không có tiền tố `SL-`. Lấy mã ở trang xác nhận hoặc email trong Maildev |
 | Bước 1 vẫn hiện số dịch vụ lạ | Xoá khoá `salon.bookingDraft` trong Local Storage rồi tải lại trang. Bản mới tự dọn bản nháp cũ khi tải danh mục dịch vụ |
+| Nút Tra cứu vẫn xám, đếm ngược chưa hết | Giao diện nhớ mốc khoá. Xoá khoá `salon.lookupLockedUntil` trong Local Storage rồi tải lại trang (và xoá bộ đếm theo mục 8 nếu máy chủ cũng đang khoá) |
+| Không thấy khung vàng tách lịch dù dịch vụ rất dài | Khung chỉ hiện khi tổng thời lượng **lớn hơn** ca dài nhất trong 7 ngày tới của các thợ làm được dịch vụ đó, và phải có ít nhất một ca được xếp. Kiểm tra lại ca làm của thợ (mục 7, dòng 5) |
 | Bị 429 sớm hơn lượt thứ 6 | Mọi lượt thử đặt trong cùng một giờ (kể cả lượt bị từ chối vì trùng giờ, sai SĐT) đều tính vào hạn mức. Xoá bộ đếm theo mục 8 rồi thử lại |
 | Mãi không bị 429 / khoá | Kiểm tra `backend/.env`: `BOOKING_IP_LIMIT_PER_HOUR=5`, `LOOKUP_IP_LIMIT_PER_HOUR=10`, `LOOKUP_BLOCK_MINUTES=30`, `MAX_ACTIVE_BOOKINGS_PER_PHONE=3` (giá trị trong `.env.example`), rồi chạy lại backend |
 
