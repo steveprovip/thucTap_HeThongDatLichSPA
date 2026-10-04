@@ -1,6 +1,7 @@
 import { ImgHTMLAttributes, ReactNode, useCallback, useEffect, useId, useState } from 'react';
 import { Droplets, Flower2, Gem, HandHeart, Leaf, Palette, Scissors, Sparkles, UserRound } from 'lucide-react';
 import { initials, KIND_ALTERNATES, stylistPhoto, type MediaKind } from '@/utils/images';
+import type { StylistGender } from '@/types';
 
 /**
  * Ảnh đã nằm sẵn trong cache có thể bắn onLoad TRƯỚC khi useEffect chạy; nếu effect sau đó đặt lại
@@ -142,10 +143,10 @@ export function SmartImage({ src, alt, className = '', imgClassName = '', kind =
 }
 
 /** Ảnh đại diện thợ, có chữ viết tắt khi không tải được ảnh. */
-export function StylistAvatar({ id, name, url, size = 'h-10 w-10', className = '' }: {
-  id: string; name: string; url?: string | null; size?: string; className?: string;
+export function StylistAvatar({ id, name, url, gender, size = 'h-10 w-10', className = '' }: {
+  id: string; name: string; url?: string | null; gender?: StylistGender | null; size?: string; className?: string;
 }) {
-  const src = stylistPhoto(id, url);
+  const src = stylistPhoto(id, url, gender);
   const [broken, setBroken] = useState(isOffline);
   const [loaded, setLoaded] = useState(false);
   const [trackedSrc, setTrackedSrc] = useState(src);
@@ -154,11 +155,11 @@ export function StylistAvatar({ id, name, url, size = 'h-10 w-10', className = '
     const s = readyState(img); if (s === 'ready') setLoaded(true); else if (s === 'error') setBroken(true);
   }, []);
   useEffect(() => {
-    if (loaded || broken) return;
+    if (loaded || broken || !src) return;
     const timer = window.setTimeout(() => setBroken(true), LOAD_TIMEOUT_MS);
     return () => window.clearTimeout(timer);
-  }, [loaded, broken, trackedSrc]);
-  if (broken) {
+  }, [loaded, broken, trackedSrc, src]);
+  if (broken || !src) {
     return (
       <span className={`${size} relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-teal-100 to-teal-50 text-xs font-semibold text-teal-800 ring-2 ring-white ${className}`}
             role="img" aria-label={name}>

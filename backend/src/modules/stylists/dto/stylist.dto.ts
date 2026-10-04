@@ -1,18 +1,24 @@
 import { Type } from 'class-transformer';
 import {
-  ArrayMaxSize, ArrayUnique, IsArray, IsBoolean, IsEmail, IsNotEmpty, IsOptional, IsString, IsUUID,
+  ArrayMaxSize, ArrayUnique, IsArray, IsBoolean, IsEmail, IsIn, IsNotEmpty, IsOptional, IsString, IsUUID,
   Matches, MaxLength, MinLength, ValidateNested,
 } from 'class-validator';
+import { STYLIST_GENDERS, StylistGender } from '../../../database/entities/stylist.entity';
 import { VN_PHONE_MESSAGE, VN_PHONE_REGEX } from '../../../common/utils/phone.util';
 import { IsAsciiEmail } from '../../../common/validators/credential.validators';
 import { IsCalendarDate } from '../../../common/validators/date.validators';
 
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const GENDER_MESSAGE = 'Vui lòng chọn giới tính Nam hoặc Nữ';
 
 export class CreateStylistDto {
   @IsString() @IsNotEmpty({ message: 'Vui lòng nhập họ tên thợ' }) @MinLength(2) @MaxLength(120)
   fullName!: string;
+
+  /** Ảnh đại diện mặc định và ảnh gợi ý tự động dựa vào giới tính nên bắt buộc khi tạo hồ sơ. */
+  @IsIn(STYLIST_GENDERS, { message: GENDER_MESSAGE })
+  gender!: StylistGender;
 
   @IsOptional() @Matches(VN_PHONE_REGEX, { message: VN_PHONE_MESSAGE })
   phone?: string;
@@ -31,6 +37,7 @@ export class CreateStylistDto {
 
 export class UpdateStylistDto {
   @IsOptional() @IsString() @MinLength(2) @MaxLength(120) fullName?: string;
+  @IsOptional() @IsIn(STYLIST_GENDERS, { message: GENDER_MESSAGE }) gender?: StylistGender;
   @IsOptional() @Matches(VN_PHONE_REGEX, { message: VN_PHONE_MESSAGE }) phone?: string;
   @IsOptional() @IsString() @MaxLength(500) bio?: string;
   @IsOptional() @IsBoolean() isActive?: boolean;

@@ -10,7 +10,7 @@ import {
 import { AppointmentServiceItem } from '../../database/entities/appointment-service.entity';
 import { AppointmentChange } from '../../database/entities/appointment-change.entity';
 import { Customer } from '../../database/entities/customer.entity';
-import { Stylist } from '../../database/entities/stylist.entity';
+import { Stylist, StylistGender } from '../../database/entities/stylist.entity';
 import { EmailKind } from '../../database/entities/email-queue.entity';
 import { NotificationType } from '../../database/entities/notification.entity';
 import { MSG, REJECT_REASONS } from '../../common/constants/messages.constant';
@@ -39,6 +39,7 @@ export interface TimelineColumn {
   stylistId: string;
   stylistName: string;
   avatarUrl: string | null;
+  gender: StylistGender | null;
   /** Các khoảng thợ có mặt (trong ca), theo 'HH:mm'. */
   workingBlocks: { start: string; end: string }[];
   /** Nghỉ giữa ca và nghỉ riêng — tô khác màu, không nhận thao tác đặt lịch. */
@@ -184,6 +185,7 @@ export class AppointmentsService {
         stylistId: stylist.id,
         stylistName: stylist.fullName,
         avatarUrl: stylist.avatarUrl,
+        gender: stylist.gender,
         workingBlocks: myShifts.map((s) => ({
           start: trimSeconds(s.startTime), end: trimSeconds(s.endTime),
         })),

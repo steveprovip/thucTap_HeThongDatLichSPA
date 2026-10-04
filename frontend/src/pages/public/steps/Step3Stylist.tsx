@@ -67,7 +67,7 @@ export function Step3Stylist() {
               className={`press flex w-full items-center gap-3 rounded-2xl border p-3.5 text-left transition-all duration-200
                 ${stylistId === s.id ? 'border-teal-600 bg-teal-50/30 ring-1 ring-teal-600' : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-card'}`}
             >
-              <StylistAvatar id={s.id} name={s.fullName} url={s.avatarUrl} size="h-12 w-12" className="shadow-sm" />
+              <StylistAvatar id={s.id} name={s.fullName} url={s.avatarUrl} gender={s.gender} size="h-12 w-12" className="shadow-sm" />
               <span className="min-w-0 flex-1">
                 <span className="block font-semibold">{s.fullName}</span>
                 {s.avgRating != null && <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-600"><Star size={13} fill="currentColor" className="text-amber-400" /> {s.avgRating.toFixed(1)} / 5</span>}

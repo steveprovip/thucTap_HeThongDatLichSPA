@@ -28,7 +28,7 @@ export function RoleSwitcher() {
     // Góc dưới bên phải ở mọi kích thước màn hình: không còn đè lên menu "Đặt lịch / Tra cứu" của thanh trên cùng
     <div className={`role-switcher no-print animate-fade-in fixed right-3 ${bottom} z-[80] flex h-12 w-12 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-slate-800 shadow-lg backdrop-blur-md transition-shadow hover:shadow-xl sm:bottom-5 sm:right-5 sm:h-auto sm:w-auto sm:max-w-[calc(100vw-1.5rem)] sm:justify-start sm:gap-2 sm:bg-white/90 sm:py-1.5 sm:pl-3.5 sm:pr-1.5`}>
       <UsersRound size={20} className="pointer-events-none shrink-0 text-teal-600 sm:h-[17px] sm:w-[17px]" aria-hidden="true" />
-      <label htmlFor="demo-role" className="sr-only whitespace-nowrap text-xs font-semibold text-slate-600 sm:not-sr-only">Xem vai trò</label>
+      <label htmlFor="demo-role" className="sr-only whitespace-nowrap text-xs font-semibold text-slate-600 sm:not-sr-only">Chế độ demo · Xem vai trò</label>
       <select id="demo-role" value={current} onChange={event => {
         const next = roles.find(role => role.id === event.target.value);
         if (!next) return;

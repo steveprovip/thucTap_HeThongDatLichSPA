@@ -92,6 +92,17 @@ INSERT INTO stylists (id, user_id, full_name, phone, bio, avatar_url, is_active)
  ('33333333-3333-4333-8333-000000000005','22222222-2222-4222-8222-000000000005','Võ Kim Chi','0902000005','Chuyên trang điểm dự tiệc và chăm sóc da.', NULL, TRUE)
 ON CONFLICT DO NOTHING;
 
+-- Giới tính 5 thợ mẫu (chạy lại được; không ghi đè giới tính chủ tiệm đã chọn)
+UPDATE stylists AS s SET gender = v.gender
+  FROM (VALUES
+    ('33333333-3333-4333-8333-000000000001'::uuid, 'female'),
+    ('33333333-3333-4333-8333-000000000002'::uuid, 'male'),
+    ('33333333-3333-4333-8333-000000000003'::uuid, 'female'),
+    ('33333333-3333-4333-8333-000000000004'::uuid, 'male'),
+    ('33333333-3333-4333-8333-000000000005'::uuid, 'female')
+  ) AS v(id, gender)
+ WHERE s.id = v.id AND s.gender IS NULL;
+
 -- ---------------------------------------------------------------------------
 -- 5. KỸ NĂNG CỦA THỢ (nhiều dịch vụ / thợ, nhiều thợ / dịch vụ)
 -- ---------------------------------------------------------------------------

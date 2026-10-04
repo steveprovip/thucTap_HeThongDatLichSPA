@@ -108,6 +108,8 @@ export interface PublicCatalogGroup {
 }
 
 // ----------------------------------------------------------- Thợ, ca làm
+export type StylistGender = 'male' | 'female';
+
 export interface Stylist {
   id: string;
   userId: string | null;
@@ -116,6 +118,8 @@ export interface Stylist {
   fullName: string;
   phone: string | null;
   avatarUrl: string | null;
+  /** Giới tính để chọn ảnh đại diện phù hợp; null với hồ sơ cũ chưa cập nhật. */
+  gender: StylistGender | null;
   bio: string | null;
   isActive: boolean;
   serviceIds: string[];
@@ -128,6 +132,7 @@ export interface PublicStylist {
   id: string;
   fullName: string;
   avatarUrl: string | null;
+  gender?: StylistGender | null;
   bio: string | null;
   avgRating?: number | null;
 }
@@ -299,6 +304,7 @@ export interface TimelineColumn {
   stylistId: string;
   stylistName: string;
   avatarUrl: string | null;
+  gender?: StylistGender | null;
   workingBlocks: { start: string; end: string }[];
   offBlocks: { start: string; end: string; reason: string }[];
   appointments: Appointment[];

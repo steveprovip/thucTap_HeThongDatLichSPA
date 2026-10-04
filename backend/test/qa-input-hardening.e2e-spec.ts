@@ -81,7 +81,7 @@ describe('QA — chặn đầu vào sai định dạng ở lớp DTO', () => {
 
   it('QA-15: tạo/sửa thợ với serviceIds không phải UUID -> 400', async () => {
     const created = await request(server).post('/api/stylists').set('Authorization', `Bearer ${owner}`)
-      .send({ fullName: 'Tho Kiem Thu', serviceIds: [BAD_UUID] });
+      .send({ fullName: 'Tho Kiem Thu', gender: 'female', serviceIds: [BAD_UUID] });
     expect(created.status).toBe(400);
     expect(created.body.message).toBe('Mã dịch vụ không hợp lệ');
 

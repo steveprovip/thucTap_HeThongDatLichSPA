@@ -185,6 +185,10 @@ CREATE TABLE IF NOT EXISTS stylists (
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS ix_stylists_active ON stylists (is_active);
+-- Giới tính thợ (Nam/Nữ) để ảnh đại diện mặc định khớp giới tính. NULL = hồ sơ cũ chưa khai báo.
+ALTER TABLE stylists ADD COLUMN IF NOT EXISTS gender VARCHAR(10);
+ALTER TABLE stylists DROP CONSTRAINT IF EXISTS ck_stylists_gender;
+ALTER TABLE stylists ADD CONSTRAINT ck_stylists_gender CHECK (gender IS NULL OR gender IN ('male', 'female'));
 DROP TRIGGER IF EXISTS trg_stylists_updated ON stylists;
 CREATE TRIGGER trg_stylists_updated BEFORE UPDATE ON stylists
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();

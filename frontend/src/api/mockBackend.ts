@@ -4,12 +4,16 @@ import { matchSearch } from '@/utils/format';
 import type { AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 import type {
   AppNotification, Appointment, AppointmentStatus, AuditLogRow, AuthUser, Customer, Holiday, Invoice,
-  InvoiceLine, PublicAppointment, ServiceCategory, ServiceItem, Shift, Stylist, TimeOff,
+  InvoiceLine, PublicAppointment, ServiceCategory, ServiceItem, Shift, Stylist, StylistGender, TimeOff,
   UserRow, Voucher, WorkingHour,
 } from '@/types';
 
-/** Persisted in the browser so the whole UI can be explored without a server. */
-const KEY = 'salon.demo.v5';
+/**
+ * Persisted in the browser so the whole UI can be explored without a server.
+ * v6: thêm giới tính thợ + các luật đặt lịch (ca trong giờ mở cửa, giới hạn 3 lịch/SĐT, 5 lượt/giờ…) —
+ * đổi khoá để dữ liệu demo cũ (thiếu các trường này) tự bị bỏ và seed lại.
+ */
+const KEY = 'salon.demo.v6';
 /**
  * Có đặt VITE_DEMO_MODE thì theo đúng giá trị. KHÔNG đặt (vd. build trên máy/CI không có .env vì .env
  * bị gitignore) thì: dev -> demo như trước, còn bản build production -> gọi API thật. Trước đây
@@ -54,6 +58,15 @@ const MSG = {
   CURRENT_PASSWORD_WRONG: 'Mật khẩu hiện tại không đúng',
   PASSWORD_WEAK: 'Mật khẩu phải có tối thiểu 8 ký tự, gồm cả chữ và số',
   PASSWORD_SAME_AS_OLD: 'Mật khẩu mới phải khác mật khẩu hiện tại',
+  GENDER_REQUIRED: 'Vui lòng chọn giới tính Nam hoặc Nữ',
+  SHIFT_OUT_OF_SALON_HOURS: (open: string, close: string) =>
+    `Ca làm phải nằm trong giờ mở cửa của tiệm hôm đó (${open} - ${close})`,
+  SHIFT_HAS_APPOINTMENTS: 'Ca làm đang chứa lịch hẹn nên không xoá được',
+  TOO_MANY_ACTIVE_BOOKINGS: (n: number) =>
+    `Số điện thoại này đang có ${n} lịch hẹn chưa hoàn tất, vui lòng hoàn tất hoặc huỷ bớt trước khi đặt thêm`,
+  BOOKING_RATE_LIMITED: 'Bạn đã đặt quá nhiều lịch trong một giờ, vui lòng thử lại sau',
+  LOOKUP_RATE_LIMITED: (m: number) => `Bạn đã tra cứu sai quá nhiều lần, vui lòng thử lại sau ${m} phút`,
+  CODE_NOT_FOUND: 'Không tìm thấy lịch hẹn với mã tra cứu này',
 };
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const money = (value: number) => `${new Intl.NumberFormat('vi-VN').format(value)} đ`;
@@ -95,6 +108,8 @@ const serviceSeed: ServiceItem[] = [
   priceText: money(Number(price)), description: String(description), isActive: true,
   stylistIds: ['st1', 'st2', 'st3', 'st4', 'st5'], stylistCount: 5, hasNoStylist: false,
 }));
+/** Giới tính 5 thợ mẫu — khớp UPDATE gender trong database/seed.sql (st1, st3, st5 là nữ). */
+const SEED_GENDERS: StylistGender[] = ['female', 'male', 'female', 'male', 'female'];
 /** 5 thợ mẫu — cùng tên/SĐT/email với database/seed.sql (stylist1…5@salon.vn). */
 const stylistSeed: Stylist[] = [
   ['st1', 'Nguyễn Thu Hà', '0902000001', 4.9, 87],
@@ -107,7 +122,7 @@ const stylistSeed: Stylist[] = [
   id: String(id), userId: `u-${String(id)}`, fullName: String(fullName), phone: String(phone),
   avatarUrl: [
     STYLIST_PHOTOS.stylist_1, STYLIST_PHOTOS.stylist_2, STYLIST_PHOTOS.stylist_3, STYLIST_PHOTOS.stylist_4, STYLIST_PHOTOS.stylist_5,
-  ][index], bio: 'Chuyên viên giàu kinh nghiệm, tận tâm với từng khách hàng.', isActive: true,
+  ][index], gender: SEED_GENDERS[index], bio: 'Chuyên viên giàu kinh nghiệm, tận tâm với từng khách hàng.', isActive: true,
   serviceIds: serviceSeed.map(s => s.id), serviceNames: serviceSeed.map(s => s.name),
   avgRating: Number(avgRating), reviewCount: Number(reviewCount),
 }));
@@ -129,6 +144,8 @@ interface DemoDb {
   audit: AuditLogRow[]; notifications: AppNotification[];
   /** Mật khẩu + số lần đăng nhập sai liên tiếp theo mã tài khoản (chỉ dùng cho bản demo). */
   auth: Record<string, { password: string; failed: number }>;
+  /** Bộ đếm tần suất theo "IP" (trình duyệt này) — giả lập bảng rate_limits của backend thật. */
+  limits: Record<string, { count: number; windowStart: number; blockedUntil: number | null }>;
 }
 /**
  * Dựng một lịch hẹn. `catalog`/`team` mặc định là dữ liệu mẫu (lúc seed); khi tạo lịch thật phải truyền
@@ -196,6 +213,7 @@ function seed(): DemoDb {
       breakStart: index < 2 ? '12:00' : '16:00', breakEnd: index < 2 ? '13:00' : '17:00', note: null })));
   return {
     auth: Object.fromEntries(usersSeed.map(u => [u.id, { password: passwordForRole(u.role), failed: 0 }])),
+    limits: {},
     categories: categoriesSeed, services: serviceSeed, stylists: stylistSeed, users: usersSeed, appointments,
     invoices, shifts, timeOff: [], holidays: [], vouchers: [
       { id: 'v1', code: 'WELCOME10', description: 'Ưu đãi khách mới 10%', discountType: 'percent', discountValue: 10,
@@ -226,9 +244,10 @@ let db: DemoDb;
 try { db = JSON.parse(localStorage.getItem(KEY) || 'null') as DemoDb || seed(); }
 catch { db = seed(); }
 db.auth ??= {};
+db.limits ??= {};
 // Dữ liệu cũ (email @lumi.vn, mật khẩu demo1234) không còn khớp README → bỏ để seed lại
 try {
-  ['salon.demo.v3', 'salon.demo.v4', 'salon.demoRole'].forEach(k => localStorage.removeItem(k));
+  ['salon.demo.v3', 'salon.demo.v4', 'salon.demo.v5', 'salon.demoRole'].forEach(k => localStorage.removeItem(k));
 } catch { /* bỏ qua */ }
 recomputeLinks();
 syncCustomerStats();
@@ -263,8 +282,44 @@ const paginate = <T,>(items: T[], params: Record<string, unknown>) => {
   return { items: items.slice((page - 1) * limit, page * limit), total: items.length, page, limit,
     totalPages: Math.max(1, Math.ceil(items.length / limit)) };
 };
-const bad = (message: string, field?: string, status = 400): never => {
-  throw { response: { status, data: { success: false, message, field } } };
+const bad = (message: string, field?: string, status = 400, extra: { code?: string; details?: Record<string, unknown> } = {}): never => {
+  throw { response: { status, data: { success: false, message, field, ...extra } } };
+};
+/** Hạn mức giống backend thật (cấu hình mặc định): 5 lượt đặt/giờ/IP, 10 lượt tra sai/giờ/IP rồi khoá 30 phút, 3 lịch chưa hoàn tất/SĐT. */
+const BOOKING_LIMIT_PER_HOUR = 5;
+const LOOKUP_LIMIT_PER_HOUR = 10;
+const LOOKUP_BLOCK_MINUTES = 30;
+const MAX_ACTIVE_BOOKINGS_PER_PHONE = 3;
+const ACTIVE_STATUSES: AppointmentStatus[] = ['pending', 'confirmed', 'arrived', 'in_progress'];
+/** HTTP 429 kèm mã lỗi và `retryAfterSeconds` (backend thật còn gửi header Retry-After). */
+const tooManyRequests = (message: string, retryAfterSeconds: number, code: string): never =>
+  bad(message, undefined, 429, { code, details: { retryAfterSeconds } });
+/**
+ * Ghi một lượt vào bộ đếm theo cửa sổ 60 phút; trả false khi vượt hạn mức (và khoá `blockMinutes` nếu có).
+ * Hết thời gian khoá thì mở cửa sổ đếm mới — giống RateLimitService.hit của backend.
+ */
+const hitLimit = (scope: string, limit: number, blockMinutes = 0): boolean => {
+  const now = Date.now();
+  const row = db.limits[scope] ?? (db.limits[scope] = { count: 0, windowStart: now, blockedUntil: null });
+  if (row.blockedUntil && row.blockedUntil > now) return false;
+  if (row.blockedUntil || now - row.windowStart >= 60 * 60000) { row.count = 0; row.windowStart = now; row.blockedUntil = null; }
+  row.count += 1;
+  const allowed = row.count <= limit;
+  if (!allowed && blockMinutes) row.blockedUntil = now + blockMinutes * 60000;
+  save();
+  return allowed;
+};
+/** QA-07: đang bị khoá tra cứu thì chặn ngay (dùng chung cho tra cứu và huỷ lịch). */
+const assertNotLookupLocked = () => {
+  const until = db.limits.lookup_ip?.blockedUntil;
+  if (!until || until <= Date.now()) return;
+  const seconds = Math.max(1, Math.ceil((until - Date.now()) / 1000));
+  tooManyRequests(MSG.LOOKUP_RATE_LIMITED(Math.ceil(seconds / 60)), seconds, 'LOOKUP_LOCKED');
+};
+/** QA-07: ghi nhận một lượt tra sai; quá 10 lượt/giờ thì khoá 30 phút. */
+const countLookupAttempt = () => {
+  if (!hitLimit('lookup_ip', LOOKUP_LIMIT_PER_HOUR, LOOKUP_BLOCK_MINUTES))
+    tooManyRequests(MSG.LOOKUP_RATE_LIMITED(LOOKUP_BLOCK_MINUTES), LOOKUP_BLOCK_MINUTES * 60, 'LOOKUP_LOCKED');
 };
 /** QA-01: cùng hợp đồng với backend thật — mã ACCOUNT_LOCKED + thời điểm mở khoá. */
 const accountLocked = (lockedUntil: string): never => {
@@ -366,20 +421,66 @@ const publicAppointment = (a: Appointment): PublicAppointment => ({
     price: s.price, priceText: s.priceText })), customerNote: a.customerNote, cancelledAt: a.cancelledAt,
   cancelledByLabel: a.cancelledByLabel, cancelReason: a.cancelReason,
 });
-const availability = (date: string, serviceIds: string[], stylistId?: string, excludeId?: string) => {
+/** QA-01 (khớp assertWithinSalonHours ở backend): ca làm phải nằm trọn trong giờ mở cửa của ngày đó. */
+const assertShiftInSalonHours = (shift: { workDate: string; startTime: string; endTime: string }): void => {
+  const outside = (message: string, details: Record<string, unknown> = {}): never =>
+    bad(message, undefined, 400, { code: 'SHIFT_OUTSIDE_OPERATING_HOURS', details: { workDate: shift.workDate, ...details } });
+  const hours = db.workingHours.find(h => h.dayOfWeek === new Date(`${shift.workDate}T12:00:00`).getDay());
+  if (!hours || hours.isClosed) return outside(`${shift.workDate}: Tiệm đóng cửa vào ngày này`);
+  const holiday = db.holidays.find(h => h.startDate <= shift.workDate && h.endDate >= shift.workDate);
+  if (holiday) return outside(`${shift.workDate}: tiệm nghỉ (${holiday.reason}) nên không xếp ca được`, { holidayReason: holiday.reason });
+  if (minute(shift.endTime) <= minute(shift.startTime)) return bad('Giờ kết thúc ca phải sau giờ bắt đầu ca');
+  if (minute(shift.startTime) < minute(hours.openTime) || minute(shift.endTime) > minute(hours.closeTime)) {
+    const [open, close] = [hours.openTime.slice(0, 5), hours.closeTime.slice(0, 5)];
+    return outside(MSG.SHIFT_OUT_OF_SALON_HOURS(open, close), { openTime: open, closeTime: close });
+  }
+};
+const shiftISO = (from: string, n: number) => { const d = new Date(`${from}T12:00:00`); d.setDate(d.getDate() + n); return iso(d); };
+/** Thợ đang hoạt động và làm được trọn gói dịch vụ. */
+const capableStylists = (serviceIds: string[]) =>
+  db.stylists.filter(s => s.isActive && serviceIds.every(id => s.serviceIds.includes(id)));
+/** QA-03: dịch vụ chỉ hiện ở trang khách khi còn ít nhất một thợ đang hoạt động đảm nhận. */
+const hasActiveStylist = (service: ServiceItem) =>
+  service.stylistIds.some(id => db.stylists.some(s => s.id === id && s.isActive));
+/**
+ * QA-04 (khớp longestShiftInWeek ở backend): ca dài nhất, đã trừ giờ nghỉ, của các thợ làm được gói dịch vụ
+ * trong 7 ngày kể từ `from`. Bằng 0 nghĩa là chưa có ca nào để so sánh nên không cảnh báo.
+ */
+const longestShiftInWeek = (stylistIds: string[], from: string) => {
+  const to = shiftISO(from, 6);
+  return db.shifts.filter(sh => stylistIds.includes(sh.stylistId) && sh.workDate >= from && sh.workDate <= to)
+    .reduce((max, sh) => Math.max(max, minute(sh.endTime) - minute(sh.startTime) -
+      (sh.breakStart && sh.breakEnd ? minute(sh.breakEnd) - minute(sh.breakStart) : 0)), 0);
+};
+const cartWarning = (serviceIds: string[], duration: number, from = day()) => {
+  const longest = longestShiftInWeek(capableStylists(serviceIds).map(s => s.id), from);
+  return { longestShiftMinutes: longest, exceedsLongestShift: longest > 0 && duration > longest };
+};
+/** Tìm `count` ngày gần nhất (tối đa 30 ngày tới) còn khung giờ trống; không tính ngày đang xem. */
+const nearestAvailableDates = (from: string, serviceIds: string[], stylistId: string | undefined, count: number) => {
+  const found: string[] = [];
+  let cursor = from < day() ? shiftISO(day(), -1) : from;
+  for (let i = 1; i <= 30 && found.length < count; i += 1) {
+    cursor = shiftISO(cursor, 1);
+    if (availability(cursor, serviceIds, stylistId, undefined, false).slots.length) found.push(cursor);
+  }
+  return found;
+};
+const availability = (date: string, serviceIds: string[], stylistId?: string, excludeId?: string, withSuggestions = true) => {
   const duration = serviceIds.reduce((sum, id) => sum + (db.services.find(s => s.id === id)?.durationMinutes ?? 0), 0);
   const price = serviceIds.reduce((sum, id) => sum + (db.services.find(s => s.id === id)?.price ?? 0), 0);
   const hours = db.workingHours.find(h => h.dayOfWeek === new Date(`${date}T12:00:00`).getDay());
   const open = hours?.isClosed ? 21 * 60 : minute(hours?.openTime ?? '08:00');
   const close = hours?.isClosed ? 21 * 60 : minute(hours?.closeTime ?? '21:00');
+  const candidates = capableStylists(serviceIds).filter(s => !stylistId || s.id === stylistId);
   const slots = [];
   for (let m = open; m <= 20 * 60 + 30 && m + duration <= close; m += 15) {
     const time = addMinutes('00:00', m);
     if (date === day() && m <= new Date().getHours() * 60 + new Date().getMinutes() + 60) continue;
-    const ids = db.stylists.filter(s => s.isActive && (!stylistId || s.id === stylistId) &&
-      serviceIds.every(id => s.serviceIds.includes(id)) &&
+    // QA-08: thợ KHÔNG có ca trong ngày thì tuyệt đối không nhận lịch (trước đây "không có ca" bị coi là rảnh cả ngày)
+    const ids = candidates.filter(s =>
       (() => { const shifts = db.shifts.filter(shift => shift.stylistId === s.id && shift.workDate === date);
-        return !shifts.length || shifts.some(shift => m >= minute(shift.startTime) && m + duration <= minute(shift.endTime) &&
+        return shifts.some(shift => m >= minute(shift.startTime) && m + duration <= minute(shift.endTime) &&
           (!shift.breakStart || !shift.breakEnd || m + duration <= minute(shift.breakStart) || m >= minute(shift.breakEnd))); })() &&
       !db.timeOff.some(t => t.stylistId === s.id && t.offDate === date &&
         (!t.startTime || !t.endTime || (m < minute(t.endTime) && m + duration > minute(t.startTime)))) &&
@@ -389,18 +490,28 @@ const availability = (date: string, serviceIds: string[], stylistId?: string, ex
     if (ids.length) slots.push({ time, stylistIds: ids });
   }
   const closed = db.holidays.find(h => h.startDate <= date && h.endDate >= date);
+  const shown = closed || hours?.isClosed ? [] : slots;
+  const longest = longestShiftInWeek(candidates.map(s => s.id), date);
   return { date, totalDurationMinutes: duration, estimatedTotal: price, estimatedTotalText: money(price),
     salonClosed: !!closed || !!hours?.isClosed, closedReason: closed?.reason ?? (hours?.isClosed ? 'Salon nghỉ trong ngày này' : null),
-    slots: closed || hours?.isClosed ? [] : slots,
-    suggestedDates: [day(1), day(2), day(3)], exceedsLongestShift: duration > 780 };
+    slots: shown,
+    // Chỉ gợi ý ngày khác khi ngày đang chọn hết chỗ — và là những ngày THẬT SỰ còn khung giờ
+    suggestedDates: shown.length || !withSuggestions ? [] : nearestAvailableDates(date, serviceIds, stylistId, 2),
+    longestShiftMinutes: longest, exceedsLongestShift: longest > 0 && duration > longest };
 };
 /** Số lịch hẹn (mọi trạng thái) đang tham chiếu dịch vụ — lớn hơn 0 thì cấm xoá cứng, chỉ được ngừng bán (S1-05). */
 const serviceUsage = (serviceId: string) =>
   db.appointments.filter(a => a.services.some(s => s.serviceId === serviceId)).length;
 const createAppointment = (p: Record<string, unknown>, walkIn = false) => {
+  // QA-06: tối đa 5 lượt đặt/giờ cho mỗi IP (lễ tân đặt tại quầy thì không bị giới hạn)
+  if (!walkIn && !hitLimit('booking_ip', BOOKING_LIMIT_PER_HOUR)) tooManyRequests(MSG.BOOKING_RATE_LIMITED, 3600, 'RATE_LIMITED');
   const ids = ((p.serviceIds as string[]) ?? []).filter(id => db.services.some(s => s.id === id));
   if (!ids.length) bad('Vui lòng chọn ít nhất một dịch vụ còn đang bán', 'serviceIds');
   const phone = String(p.phone ?? '').trim();
+  // QA-05: mỗi số điện thoại chỉ được có tối đa 3 lịch chưa hoàn tất
+  const active = db.appointments.filter(a => a.customer.phone === phone && ACTIVE_STATUSES.includes(a.status)).length;
+  if (active >= MAX_ACTIVE_BOOKINGS_PER_PHONE) bad(MSG.TOO_MANY_ACTIVE_BOOKINGS(active), 'phone', 400,
+    { code: 'MAX_APPOINTMENTS_EXCEEDED', details: { activeAppointments: active, maxActiveAppointments: MAX_ACTIVE_BOOKINGS_PER_PHONE } });
   const date = String(p.date); const time = String(p.time);
   const available = availability(date, ids, p.stylistId ? String(p.stylistId) : undefined);
   const slot = available.slots.find(s => s.time === time);
@@ -477,7 +588,7 @@ const dayTimeline = (date: string, stylistId?: string) => {
   return { date, dayLabel: new Intl.DateTimeFormat('vi-VN', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date(`${date}T00:00:00`)),
     salonOpen: hours?.openTime ?? '08:00', salonClose: hours?.closeTime ?? '21:00',
     salonClosed: closed, closedReason: holiday?.reason ?? (hours?.isClosed ? 'Salon nghỉ trong ngày này' : null), stepMinutes: 15,
-    columns: stylists.map(s => ({ stylistId: s.id, stylistName: s.fullName, avatarUrl: s.avatarUrl,
+    columns: stylists.map(s => ({ stylistId: s.id, stylistName: s.fullName, avatarUrl: s.avatarUrl, gender: s.gender,
       workingBlocks: (closed ? [] : db.shifts.filter(shift => shift.stylistId === s.id && shift.workDate === date))
         .map(shift => ({ start: shift.startTime, end: shift.endTime })),
       offBlocks: db.shifts.filter(shift => shift.stylistId === s.id && shift.workDate === date && shift.breakStart && shift.breakEnd)
@@ -541,19 +652,23 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
     // QA-12: tìm không dấu và CHỈ theo tên dịch vụ, khớp backend thật
     const search = String(q.search ?? '').trim();
     return db.categories.map(c => ({ categoryId: c.id, categoryName: c.name, displayOrder: c.displayOrder,
-      services: db.services.filter(s => s.isActive && s.categoryId === c.id && (!search || matchSearch(s.name, search)))
+      services: db.services.filter(s => s.isActive && hasActiveStylist(s) && s.categoryId === c.id && (!search || matchSearch(s.name, search)))
         .map(({ id, name, durationMinutes, price, priceText, description }) => ({ id, name, durationMinutes, price, priceText, description }))
     })).filter(group => group.services.length);
   }
   if (path === '/public/quote') {
     const services = db.services.filter(s => (p.serviceIds as string[]).includes(s.id));
     const total = services.reduce((sum, s) => sum + s.price, 0);
-    return { services, totalDurationMinutes: services.reduce((sum, s) => sum + s.durationMinutes, 0),
-      estimatedTotal: total, estimatedTotalText: money(total), note: 'Giá chưa bao gồm các dịch vụ phát sinh tại quầy.' };
+    const duration = services.reduce((sum, s) => sum + s.durationMinutes, 0);
+    const warning = cartWarning(services.map(s => s.id), duration);
+    return { services, totalDurationMinutes: duration,
+      estimatedTotal: total, estimatedTotalText: money(total), note: 'Giá chưa bao gồm các dịch vụ phát sinh tại quầy.',
+      longestShiftMinutes: warning.longestShiftMinutes, exceedsLongestShift: warning.exceedsLongestShift,
+      warningCode: warning.exceedsLongestShift ? 'EXCEEDS_LONGEST_SHIFT' : null };
   }
   if (path === '/public/stylists') return db.stylists.filter(s => s.isActive &&
     String(q.serviceIds ?? '').split(',').filter(Boolean).every(id => s.serviceIds.includes(id)))
-    .map(({ id, fullName, avatarUrl, bio, avgRating }) => ({ id, fullName, avatarUrl, bio, avgRating }));
+    .map(({ id, fullName, avatarUrl, gender, bio, avgRating }) => ({ id, fullName, avatarUrl, gender, bio, avgRating }));
   if (path === '/public/availability' || path === '/appointments/availability')
     return availability(String(q.date), String(q.serviceIds ?? '').split(','), q.stylistId ? String(q.stylistId) : undefined,
       q.excludeAppointmentId ? String(q.excludeAppointmentId) : undefined);
@@ -564,11 +679,21 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
         durationMinutes: s.durationMinutes, price: s.price })), totalDurationMinutes: a.totalDurationMinutes,
       estimatedTotal: a.estimatedTotal, status: a.status, nameConflict: false, emailQueued: false };
   }
-  if (path === '/public/lookup') return db.appointments.filter(a =>
-    (p.code && a.code.toUpperCase() === String(p.code).toUpperCase()) ||
-    (p.phone && a.customer.phone === p.phone)).map(publicAppointment);
+  if (path === '/public/lookup') {
+    if (!p.code && !p.phone) bad('Vui lòng nhập mã tra cứu hoặc số điện thoại');
+    assertNotLookupLocked();
+    const found = db.appointments.filter(a => p.code
+      ? a.code.toUpperCase() === String(p.code).trim().toUpperCase()
+      : a.customer.phone === p.phone && [...ACTIVE_STATUSES, 'completed'].includes(a.status));
+    // QA-07: chỉ lượt tra SAI (hoặc tra theo SĐT) bị đếm; quá 10 lượt/giờ thì khoá 30 phút
+    if (!found.length || !p.code) countLookupAttempt();
+    if (!found.length) bad(MSG.CODE_NOT_FOUND, undefined, 404);
+    return found.map(publicAppointment);
+  }
   if (path === '/public/cancel') {
-    const a = db.appointments.find(item => item.code.toUpperCase() === String(p.code).toUpperCase()) ?? bad('Không tìm thấy lịch hẹn');
+    assertNotLookupLocked();
+    const a = db.appointments.find(item => item.code.toUpperCase() === String(p.code).trim().toUpperCase());
+    if (!a) { countLookupAttempt(); return bad(MSG.CODE_NOT_FOUND, undefined, 404); }
     if (new Date(a.startAt).getTime() - Date.now() < 120 * 60000) bad('Chỉ được tự huỷ khi còn ít nhất 120 phút trước giờ hẹn');
     a.status = 'cancelled'; a.statusLabel = labels.cancelled; a.cancelReason = String(p.reason || 'Khách tự huỷ');
     a.cancelledAt = new Date().toISOString(); a.cancelledByLabel = 'Khách hàng'; save();
@@ -696,12 +821,13 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
     (q.isActive === undefined || s.isActive === q.isActive) &&
     (!q.serviceId || s.serviceIds.includes(String(q.serviceId)))).map(withEmail);
   if (path === '/stylists' && method === 'post') {
+    if (p.gender !== 'male' && p.gender !== 'female') bad(MSG.GENDER_REQUIRED, 'gender');
     const email = String(p.email ?? '').trim().toLowerCase();
     if (email && !EMAIL_RE.test(email)) bad('Email không đúng định dạng', 'email');
     if (email && emailTaken(email)) bad(MSG.EMAIL_DUPLICATED, 'email', 409);
     let tempPassword: string | null = null;
     const item: Stylist = { id: uid(), userId: null, fullName: String(p.fullName).trim(), phone: String(p.phone || '') || null,
-      avatarUrl: null, bio: String(p.bio || '') || null, isActive: p.isActive !== false, serviceIds: [],
+      avatarUrl: null, gender: p.gender as StylistGender, bio: String(p.bio || '') || null, isActive: p.isActive !== false, serviceIds: [],
       serviceNames: [], avgRating: null, reviewCount: 0 };
     if (email) {
       // Hồ sơ thợ có email -> tạo luôn tài khoản vai trò Thợ, buộc đổi mật khẩu tạm ở lần đăng nhập đầu
@@ -720,7 +846,7 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
     const stylist = db.stylists.find(s => s.id === stylistMatch[1]) ?? bad('Không tìm thấy thợ');
     if (stylistMatch[2] === 'shifts') {
       for (const shift of p.shifts as Shift[]) {
-        if (minute(shift.startTime) >= minute(shift.endTime)) bad('Giờ kết thúc phải sau giờ bắt đầu');
+        assertShiftInSalonHours(shift);
         if (db.shifts.some(existing => existing.stylistId === stylist.id && existing.workDate === shift.workDate &&
           minute(shift.startTime) < minute(existing.endTime) && minute(shift.endTime) > minute(existing.startTime)))
           bad('Ca làm bị chồng lấn với ca hiện có');
@@ -742,7 +868,8 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
     }
     if (stylistMatch[2] === 'avatar') return withEmail(stylist);
     if (method === 'patch') {
-      Object.assign(stylist, pick(p, ['fullName', 'phone', 'bio', 'isActive', 'avatarUrl']));
+      if (p.gender !== undefined && p.gender !== 'male' && p.gender !== 'female') bad(MSG.GENDER_REQUIRED, 'gender');
+      Object.assign(stylist, pick(p, ['fullName', 'phone', 'gender', 'bio', 'isActive', 'avatarUrl']));
       if (p.serviceIds) setStylistServices(stylist.id, p.serviceIds as string[]);
       // Đồng bộ sang tài khoản nhân sự: họ tên, SĐT, trạng thái (thợ nghỉ việc mất quyền truy cập ngay)
       const user = db.users.find(u => u.id === stylist.userId);
@@ -776,7 +903,19 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
   const shiftMatch = path.match(/^\/shifts\/([^/]+)$/);
   if (shiftMatch) {
     const shift = db.shifts.find(s => s.id === shiftMatch[1]) ?? bad('Không tìm thấy ca');
-    if (method === 'delete') { db.shifts = db.shifts.filter(s => s.id !== shift.id); save(); return {}; }
+    if (method === 'delete') {
+      // QA-02: ca còn lịch hẹn chưa hoàn tất bên trong thì chặn xoá và trả danh sách lịch liên quan
+      const inside = db.appointments.filter(a => a.stylist.id === shift.stylistId && a.date === shift.workDate &&
+        ACTIVE_STATUSES.includes(a.status) && minute(a.startTime) >= minute(shift.startTime) && minute(a.startTime) < minute(shift.endTime));
+      if (inside.length) {
+        const appointments = inside.map(a => ({ id: a.id, code: a.code, startTime: a.startTime, endTime: a.endTime,
+          customerName: a.customer.fullName, status: a.status }));
+        bad(`${MSG.SHIFT_HAS_APPOINTMENTS}: ${appointments.map(a => `${a.code} (${a.startTime}–${a.endTime}, ${a.customerName})`).join('; ')}`,
+          undefined, 409, { code: 'SHIFT_HAS_APPOINTMENTS', details: { appointments } });
+      }
+      db.shifts = db.shifts.filter(s => s.id !== shift.id); save(); return {};
+    }
+    assertShiftInSalonHours({ ...shift, ...p } as Shift);
     Object.assign(shift, p); save(); return shift;
   }
   if (path === '/time-off' && method === 'get') return db.timeOff.filter(t =>
@@ -901,7 +1040,7 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
     db.users.push(user); db.auth[user.id] = { password: tempPassword, failed: 0 };
     if (user.role === 'stylist' && p.createStylistProfile !== false) {
       const profile: Stylist = { id: uid(), userId: user.id, fullName: user.fullName, phone: user.phone, avatarUrl: null,
-        bio: null, isActive: user.isActive, serviceIds: [], serviceNames: [], avgRating: null, reviewCount: 0 };
+        gender: null, bio: null, isActive: user.isActive, serviceIds: [], serviceNames: [], avgRating: null, reviewCount: 0 };
       db.stylists.push(profile); user.stylistId = profile.id;
     }
     save(); record('CREATE', 'user', `Thêm ${user.fullName}`); return { ...user, tempPasswordSentTo: user.email, tempPassword };
@@ -932,7 +1071,7 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
       profile.isActive = user.isActive && user.role === 'stylist';
     } else if (user.role === 'stylist') {
       const created: Stylist = { id: uid(), userId: user.id, fullName: user.fullName, phone: user.phone, avatarUrl: null,
-        bio: null, isActive: user.isActive, serviceIds: [], serviceNames: [], avgRating: null, reviewCount: 0 };
+        gender: null, bio: null, isActive: user.isActive, serviceIds: [], serviceNames: [], avgRating: null, reviewCount: 0 };
       db.stylists.push(created); user.stylistId = created.id;
     }
     save(); record('UPDATE', 'user', `Cập nhật ${user.fullName}`); return user;

@@ -56,7 +56,7 @@ export class PublicBookingController {
   async stylists(@Query() query: CapableStylistsQueryDto) {
     const list = await this.availability.capableStylists(query.serviceIds);
     return list.map((s) => ({
-      id: s.id, fullName: s.fullName, avatarUrl: s.avatarUrl, bio: s.bio,
+      id: s.id, fullName: s.fullName, avatarUrl: s.avatarUrl, gender: s.gender, bio: s.bio,
     }));
   }
 

@@ -155,7 +155,7 @@ describe('Hồi quy lỗi QA (EP-01 → EP-03)', () => {
     beforeAll(async () => {
       serviceId = (await shortService()).id;
       const res = await request(server).post('/api/stylists').set('Authorization', `Bearer ${token.owner}`)
-        .send({ fullName: `QA Thợ ${runId}`, phone: phone('035', 0), serviceIds: [serviceId] }).expect(201);
+        .send({ fullName: `QA Thợ ${runId}`, gender: 'female', phone: phone('035', 0), serviceIds: [serviceId] }).expect(201);
       stylistId = res.body.data.id;
     });
 

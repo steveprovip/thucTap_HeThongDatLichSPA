@@ -7,6 +7,8 @@
  * Nếu sau này một ảnh bị gỡ, SmartImage tự thử ảnh dự phòng cùng chủ đề (KIND_ALTERNATES)
  * rồi mới tới nền gradient — không bao giờ lộ khung ảnh vỡ.
  */
+import type { StylistGender } from '@/types';
+
 const u = (id: string, w = 800, q = 80) => `https://images.unsplash.com/photo-${id}?w=${w}&q=${q}&auto=format&fit=crop`;
 
 export const IMAGES = {
@@ -53,7 +55,11 @@ const STYLIST_BY_ID: Record<string, string> = {
   st4: STYLIST_PHOTOS.stylist_4, // Phạm Quốc Bảo      — stylist4@salon.vn
   st5: STYLIST_PHOTOS.stylist_5, // Võ Kim Chi         — stylist5@salon.vn
 };
-const STYLIST_POOL = Object.values(STYLIST_PHOTOS);
+/** Ảnh theo giới tính — ảnh tự gán cho thợ mới luôn khớp giới tính đã chọn. */
+const STYLIST_POOL: Record<StylistGender, string[]> = {
+  male: [STYLIST_PHOTOS.stylist_2, STYLIST_PHOTOS.stylist_4],
+  female: [STYLIST_PHOTOS.stylist_1, STYLIST_PHOTOS.stylist_3, STYLIST_PHOTOS.stylist_5],
+};
 
 /** Chủ đề hình ảnh của dịch vụ — quyết định ảnh dự phòng + nền gradient khi ảnh không tải được. */
 export type MediaKind = 'hair' | 'wash' | 'skin' | 'massage' | 'combo' | 'nail' | 'makeup' | 'spa' | 'person';
@@ -176,11 +182,16 @@ const hash = (s: string) => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >
 
 /**
  * Ảnh đại diện thợ: giữ ảnh tiệm tự tải lên; thợ mẫu dùng ảnh cố định;
- * thợ mới chưa có ảnh nhận một ảnh ổn định theo mã.
+ * thợ chưa có ảnh nhận một ảnh ổn định theo mã NHƯNG đúng giới tính (Nam/Nữ).
+ * Chưa rõ giới tính và chưa có ảnh → trả chuỗi rỗng để hiện chữ viết tắt, không gán bừa ảnh sai giới.
  */
-export function stylistPhoto(id: string, url?: string | null): string {
+export function stylistPhoto(id: string, url?: string | null, gender?: StylistGender | null): string {
   if (url && !url.includes('images.unsplash.com')) return url;
-  return STYLIST_BY_ID[id] ?? url ?? STYLIST_POOL[hash(id) % STYLIST_POOL.length];
+  const own = STYLIST_BY_ID[id] ?? url ?? '';
+  if (!gender) return own;
+  const pool = STYLIST_POOL[gender];
+  if (own && (pool.includes(own) || !Object.values(STYLIST_POOL).flat().includes(own))) return own;
+  return pool[hash(id) % pool.length];
 }
 
 export const initials = (name: string) =>
