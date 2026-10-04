@@ -4,6 +4,7 @@ import {
   CalendarX2,
   Clock,
   Hash,
+  Lock,
   Phone,
   Scissors,
   Search,
@@ -12,7 +13,7 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-import { getErrorMessage, publicApi } from "@/api";
+import { getErrorCode, getErrorDetails, getErrorMessage, publicApi } from "@/api";
 import type { AppointmentStatus, PublicAppointment } from "@/types";
 import {
   Button,
@@ -26,6 +27,7 @@ import {
   StatusBadge,
 } from "@/components";
 import {
+  formatCountdown,
   formatDuration,
   formatWeekdayDate,
   VN_PHONE_MESSAGE,
@@ -39,6 +41,25 @@ const CANCEL_CUTOFF_MIN = 120;
 /** Mã tra cứu do máy chủ sinh: đúng 8 ký tự chữ/số, không có tiền tố (S2-07). */
 const CODE_LENGTH = 8;
 const CODE_BODY = /^[A-Z0-9]{8}$/;
+/** Máy chủ khoá tra cứu 30 phút sau 10 lần sai/giờ/IP (LOOKUP_LOCKED). Nhớ mốc mở khoá để tải lại trang không mở khoá oan. */
+const LOCK_KEY = "salon.lookupLockedUntil";
+const LOCK_DEFAULT_SECONDS = 30 * 60;
+const readLock = (): number | null => {
+  try {
+    const until = Number(localStorage.getItem(LOCK_KEY));
+    return until > Date.now() ? until : null;
+  } catch {
+    return null;
+  }
+};
+const writeLock = (until: number | null) => {
+  try {
+    if (until === null) localStorage.removeItem(LOCK_KEY);
+    else localStorage.setItem(LOCK_KEY, String(until));
+  } catch {
+    /* không có localStorage: vẫn khoá được trong phiên hiện tại */
+  }
+};
 
 const CANCEL_REASONS = [
   "Bận việc đột xuất",
@@ -94,6 +115,34 @@ export function LookupPage() {
   const toast = useToast();
   const now = useNow();
 
+  // QA-02: bị khoá thì vô hiệu hoá tab, ô nhập và nút "Tra cứu" tới đúng lúc mở khoá
+  const [lockedUntil, setLockedUntil] = useState<number | null>(readLock);
+  const [lockNow, setLockNow] = useState(() => Date.now());
+  const isLocked = lockedUntil !== null && lockedUntil > lockNow;
+  useEffect(() => {
+    if (lockedUntil === null) return;
+    const id = window.setInterval(() => {
+      const t = Date.now();
+      setLockNow(t);
+      if (t >= lockedUntil) {
+        setLockedUntil(null);
+        writeLock(null);
+      }
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [lockedUntil]);
+
+  /** Lỗi LOOKUP_LOCKED (429): khoá giao diện theo `retryAfterSeconds` của máy chủ. Trả về true nếu đúng lỗi này. */
+  const lockFromError = useCallback((e: unknown): boolean => {
+    if (getErrorCode(e) !== "LOOKUP_LOCKED") return false;
+    const t = Date.now();
+    const until = t + (getErrorDetails(e).retryAfterSeconds ?? LOCK_DEFAULT_SECONDS) * 1000;
+    setLockNow(t);
+    setLockedUntil(until);
+    writeLock(until);
+    return true;
+  }, []);
+
   const search = useCallback(
     async (payload: { code?: string; phone?: string }) => {
       setLoading(true);
@@ -101,17 +150,21 @@ export function LookupPage() {
         const res = await publicApi.lookup(payload);
         setItems([...res].sort((a, b) => startMs(b) - startMs(a)));
       } catch (e) {
-        setItems([]);
-        toast.error(getErrorMessage(e));
+        if (lockFromError(e)) {
+          setItems(null);
+        } else {
+          setItems([]);
+          toast.error(getErrorMessage(e));
+        }
       } finally {
         setLoading(false);
       }
     },
-    [toast],
+    [toast, lockFromError],
   );
 
   useEffect(() => {
-    if (initialCode && CODE_BODY.test(normalizeBody(initialCode))) {
+    if (initialCode && !isLocked && CODE_BODY.test(normalizeBody(initialCode))) {
       void search({ code: normalizeBody(initialCode) });
     }
     // chỉ chạy một lần khi mở trang với tham số code
@@ -120,6 +173,7 @@ export function LookupPage() {
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLocked) return;
     setError(null);
     if (mode === "code") {
       if (!CODE_BODY.test(codeBody))
@@ -153,7 +207,7 @@ export function LookupPage() {
         (list ?? []).map((a) => (a.code === updated.code ? updated : a)),
       );
     } catch (e) {
-      toast.error(getErrorMessage(e));
+      if (!lockFromError(e)) toast.error(getErrorMessage(e));
     }
   };
 
@@ -190,6 +244,32 @@ export function LookupPage() {
       </div>
 
       <Card className="p-4 sm:p-5">
+        {isLocked && lockedUntil !== null && (
+          <Notice
+            tone="warning"
+            icon={<Lock size={16} />}
+            title="Tra cứu đang tạm dừng"
+            className="mb-3"
+          >
+            <p>
+              Bạn đã thử sai quá 10 lần. Chức năng tra cứu tạm khóa trong 30 phút
+              để bảo mật thông tin.
+            </p>
+            <p className="mt-1">
+              Vui lòng thử lại sau{" "}
+              <strong className="font-mono tabular-nums">
+                {formatCountdown(lockedUntil - lockNow)}
+              </strong>{" "}
+              (mở lại lúc{" "}
+              {new Date(lockedUntil).toLocaleTimeString("vi-VN", {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+              ).
+            </p>
+          </Notice>
+        )}
+
         <div
           className="mb-3 inline-flex rounded-xl border border-slate-200 bg-slate-100 p-1"
           role="tablist"
@@ -199,11 +279,12 @@ export function LookupPage() {
               key={m}
               role="tab"
               aria-selected={mode === m}
+              disabled={isLocked}
               onClick={() => {
                 setMode(m);
                 setError(null);
               }}
-              className={`flex min-h-[36px] items-center gap-1.5 rounded-lg px-3.5 text-sm font-semibold transition-colors
+              className={`flex min-h-[36px] items-center gap-1.5 rounded-lg px-3.5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60
                       ${mode === m ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
             >
               {m === "code" ? (
@@ -231,7 +312,8 @@ export function LookupPage() {
                 error={error ?? undefined}
               >
                 <div
-                  className={`flex items-stretch overflow-hidden rounded-xl border bg-white focus-within:ring-2 focus-within:ring-teal-500/20
+                  className={`flex items-stretch overflow-hidden rounded-xl border focus-within:ring-2 focus-within:ring-teal-500/20
+                                 ${isLocked ? "bg-slate-100" : "bg-white"}
                                  ${error ? "border-red-400" : "border-slate-300 focus-within:border-brand-500"}`}
                 >
                   <input
@@ -239,6 +321,7 @@ export function LookupPage() {
                     value={codeBody}
                     autoComplete="off"
                     spellCheck={false}
+                    disabled={isLocked}
                     placeholder="K7M2QP4X"
                     onChange={(e) => setCodeBody(normalizeBody(e.target.value))}
                     onPaste={(e) => {
@@ -247,7 +330,7 @@ export function LookupPage() {
                         normalizeBody(e.clipboardData.getData("text")),
                       );
                     }}
-                    className="min-h-[44px] w-full bg-transparent px-3 font-mono text-base uppercase tracking-[0.35em] text-slate-900 placeholder:tracking-[0.35em] placeholder:text-slate-400 focus:outline-none"
+                    className="min-h-[44px] w-full bg-transparent px-3 font-mono text-base uppercase tracking-[0.35em] text-slate-900 placeholder:tracking-[0.35em] placeholder:text-slate-400 focus:outline-none disabled:cursor-not-allowed disabled:text-slate-400"
                     aria-describedby="lk-code-hint"
                   />
                   <span
@@ -269,6 +352,7 @@ export function LookupPage() {
                   value={phone}
                   placeholder="0901234567"
                   inputMode="numeric"
+                  disabled={isLocked}
                   invalid={!!error}
                   onChange={(e) =>
                     setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))
@@ -280,10 +364,13 @@ export function LookupPage() {
           <Button
             type="submit"
             loading={loading}
-            icon={<Search size={16} />}
+            disabled={isLocked || loading}
+            icon={isLocked ? <Lock size={16} /> : <Search size={16} />}
             className="sm:mt-[26px]"
           >
-            Tra cứu
+            {isLocked && lockedUntil !== null
+              ? `Tạm khoá · ${formatCountdown(lockedUntil - lockNow)}`
+              : "Tra cứu"}
           </Button>
         </form>
       </Card>
@@ -415,7 +502,7 @@ export function LookupPage() {
                       variant="outline"
                       size="sm"
                       icon={<X size={14} />}
-                      disabled={!info.allowed}
+                      disabled={!info.allowed || isLocked}
                       title={
                         info.allowed
                           ? "Huỷ lịch hẹn"
