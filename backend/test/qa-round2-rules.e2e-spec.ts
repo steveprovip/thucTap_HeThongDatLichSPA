@@ -203,6 +203,15 @@ describe('QA vòng 04/10 — luật nghiệp vụ Sprint 2 trên máy chủ th�
       serviceIds: [serviceId], date, time, fullName: 'QA 08 Bất kỳ', phone: phone('095', 2),
     }).expect(201);
     expect(any.body.data.stylistName).toBe(`QA08 Có ca ${runId}`);
+
+    // Lịch tại quầy cũng không được gán cho thợ chưa xếp ca (trước đây API bỏ qua kiểm tra ca)
+    const walkIn = (stylistId: string, at: string, n: number) => request(server)
+      .post('/api/appointments/walk-in').set(auth())
+      .send({ serviceIds: [serviceId], date, time: at, stylistId, fullName: 'QA 08 Tại quầy', phone: phone('096', n) });
+    const walkInNoShift = await walkIn(noShift, plus(hours.open, 240), 3);
+    expect(walkInNoShift.status).toBe(400);
+    expect(walkInNoShift.body.message).toBe('Khung giờ không hợp lệ hoặc không còn trống');
+    expect((await walkIn(withShift, plus(hours.open, 240), 4)).status).toBe(201);
   }, 60000);
 
   it('QA-06: quá 5 lượt đặt từ một IP trong một giờ -> 429 + Retry-After, thông báo tiếng Việt', async () => {

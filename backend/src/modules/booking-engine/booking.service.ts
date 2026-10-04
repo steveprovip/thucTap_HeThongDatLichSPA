@@ -174,15 +174,14 @@ export class BookingService {
       if (!stylist.isActive) throw new BadRequestException(MSG.STYLIST_INACTIVE);
       const skill = await this.stylists.canDoAll(stylistId, dto.serviceIds);
       if (!skill.ok) throw new BadRequestException(MSG.STYLIST_MISSING_SKILL(skill.missing.join(', ')));
-      // QA-14: trước đây chọn đích danh thợ chỉ kiểm tra "không trùng lịch" trong giao dịch -> gửi thẳng API
-      // giờ ngoài ca, trong giờ nghỉ, ngày thợ xin nghỉ hay ngày tiệm đóng cửa vẫn đặt được.
-      if (isOnline) {
-        const verdict = await this.availability.checkSlot({
-          date: dto.date, time: dto.time, stylistId, totalDuration, now,
-        });
-        if (verdict === 'invalid') throw new BadRequestException(MSG.SLOT_INVALID);
-        if (verdict === 'taken') throw new ConflictException(MSG.SLOT_TAKEN);
-      }
+      // QA-14 / QA-08: chọn đích danh thợ cũng phải nằm trong ca của thợ — gửi thẳng API giờ ngoài ca, trong giờ nghỉ,
+      // ngày thợ xin nghỉ, ngày tiệm đóng cửa hay thợ CHƯA XẾP CA đều bị từ chối. Áp dụng cả lịch tại quầy
+      // (chỉ được bỏ mốc đặt trước 60 phút), không chỉ lịch đặt online.
+      const verdict = await this.availability.checkSlot({
+        date: dto.date, time: dto.time, stylistId, totalDuration, ignoreLeadTime: params.ignoreLeadTime, now,
+      });
+      if (verdict === 'invalid') throw new BadRequestException(MSG.SLOT_INVALID);
+      if (verdict === 'taken') throw new ConflictException(MSG.SLOT_TAKEN);
     } else {
       const auto = await this.availability.pickAutoStylist({
         date: dto.date, time: dto.time, serviceIds: dto.serviceIds,

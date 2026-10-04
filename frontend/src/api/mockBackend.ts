@@ -65,6 +65,9 @@ const MSG = {
   BOOKING_RATE_LIMITED: 'Bạn đã đặt quá nhiều lịch trong một giờ, vui lòng thử lại sau',
   LOOKUP_RATE_LIMITED: (m: number) => `Bạn đã tra cứu sai quá nhiều lần, vui lòng thử lại sau ${m} phút`,
   CODE_NOT_FOUND: 'Không tìm thấy lịch hẹn với mã tra cứu này',
+  CODE_LENGTH: 'Mã tra cứu gồm 8 ký tự chữ hoặc số',
+  SLOT_TAKEN: 'Khung giờ vừa có người đặt, vui lòng chọn khung giờ khác',
+  SLOT_INVALID: 'Khung giờ không hợp lệ hoặc không còn trống',
 };
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const money = (value: number) => `${new Intl.NumberFormat('vi-VN').format(value)} đ`;
@@ -159,7 +162,7 @@ function makeAppointment(id: string, offset: number, time: string, status: Appoi
   const stylist = team.find(s => s.id === stylistId) ?? team[0];
   const startAt = `${date}T${time}:00+07:00`;
   return {
-    id, code: `SL-${id.toUpperCase().padStart(6, '0').slice(-6)}`, status, statusLabel: labels[status], source: 'online',
+    id, code: id.toUpperCase().padStart(8, '0').slice(-8), status, statusLabel: labels[status], source: 'online',
     date, startTime: time, endTime: addMinutes(time, duration), startAt,
     endAt: `${date}T${addMinutes(time, duration)}:00+07:00`, startAtText: `${time}, ${date}`,
     totalDurationMinutes: duration, estimatedTotal: price, estimatedTotalText: money(price),
@@ -228,7 +231,7 @@ function seed(): DemoDb {
         appointmentId: '000006', isRead: false, createdAt: new Date().toISOString() },
     ], audit: [
       { id: 'log1', actorEmail: 'reception@salon.vn', actorRole: 'receptionist', action: 'CONFIRM', entityType: 'appointment',
-        entityId: '000003', summary: 'Xác nhận lịch SL-000003', changes: null, ipAddress: '127.0.0.1', createdAt: new Date().toISOString() },
+        entityId: '000003', summary: 'Xác nhận lịch 00000003', changes: null, ipAddress: '127.0.0.1', createdAt: new Date().toISOString() },
       { id: 'log2', actorEmail: 'owner@salon.vn', actorRole: 'owner', action: 'UPDATE', entityType: 'service',
         entityId: 's1', summary: 'Cập nhật giá dịch vụ Cắt tóc nữ tạo kiểu', changes: { price: 320000 },
         ipAddress: '127.0.0.1', createdAt: new Date(Date.now() - 3600000).toISOString() },
@@ -464,6 +467,16 @@ const nearestAvailableDates = (from: string, serviceIds: string[], stylistId: st
   }
   return found;
 };
+/** QA-08: thợ có ca phủ trọn [m, m+duration), không rơi vào giờ nghỉ giữa ca / nghỉ riêng. KHÔNG có ca = không làm việc. */
+const worksAt = (stylistId: string, date: string, m: number, duration: number) =>
+  db.shifts.some(sh => sh.stylistId === stylistId && sh.workDate === date && m >= minute(sh.startTime) &&
+    m + duration <= minute(sh.endTime) &&
+    (!sh.breakStart || !sh.breakEnd || m + duration <= minute(sh.breakStart) || m >= minute(sh.breakEnd))) &&
+  !db.timeOff.some(t => t.stylistId === stylistId && t.offDate === date &&
+    (!t.startTime || !t.endTime || (m < minute(t.endTime) && m + duration > minute(t.startTime))));
+const hasClash = (stylistId: string, date: string, m: number, duration: number, excludeId?: string) =>
+  db.appointments.some(a => a.id !== excludeId && a.date === date && a.stylist.id === stylistId &&
+    !['cancelled', 'no_show'].includes(a.status) && m < minute(a.endTime) && m + duration > minute(a.startTime));
 const availability = (date: string, serviceIds: string[], stylistId?: string, excludeId?: string, withSuggestions = true) => {
   const duration = serviceIds.reduce((sum, id) => sum + (db.services.find(s => s.id === id)?.durationMinutes ?? 0), 0);
   const price = serviceIds.reduce((sum, id) => sum + (db.services.find(s => s.id === id)?.price ?? 0), 0);
@@ -476,14 +489,7 @@ const availability = (date: string, serviceIds: string[], stylistId?: string, ex
     const time = addMinutes('00:00', m);
     if (date === day() && m <= new Date().getHours() * 60 + new Date().getMinutes() + 60) continue;
     // QA-08: thợ KHÔNG có ca trong ngày thì tuyệt đối không nhận lịch (trước đây "không có ca" bị coi là rảnh cả ngày)
-    const ids = candidates.filter(s =>
-      (() => { const shifts = db.shifts.filter(shift => shift.stylistId === s.id && shift.workDate === date);
-        return shifts.some(shift => m >= minute(shift.startTime) && m + duration <= minute(shift.endTime) &&
-          (!shift.breakStart || !shift.breakEnd || m + duration <= minute(shift.breakStart) || m >= minute(shift.breakEnd))); })() &&
-      !db.timeOff.some(t => t.stylistId === s.id && t.offDate === date &&
-        (!t.startTime || !t.endTime || (m < minute(t.endTime) && m + duration > minute(t.startTime)))) &&
-      !db.appointments.some(a => a.id !== excludeId && a.date === date && a.stylist.id === s.id &&
-        !['cancelled', 'no_show'].includes(a.status) && m < minute(a.endTime) && m + duration > minute(a.startTime)))
+    const ids = candidates.filter(s => worksAt(s.id, date, m, duration) && !hasClash(s.id, date, m, duration, excludeId))
       .map(s => s.id);
     if (ids.length) slots.push({ time, stylistIds: ids });
   }
@@ -500,6 +506,14 @@ const availability = (date: string, serviceIds: string[], stylistId?: string, ex
 /** Số lịch hẹn (mọi trạng thái) đang tham chiếu dịch vụ — lớn hơn 0 thì cấm xoá cứng, chỉ được ngừng bán (S1-05). */
 const serviceUsage = (serviceId: string) =>
   db.appointments.filter(a => a.services.some(s => s.serviceId === serviceId)).length;
+/** Mã tra cứu 8 ký tự ngẫu nhiên, cùng bảng ký tự với backend (bỏ 0/O/1/I/L cho dễ đọc). */
+const CODE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
+const newCode = (): string => {
+  for (;;) {
+    const code = Array.from({ length: 8 }, () => CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)]).join('');
+    if (!db.appointments.some(a => a.code === code)) return code;
+  }
+};
 const createAppointment = (p: Record<string, unknown>, walkIn = false) => {
   // QA-06: tối đa 5 lượt đặt/giờ cho mỗi IP (lễ tân đặt tại quầy thì không bị giới hạn)
   if (!walkIn && !hitLimit('booking_ip', BOOKING_LIMIT_PER_HOUR)) tooManyRequests(MSG.BOOKING_RATE_LIMITED, 3600, 'RATE_LIMITED');
@@ -511,13 +525,25 @@ const createAppointment = (p: Record<string, unknown>, walkIn = false) => {
   if (active >= MAX_ACTIVE_BOOKINGS_PER_PHONE) bad(MSG.TOO_MANY_ACTIVE_BOOKINGS(active), 'phone', 400,
     { code: 'MAX_APPOINTMENTS_EXCEEDED', details: { activeAppointments: active, maxActiveAppointments: MAX_ACTIVE_BOOKINGS_PER_PHONE } });
   const date = String(p.date); const time = String(p.time);
-  const available = availability(date, ids, p.stylistId ? String(p.stylistId) : undefined);
-  const slot = available.slots.find(s => s.time === time);
-  if (!walkIn && !slot) bad('Khung giờ này vừa được đặt mất, vui lòng chọn giờ khác');
-  const stylistId = String(p.stylistId || slot?.stylistIds[0] || db.stylists[0].id);
+  let stylistId: string;
+  if (walkIn) {
+    // Lịch tại quầy chỉ được bỏ mốc đặt trước 60 phút và lưới 15 phút: thợ vẫn phải có ca và đang rảnh (QA-08)
+    const duration = ids.reduce((sum, id) => sum + (db.services.find(s => s.id === id)?.durationMinutes ?? 0), 0);
+    const at = minute(time);
+    const picked = p.stylistId ? String(p.stylistId)
+      : capableStylists(ids).find(s => worksAt(s.id, date, at, duration) && !hasClash(s.id, date, at, duration))?.id;
+    if (!picked || !worksAt(picked, date, at, duration)) return bad(MSG.SLOT_INVALID);
+    if (hasClash(picked, date, at, duration)) return bad(MSG.SLOT_TAKEN, undefined, 409);
+    stylistId = picked;
+  } else {
+    const slot = availability(date, ids, p.stylistId ? String(p.stylistId) : undefined).slots.find(s => s.time === time);
+    if (!slot) return bad('Khung giờ này vừa được đặt mất, vui lòng chọn giờ khác');
+    stylistId = String(p.stylistId || slot.stylistIds[0]);
+  }
   const existing = db.appointments.find(a => a.customer.phone === phone);
   const a = makeAppointment(uid().slice(0, 6), 0, time, walkIn ? 'confirmed' : 'pending',
     String(p.fullName ?? '').trim(), phone, stylistId, ids, db.services, db.stylists);
+  a.code = newCode();
   a.date = date; a.startAt = `${date}T${time}:00+07:00`; a.endAt = `${date}T${a.endTime}:00+07:00`;
   a.startAtText = `${time}, ${date}`; a.source = walkIn ? 'walk_in' : 'online'; a.customerNote = String(p.note || '') || null;
   a.customer.email = (String(p.email ?? '').trim() || existing?.customer.email) ?? null;
@@ -679,6 +705,7 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
   }
   if (path === '/public/lookup') {
     if (!p.code && !p.phone) bad('Vui lòng nhập mã tra cứu hoặc số điện thoại');
+    if (String(p.code ?? '').length > 8) bad(MSG.CODE_LENGTH, 'code');
     assertNotLookupLocked();
     const found = db.appointments.filter(a => p.code
       ? a.code.toUpperCase() === String(p.code).trim().toUpperCase()
@@ -689,6 +716,7 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
     return found.map(publicAppointment);
   }
   if (path === '/public/cancel') {
+    if (String(p.code ?? '').length > 8) bad(MSG.CODE_LENGTH, 'code');
     assertNotLookupLocked();
     const a = db.appointments.find(item => item.code.toUpperCase() === String(p.code).trim().toUpperCase());
     if (!a) { countLookupAttempt(); return bad(MSG.CODE_NOT_FOUND, undefined, 404); }
@@ -741,7 +769,7 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
     if (action === 'customer-history') return { customerId: a.customer.id,
       isNewCustomer: customerStats(a.customer.phone).totalVisits === 0,
       history: db.appointments.filter(item => item.customer.phone === a.customer.phone && item.id !== a.id).map(item => ({
-        appointmentId: item.id, code: item.code, date: item.date, status: item.status,
+        appointmentId: item.id, code: item.code, date: item.startAt, status: item.status,
         stylistName: item.stylist.fullName, services: item.services.map(s => s.name), technicalNote: db.notes[item.id] ?? null })) };
     if (action === 'service-note') { db.notes[a.id] = String(p.content); save(); return { content: p.content }; }
     const status: Record<string, AppointmentStatus> = { confirm: 'confirmed', reject: 'cancelled',
@@ -933,14 +961,14 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
     const phone = decodeURIComponent(path.split('/')[3] ?? '');
     const customer = customerList().find(c => c.phone === phone) ?? null;
     return { found: !!customer, customer, history: customer ? db.appointments.filter(a => a.customer.phone === phone)
-      .map(a => ({ appointmentId: a.id, code: a.code, date: a.date, status: a.status, stylistName: a.stylist.fullName,
+      .map(a => ({ appointmentId: a.id, code: a.code, date: a.startAt, status: a.status, stylistName: a.stylist.fullName,
         services: a.services.map(s => s.name), technicalNote: db.notes[a.id] ?? null })) : [] };
   }
   const customerMatch = path.match(/^\/customers\/([^/]+)(?:\/(history))?$/);
   if (customerMatch) {
     const customer = customerList().find(c => c.id === customerMatch[1]) ?? bad('Không tìm thấy khách hàng');
     if (customerMatch[2]) return db.appointments.filter(a => a.customer.phone === customer.phone).map(a => ({
-      appointmentId: a.id, code: a.code, date: a.date, status: a.status, stylistName: a.stylist.fullName,
+      appointmentId: a.id, code: a.code, date: a.startAt, status: a.status, stylistName: a.stylist.fullName,
       services: a.services.map(s => s.name), technicalNote: db.notes[a.id] ?? null }));
     if (method === 'patch') { db.notes[customer.phone] = String(p.note || ''); save(); return { ...customer, note: db.notes[customer.phone] }; }
     return customer;
