@@ -235,7 +235,7 @@ export function AppointmentDrawer({ appointment, onClose, onChanged }: Appointme
               <ul className="mt-2 space-y-1.5 text-xs text-ink-soft">
                 {history.slice(0, 8).map((h) => (
                   <li key={h.appointmentId} className="border-b border-slate-200 pb-1.5 last:border-0">
-                    <span className="font-medium">{formatDate(`${h.date}T00:00:00+07:00`)}</span> · {h.services.join(', ')} · thợ {h.stylistName}
+                    <span className="font-medium">{formatDate(h.date)}</span> · {h.services.join(', ')} · thợ {h.stylistName}
                     <span className="ml-1 text-ink-muted">({STATUS_LABELS[h.status]})</span>
                     {h.technicalNote && <em className="block text-ink-muted">Ghi chú: {h.technicalNote}</em>}
                   </li>
