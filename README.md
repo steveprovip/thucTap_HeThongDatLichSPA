@@ -71,7 +71,11 @@ Demo không cần máy chủ (`npm run dev:demo`, dữ liệu trong trình duy�
   thoại *“Nhân sự mới đã được tạo thành công!”* kèm nút **Sao chép mật khẩu**, đồng thời được gửi qua email
   (xem ở Maildev http://localhost:1080). Lần đăng nhập đầu tiên bắt buộc đổi mật khẩu. Nút 🔑 *Cấp lại mật khẩu tạm*
   hoạt động tương tự.
-- Bản demo lưu dữ liệu trong `localStorage` (khoá `salon.demo.v5`). Muốn về dữ liệu mẫu ban đầu: xoá khoá đó
+- Chạy `npm run dev` khi **thiếu `frontend/.env`** (tệp bị gitignore, máy mới clone không có) sẽ vào **chế độ Demo**:
+  dữ liệu giả trong trình duyệt, không gọi backend. Muốn test API thật: `copy frontend\.env.example frontend\.env`
+  (`VITE_DEMO_MODE=false`) hoặc dùng `run_project.bat`. Bản Demo có ô *"Chế độ demo · Xem vai trò"* ở góc dưới bên phải.
+  Quy trình test lại lỗi QA: [`docs/RUNBOOK-TEST-LAI-QA-04102027.md`](docs/RUNBOOK-TEST-LAI-QA-04102027.md).
+- Bản demo lưu dữ liệu trong `localStorage` (khoá `salon.demo.v6`). Muốn về dữ liệu mẫu ban đầu: xoá khoá đó
   trong DevTools → Application → Local Storage rồi tải lại trang.
 
 Khách hàng **không cần tài khoản** — đặt lịch và tra cứu bằng số điện thoại / mã 8 ký tự.
