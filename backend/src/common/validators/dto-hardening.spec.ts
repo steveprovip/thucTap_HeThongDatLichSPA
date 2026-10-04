@@ -6,7 +6,9 @@ import {
   AvailabilityQueryDto, BulkReassignDto, CapableStylistsQueryDto, CreateBookingDto, RescheduleDto,
 } from '../../modules/booking-engine/dto/booking.dto';
 import { CreateServiceDto, UpdateServiceDto } from '../../modules/services/dto/service.dto';
-import { CopyWeekDto, CreateStylistDto, ShiftItemDto, UpdateShiftDto } from '../../modules/stylists/dto/stylist.dto';
+import {
+  CopyWeekDto, CreateStylistDto, ShiftItemDto, UpdateShiftDto, UpdateStylistDto,
+} from '../../modules/stylists/dto/stylist.dto';
 
 const SERVICE_ID = '44444444-4444-4444-8444-000000000001';
 const STYLIST_ID = '22222222-2222-4222-8222-000000000001';
@@ -62,8 +64,22 @@ describe('Mảng mã (UUID) ở lớp DTO (QA-05, QA-13, QA-15)', () => {
   });
 
   it('CreateStylistDto: serviceIds phải là mảng UUID', async () => {
-    expect(await failing(CreateStylistDto, { fullName: 'Tho A', serviceIds: ['abc'] })).toEqual(['serviceIds']);
-    expect(await failing(CreateStylistDto, { fullName: 'Tho A', serviceIds: [SERVICE_ID] })).toEqual([]);
+    expect(await failing(CreateStylistDto, { fullName: 'Tho A', gender: 'female', serviceIds: ['abc'] })).toEqual(['serviceIds']);
+    expect(await failing(CreateStylistDto, { fullName: 'Tho A', gender: 'female', serviceIds: [SERVICE_ID] })).toEqual([]);
+  });
+
+  it('CreateStylistDto: bắt buộc chọn giới tính Nam hoặc Nữ (ảnh đại diện khớp giới tính)', async () => {
+    expect(await failing(CreateStylistDto, { fullName: 'Tho A' })).toEqual(['gender']);
+    expect(await failing(CreateStylistDto, { fullName: 'Tho A', gender: 'khac' })).toEqual(['gender']);
+    expect(await failing(CreateStylistDto, { fullName: 'Tho A', gender: '' })).toEqual(['gender']);
+    expect(await failing(CreateStylistDto, { fullName: 'Tho A', gender: 'male' })).toEqual([]);
+    expect(await failing(CreateStylistDto, { fullName: 'Tho A', gender: 'female' })).toEqual([]);
+  });
+
+  it('UpdateStylistDto: giới tính tuỳ chọn khi sửa nhưng nếu gửi lên phải hợp lệ', async () => {
+    expect(await failing(UpdateStylistDto, {})).toEqual([]);
+    expect(await failing(UpdateStylistDto, { gender: 'male' })).toEqual([]);
+    expect(await failing(UpdateStylistDto, { gender: 'x' })).toEqual(['gender']);
   });
 });
 

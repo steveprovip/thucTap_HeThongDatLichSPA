@@ -6,6 +6,10 @@ import { User } from './user.entity';
 import { StylistService } from './stylist-service.entity';
 import { StylistShift } from './stylist-shift.entity';
 
+/** Giới tính thợ — quyết định ảnh đại diện mặc định (hồ sơ cũ chưa khai báo = null). */
+export const STYLIST_GENDERS = ['male', 'female'] as const;
+export type StylistGender = (typeof STYLIST_GENDERS)[number];
+
 @Entity('stylists')
 export class Stylist {
   @PrimaryGeneratedColumn('uuid')
@@ -26,6 +30,9 @@ export class Stylist {
 
   @Column({ name: 'avatar_url', length: 400, nullable: true, type: 'varchar' })
   avatarUrl!: string | null;
+
+  @Column({ length: 10, nullable: true, type: 'varchar' })
+  gender!: StylistGender | null;
 
   @Column({ length: 500, nullable: true, type: 'varchar' })
   bio!: string | null;

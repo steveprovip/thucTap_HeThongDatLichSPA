@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Between, DataSource, In, Repository } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
-import { Stylist } from '../../database/entities/stylist.entity';
+import { Stylist, StylistGender } from '../../database/entities/stylist.entity';
 import { StylistService as StylistServiceLink } from '../../database/entities/stylist-service.entity';
 import { StylistShift } from '../../database/entities/stylist-shift.entity';
 import { StylistTimeOff } from '../../database/entities/stylist-time-off.entity';
@@ -35,6 +35,7 @@ export interface StylistView {
   fullName: string;
   phone: string | null;
   avatarUrl: string | null;
+  gender: StylistGender | null;
   bio: string | null;
   isActive: boolean;
   serviceIds: string[];
@@ -105,6 +106,7 @@ export class StylistsService {
         fullName: s.fullName,
         phone: s.phone,
         avatarUrl: s.avatarUrl,
+        gender: s.gender,
         bio: s.bio,
         isActive: s.isActive,
         serviceIds,
@@ -167,6 +169,7 @@ export class StylistsService {
         manager.create(Stylist, {
           fullName: dto.fullName.trim(),
           phone: dto.phone ?? null,
+          gender: dto.gender,
           bio: dto.bio ?? null,
           isActive: dto.isActive ?? true,
           userId,
@@ -197,6 +200,7 @@ export class StylistsService {
 
     if (dto.fullName !== undefined) stylist.fullName = dto.fullName.trim();
     if (dto.phone !== undefined) stylist.phone = dto.phone;
+    if (dto.gender !== undefined) stylist.gender = dto.gender;
     if (dto.bio !== undefined) stylist.bio = dto.bio;
     if (dto.isActive !== undefined) stylist.isActive = dto.isActive;
 
