@@ -29,6 +29,11 @@ export function Step3Stylist() {
     return () => { alive = false; };
   }, [selected, date, time, toast]);
 
+  // Thợ đã chọn từ trước (bản nháp, hoặc đổi ngày/giờ ở bước 2) mà không còn rảnh lúc này thì bỏ chọn, quay về "Thợ bất kỳ"
+  useEffect(() => {
+    if (!loading && stylistId && !availableIds.includes(stylistId)) setStylistId(null);
+  }, [loading, stylistId, availableIds, setStylistId]);
+
   if (loading) return <ListSkeleton count={4} avatar label="Đang tìm thợ rảnh ở khung giờ này…" />;
 
   const free = stylists.filter((s) => availableIds.includes(s.id));

@@ -3,7 +3,7 @@ import { validate, ValidationError } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 import { isValidDateString } from '../utils/time.util';
 import {
-  AvailabilityQueryDto, BulkReassignDto, CapableStylistsQueryDto, CreateBookingDto, RescheduleDto,
+  AvailabilityQueryDto, BulkReassignDto, CancelByCodeDto, CapableStylistsQueryDto, CreateBookingDto, LookupDto, RescheduleDto,
 } from '../../modules/booking-engine/dto/booking.dto';
 import { CreateServiceDto, UpdateServiceDto } from '../../modules/services/dto/service.dto';
 import {
@@ -101,5 +101,19 @@ describe('Chuyển lô: kiểm tra từng phần tử (QA-15)', () => {
       .toEqual(['items.0.targetTime']);
     expect(await failing(BulkReassignDto, { items: [{ appointmentId: SERVICE_ID, targetStylistId: STYLIST_ID, targetTime: '10:15' }] }))
       .toEqual([]);
+  });
+});
+
+describe('Mã tra cứu đúng 8 ký tự (QA-07)', () => {
+  const messages = async <T extends object>(cls: new () => T, plain: object): Promise<string[]> =>
+    (await validate(plainToInstance(cls, plain))).flatMap((e) => Object.values(e.constraints ?? {}));
+
+  it('tra cứu / huỷ bằng mã dài hơn 8 ký tự bị từ chối với thông báo tiếng Việt (không còn lỗi tiếng Anh)', async () => {
+    expect(await messages(LookupDto, { code: 'SL-000911' })).toEqual(['Mã tra cứu gồm 8 ký tự chữ hoặc số']);
+    expect(await messages(CancelByCodeDto, { code: 'SL-000911' })).toEqual(['Mã tra cứu gồm 8 ký tự chữ hoặc số']);
+  });
+  it('mã 8 ký tự và tra cứu theo SĐT vẫn hợp lệ', async () => {
+    expect(await messages(LookupDto, { code: 'K7M2QP4X' })).toEqual([]);
+    expect(await messages(LookupDto, { phone: '0987000111' })).toEqual([]);
   });
 });

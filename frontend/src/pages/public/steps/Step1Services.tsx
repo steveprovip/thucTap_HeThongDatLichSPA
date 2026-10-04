@@ -11,7 +11,7 @@ import { useToast } from '@/contexts/ToastContext';
 
 /** Bước 1 — chọn tối đa 5 dịch vụ (S2-04). */
 export function Step1Services() {
-  const { selected, toggleService } = useBooking();
+  const { selected, toggleService, syncServices } = useBooking();
   const [groups, setGroups] = useState<PublicCatalogGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -23,12 +23,17 @@ export function Step1Services() {
       setLoading(true);
       publicApi
         .catalog(search.trim() || undefined)
-        .then((d) => { if (alive) setGroups(d); })
+        .then((d) => {
+          if (!alive) return;
+          setGroups(d);
+          // Chỉ danh mục đầy đủ (không lọc từ khoá) mới đủ căn cứ để loại dịch vụ cũ khỏi giỏ
+          if (!search.trim()) syncServices(d.flatMap((g) => g.services));
+        })
         .catch((e) => toast.error(getErrorMessage(e)))
         .finally(() => { if (alive) setLoading(false); });
     }, search ? 250 : 0);
     return () => { alive = false; window.clearTimeout(timer); };
-  }, [search, toast]);
+  }, [search, toast, syncServices]);
 
   // QA-13: hỏi máy chủ tổng thời lượng so với ca dài nhất trong tuần ngay khi giỏ thay đổi
   const [quote, setQuote] = useState<Quote | null>(null);

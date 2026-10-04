@@ -72,7 +72,7 @@ export function ReviewPage() {
           event.preventDefault(); if (!lookupCode.trim()) return;
           setError(null); setLoading(true); setParams({ code: lookupCode.trim().toUpperCase() });
         }}>
-          <Input aria-label="Mã lịch hẹn" value={lookupCode} onChange={event => setLookupCode(event.target.value)} placeholder="SL-XXXXXX" />
+          <Input aria-label="Mã lịch hẹn" value={lookupCode} onChange={event => setLookupCode(event.target.value)} placeholder="K7M2QP4X" />
           <Button type="submit">Tra cứu</Button>
         </form>
       </Card>

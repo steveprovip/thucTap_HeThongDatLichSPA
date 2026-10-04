@@ -36,8 +36,9 @@ import { useToast } from "@/contexts/ToastContext";
 
 /** Khách được tự huỷ khi còn ít nhất 120 phút trước giờ hẹn. */
 const CANCEL_CUTOFF_MIN = 120;
-const CODE_PREFIX = "SL-";
-const CODE_BODY = /^[A-Z0-9]{6}$/;
+/** Mã tra cứu do máy chủ sinh: đúng 8 ký tự chữ/số, không có tiền tố (S2-07). */
+const CODE_LENGTH = 8;
+const CODE_BODY = /^[A-Z0-9]{8}$/;
 
 const CANCEL_REASONS = [
   "Bận việc đột xuất",
@@ -55,13 +56,9 @@ const FLOW: { status: AppointmentStatus; label: string }[] = [
   { status: "completed", label: "Hoàn tất" },
 ];
 
-/** Chuẩn hoá mã: nhận "sl-k7m2qp", "SLK7M2QP" hoặc "K7M2QP" → phần 6 ký tự sau tiền tố. */
-const normalizeBody = (raw: string) => {
-  const clean = raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
-  return (
-    clean.startsWith("SL") && clean.length > 6 ? clean.slice(2) : clean
-  ).slice(0, 6);
-};
+/** Chuẩn hoá mã: nhận "k7m2-qp4x" hoặc "K7M2QP4X" → 8 ký tự chữ hoa/số. */
+const normalizeBody = (raw: string) =>
+  raw.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, CODE_LENGTH);
 
 const startMs = (a: PublicAppointment) =>
   new Date(`${a.date}T${a.startTime}:00+07:00`).getTime();
@@ -75,7 +72,7 @@ function useNow() {
   return now;
 }
 
-/** S2-09 tra cứu lịch bằng mã SL-XXXXXX hoặc số điện thoại + S3-05 khách tự huỷ. */
+/** S2-09 tra cứu lịch bằng mã 8 ký tự hoặc số điện thoại + S3-05 khách tự huỷ. */
 export function LookupPage() {
   const [params, setParams] = useSearchParams();
   const initialCode = params.get("code");
@@ -115,7 +112,7 @@ export function LookupPage() {
 
   useEffect(() => {
     if (initialCode && CODE_BODY.test(normalizeBody(initialCode))) {
-      void search({ code: `${CODE_PREFIX}${normalizeBody(initialCode)}` });
+      void search({ code: normalizeBody(initialCode) });
     }
     // chỉ chạy một lần khi mở trang với tham số code
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -127,11 +124,10 @@ export function LookupPage() {
     if (mode === "code") {
       if (!CODE_BODY.test(codeBody))
         return setError(
-          "Mã tra cứu gồm tiền tố SL- và 6 ký tự chữ/số, VD: SL-000003",
+          "Mã tra cứu gồm đúng 8 ký tự chữ hoặc số, VD: K7M2QP4X",
         );
-      const code = `${CODE_PREFIX}${codeBody}`;
-      setParams({ code });
-      void search({ code });
+      setParams({ code: codeBody });
+      void search({ code: codeBody });
     } else {
       if (!VN_PHONE_REGEX.test(phone)) return setError(VN_PHONE_MESSAGE);
       setParams({});
@@ -188,7 +184,7 @@ export function LookupPage() {
           Tra cứu lịch hẹn
         </h1>
         <p className="mt-1 text-sm text-ink-muted">
-          Nhập mã tra cứu <strong className="text-teal-700">SL-XXXXXX</strong>{" "}
+          Nhập mã tra cứu <strong className="text-teal-700">8 ký tự</strong>{" "}
           trong tin nhắn/email xác nhận, hoặc số điện thoại đã dùng khi đặt.
         </p>
       </div>
@@ -238,15 +234,12 @@ export function LookupPage() {
                   className={`flex items-stretch overflow-hidden rounded-xl border bg-white focus-within:ring-2 focus-within:ring-teal-500/20
                                  ${error ? "border-red-400" : "border-slate-300 focus-within:border-brand-500"}`}
                 >
-                  <span className="flex items-center border-r border-slate-200 bg-slate-50 px-3 font-mono font-bold text-teal-700">
-                    {CODE_PREFIX}
-                  </span>
                   <input
                     id="lk-code"
                     value={codeBody}
                     autoComplete="off"
                     spellCheck={false}
-                    placeholder="000003"
+                    placeholder="K7M2QP4X"
                     onChange={(e) => setCodeBody(normalizeBody(e.target.value))}
                     onPaste={(e) => {
                       e.preventDefault();
@@ -261,7 +254,7 @@ export function LookupPage() {
                     id="lk-code-hint"
                     className="flex items-center pr-3 text-xs text-ink-muted"
                   >
-                    {codeBody.length}/6
+                    {codeBody.length}/{CODE_LENGTH}
                   </span>
                 </div>
               </Field>

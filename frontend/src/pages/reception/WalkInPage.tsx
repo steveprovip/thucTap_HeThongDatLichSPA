@@ -317,7 +317,7 @@ export function WalkInModal({ open, onClose, onCreated }: {
                     <ul className="mt-1 space-y-0.5 text-xs text-emerald-800">
                       {history.slice(0, 3).map((h) => (
                         <li key={h.appointmentId}>
-                          {formatDate(`${h.date}T00:00:00+07:00`)} · {h.services.join(', ')} · {h.stylistName}
+                          {formatDate(h.date)} · {h.services.join(', ')} · {h.stylistName}
                           <span className="text-emerald-600"> ({STATUS_LABELS[h.status]})</span>
                         </li>
                       ))}
