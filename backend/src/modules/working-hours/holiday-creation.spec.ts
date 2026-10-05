@@ -37,7 +37,7 @@ describe('Holiday creation — persistence and audit', () => {
       ],
     }).overrideGuard(RolesGuard).useValue({ canActivate: () => true }).compile();
     service = module.get(WorkingHoursService);
-    app = module.createNestApplication();
+    app = module.createNestApplication({ logger: false });
     app.use((req: { user: typeof actor }, _res: unknown, next: () => void) => {
       req.user = actor;
       next();

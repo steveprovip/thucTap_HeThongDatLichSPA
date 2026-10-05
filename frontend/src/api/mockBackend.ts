@@ -1060,7 +1060,7 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
   if (path === '/holidays' && method === 'get') return db.holidays.filter(h =>
     (!q.from || h.endDate >= String(q.from)) && (!q.to || h.startDate <= String(q.to)));
   if (path === '/holidays' && method === 'post') {
-    if (String(p.endDate) < String(p.startDate)) bad('Ngày kết thúc phải bằng hoặc sau ngày bắt đầu');
+    if (String(p.endDate) < String(p.startDate)) bad('Ngày kết thúc phải sau hoặc bằng ngày bắt đầu');
     const affected = db.appointments.filter(a => a.date >= String(p.startDate) && a.date <= String(p.endDate) &&
       ACTIVE_STATUSES.includes(a.status)).sort((a, b) => a.startAt.localeCompare(b.startAt));
     if (affected.length && !p.force) return { warning: `Khoảng ngày nghỉ này đang có ${affected.length} lịch hẹn chưa hoàn tất. Xác nhận để lưu và xử lý các lịch hẹn đó.`,
