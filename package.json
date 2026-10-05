@@ -11,7 +11,10 @@
     "db:up": "docker compose up -d postgres maildev pgadmin",
     "db:down": "docker compose down",
     "db:reset": "docker compose down -v && docker compose up -d postgres maildev pgadmin",
-    "db:schema": "docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U salon -d salon_booking -f /docker-entrypoint-initdb.d/01_schema.sql",
+    "db:migrate": "npm run migration:run --prefix backend",
+    "db:status": "npm run migration:status --prefix backend",
+    "db:backup": "npm run backup --prefix backend",
+    "db:schema": "npm run migration:run --prefix backend",
     "db:seed": "npm run seed --prefix backend",
     "dev:backend": "npm run start:dev --prefix backend",
     "dev:frontend": "npm run dev --prefix frontend",
@@ -21,7 +24,12 @@
     "build": "npm run build --prefix backend && npm run build --prefix frontend",
     "test": "npm run test --prefix backend",
     "test:e2e": "npm run test:e2e --prefix backend",
-    "lint": "npm run lint --prefix backend && npm run lint --prefix frontend"
+    "lint": "npm run lint --prefix backend && npm run lint --prefix frontend",
+    "start:server": "node scripts/launcher.mjs serve",
+    "stop:server": "node scripts/launcher.mjs stop",
+    "update": "node scripts/launcher.mjs update",
+    "migration:generate": "npm run migration:generate --prefix backend --",
+    "security:check": "npm run security:check --prefix backend"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"

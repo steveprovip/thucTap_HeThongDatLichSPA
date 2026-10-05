@@ -1,0 +1,35 @@
+# =============================================================================
+#  MẪU cấu hình Cloudflare Tunnel CÓ TÊN (địa chỉ cố định) cho máy bàn Windows chạy start_server.bat.
+#  Cần: một tên miền đã thêm vào Cloudflare (tên miền thường phải mua -> cách này không còn miễn phí 100%).
+#  Không muốn quản lý tệp này? Dùng token: cloudflared.exe service install <TOKEN>  (xem docs/TRIEN-KHAI.md mục 4.3).
+#
+#  Đây là phương án quản lý bằng TỆP (locally-managed). Các bước theo hướng dẫn chính thức của Cloudflare
+#  https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/local-management/as-a-service/windows/
+#
+#  1. Tạo thư mục C:\Cloudflared\bin, đặt cloudflared.exe vào đó, rồi (Command Prompt quyền quản trị):
+#       cd C:\Cloudflared\bin
+#       cloudflared.exe service install
+#       mkdir C:\Windows\System32\config\systemprofile\.cloudflared
+#       cloudflared.exe login
+#       copy C:\Users\%USERNAME%\.cloudflared\cert.pem C:\Windows\System32\config\systemprofile\.cloudflared\cert.pem
+#       cloudflared.exe tunnel create salon-spa
+#  2. Chép tệp này thành C:\Windows\System32\config\systemprofile\.cloudflared\config.yml, thay <TUNNEL-ID> và tên miền.
+#  3. Chép <TUNNEL-ID>.json (tạo ở bước 1, nằm trong C:\Users\<bạn>\.cloudflared\) vào cùng thư mục systemprofile.
+#  4. Kiểm tra: cloudflared.exe tunnel ingress validate
+#  5. Trỏ dịch vụ Windows tới tệp cấu hình: trong Registry Editor mở
+#       Computer\HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\Cloudflared
+#     đặt ImagePath thành (không thừa khoảng trắng):
+#       C:\Cloudflared\bin\cloudflared.exe --config=C:\Windows\System32\config\systemprofile\.cloudflared\config.yml tunnel run
+#  6. sc start cloudflared      (sau mỗi lần sửa tệp: sc stop cloudflared rồi sc start cloudflared)
+#  7. cloudflared tunnel route dns salon-spa salon.tenmien.vn     (gắn tên miền phụ vào tunnel)
+#  8. Đặt FRONTEND_URL=https://salon.tenmien.vn trong backend\.env rồi chạy lại start_server.bat.
+# =============================================================================
+tunnel: <TUNNEL-ID>
+credentials-file: C:\Windows\System32\config\systemprofile\.cloudflared\<TUNNEL-ID>.json
+
+ingress:
+  # start_server.bat phục vụ cả giao diện lẫn API ở MỘT cổng (mặc định 3000, đổi bằng PORT trong backend\.env)
+  - hostname: salon.tenmien.vn
+    service: http://localhost:3000
+  # Quy tắc cuối bắt buộc: mọi tên miền khác trả 404
+  - service: http_status:404

@@ -2,6 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { DataSource } from 'typeorm';
 import { ACCOUNTS, createTestApp, tomorrowISO } from './setup-app';
+import { AuditService } from '../src/modules/audit/audit.service';
 
 /**
  * Vòng QA 05/10 (Sprint 2) trên máy chủ THẬT:
@@ -115,6 +116,39 @@ describe('QA vòng 05/10 — số liệu khách hàng và ngày nghỉ lễ trê
     expect(hist.body.data.isNewCustomer).toBe(false);
     expect(hist.body.data.history).toHaveLength(3);
     expect(hist.body.data.history.map((h: { appointmentId: string }) => h.appointmentId)).toEqual([ids[2], ids[1], ids[0]]);
+  }, 60000);
+
+  it('cảnh báo không lưu/log; xác nhận lưu PostgreSQL một lần và ẩn khung giờ ngày nghỉ', async () => {
+    const [{ date, hours }] = await openDays(110, 1);
+    const { serviceId, stylistId } = await setup('XN');
+    await addShift(stylistId, date, hours.open, plus(hours.open, 360)).expect(201);
+    const existing = await walkIn({ serviceIds: [serviceId], date, time: hours.open, stylistId,
+      fullName: 'Khách trước ngày nghỉ', phone: phone(21) }).expect(201);
+    const dto = { startDate: date, endDate: date, reason: `Lễ xác nhận QA ${runId}` };
+    const audits = () => ds.query(
+      `SELECT entity_id FROM audit_logs WHERE entity_type = 'salon_holiday' AND action = 'create' AND changes->>'reason' = $1`,
+      [dto.reason],
+    );
+    const warning = await request(server).post('/api/holidays').set(auth()).send({ ...dto, force: false }).expect(201);
+    expect(warning.body.data).toMatchObject({ affected: 1, codes: [existing.body.data.code], warning: expect.any(String) });
+    await app.get(AuditService).beforeApplicationShutdown();
+    expect(await ds.query('SELECT id FROM salon_holidays WHERE reason = $1', [dto.reason])).toHaveLength(0);
+    expect(await audits()).toHaveLength(0);
+    const created = await request(server).post('/api/holidays').set(auth()).send({ ...dto, force: true }).expect(201);
+    const holidayId = created.body.data.id as string;
+    try {
+      expect(await ds.query('SELECT id FROM salon_holidays WHERE reason = $1', [dto.reason])).toEqual([{ id: holidayId }]);
+      await app.get(AuditService).beforeApplicationShutdown();
+      expect(await audits()).toEqual([{ entity_id: holidayId }]);
+      const available = await request(server).get('/api/public/availability')
+        .query({ date, serviceIds: serviceId, stylistId }).expect(200);
+      expect(available.body.data).toMatchObject({ salonClosed: true, closedReason: dto.reason, slots: [] });
+      await walkIn({ serviceIds: [serviceId], date, time: plus(hours.open, 60), stylistId,
+        fullName: 'Khách sau ngày nghỉ', phone: phone(22) }).expect(400)
+        .then((res) => expect(res.body.code).toBe('SALON_CLOSED'));
+    } finally {
+      await request(server).delete(`/api/holidays/${holidayId}`).set(auth()).expect(200);
+    }
   }, 60000);
 
   it('Lỗi 2: ngày nghỉ lễ — tạo lịch tại quầy / đặt online / dời lịch đều bị chặn kèm lý do, ngày thường vẫn chạy', async () => {

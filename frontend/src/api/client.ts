@@ -3,7 +3,7 @@ import type { ApiError, ApiErrorDetails } from '@/types';
 import { DEMO_MODE, mockAdapter } from './mockBackend';
 import { affectsAppointments, notifyAppointmentsChanged } from '@/utils/liveSync';
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
+export const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
 export const ACCESS_TOKEN_KEY = 'salon.accessToken';
 export const REFRESH_TOKEN_KEY = 'salon.refreshToken';

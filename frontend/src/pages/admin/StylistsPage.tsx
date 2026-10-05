@@ -13,6 +13,7 @@ import {
   addDaysISO, formatDate, matchSearch, startOfWeekISO, timeToMinutes, todayISO, VN_PHONE_MESSAGE, VN_PHONE_REGEX,
 } from '@/utils/format';
 import { emailError } from '@/utils/validators';
+import { assetUrl } from '@/utils/images';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 
@@ -404,7 +405,7 @@ export function StylistsPage() {
                     className="group relative h-20 w-20 shrink-0 overflow-hidden rounded-full border-2 border-dashed border-slate-300 hover:border-teal-600"
                     aria-label="Chọn ảnh đại diện">
               {avatar
-                ? <img src={avatar} alt="" className="h-full w-full object-cover" />
+                ? <img src={assetUrl(avatar)} alt="" className="h-full w-full object-cover" />
                 : <span className="flex h-full w-full flex-col items-center justify-center text-ink-muted">
                     <ImagePlus size={22} /><span className="mt-0.5 text-[10px]">Tải ảnh</span>
                   </span>}

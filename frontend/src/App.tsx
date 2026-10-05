@@ -4,7 +4,7 @@ import { ComponentType, ReactNode, Suspense, lazy } from 'react';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { ToastProvider } from '@/contexts/ToastContext';
 import { BookingProvider } from '@/contexts/BookingContext';
-import { ErrorBoundary, Spinner } from '@/components';
+import { ErrorBoundary, Spinner, UpdateBanner } from '@/components';
 import { RoleSwitcher } from '@/components/RoleSwitcher';
 import { PublicLayout } from '@/layouts/PublicLayout';
 import { AdminLayout } from '@/layouts/AdminLayout';
@@ -95,6 +95,7 @@ export default function App() {
     <ToastProvider>
       <AuthProvider>
         <RoleSwitcher />
+        <UpdateBanner />
         <ErrorBoundary>
         <Suspense fallback={<Spinner />}>
         <Routes>

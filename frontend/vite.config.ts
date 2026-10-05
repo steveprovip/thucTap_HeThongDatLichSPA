@@ -1,4 +1,4 @@
-import { defineConfig, type ProxyOptions } from 'vite';
+import { defineConfig, type Plugin, type ProxyOptions } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import type { ServerResponse } from 'http';
@@ -37,8 +37,31 @@ const backendProxy = (): ProxyOptions => ({
   },
 });
 
-export default defineConfig({
-  plugins: [react()],
+/**
+ * Mã bản dựng: mỗi lần `npm run build` ra một mã mới (kèm mã commit nếu nền tảng build cung cấp).
+ * Được nhúng vào mã nguồn (__APP_BUILD_ID__) VÀ ghi ra dist/version.json: thiết bị đang mở trang so hai giá trị này
+ * để biết đã có bản mới (xem components/UpdateBanner.tsx).
+ */
+const COMMIT =
+  process.env.CF_PAGES_COMMIT_SHA || process.env.VERCEL_GIT_COMMIT_SHA || process.env.RENDER_GIT_COMMIT ||
+  process.env.GITHUB_SHA || process.env.COMMIT_SHA || '';
+const BUILD_ID = process.env.APP_BUILD_ID || `${COMMIT.slice(0, 7) || 'local'}-${Date.now().toString(36)}`;
+
+const versionFile = (): Plugin => ({
+  name: 'salon-version-file',
+  apply: 'build',
+  generateBundle() {
+    this.emitFile({
+      type: 'asset',
+      fileName: 'version.json',
+      source: JSON.stringify({ id: BUILD_ID, builtAt: new Date().toISOString() }),
+    });
+  },
+});
+
+export default defineConfig(({ command }) => ({
+  plugins: [react(), versionFile()],
+  define: { __APP_BUILD_ID__: JSON.stringify(command === 'build' ? BUILD_ID : 'dev') },
   resolve: {
     alias: { '@': path.resolve(__dirname, './src') },
   },
@@ -67,4 +90,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));

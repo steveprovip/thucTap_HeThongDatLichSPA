@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CalendarOff, Copy, Plus, RotateCcw, Save, Trash2 } from 'lucide-react';
+import { CalendarOff, Copy, Plus, RotateCcw, Save, Trash2 } from 'lucide-react';
 import { getErrorMessage, workingHoursApi } from '@/api';
 import type { Holiday, WorkingHour } from '@/types';
 import {
@@ -120,6 +120,7 @@ export function WorkingHoursPage() {
   };
 
   const createHoliday = async (force = false) => {
+    if (hSaving) return;
     setHTouched(true);
     if (Object.values(hErrors).some(Boolean)) return;
     setHSaving(true);
@@ -127,6 +128,7 @@ export function WorkingHoursPage() {
       const res = await workingHoursApi.createHoliday({ startDate: hStart, endDate: hEnd, reason: hReason.trim(), force });
       if ('warning' in res) { setHWarning(res); return; }
       toast.success('Đã khai báo ngày nghỉ');
+      setHWarning(null);
       setHolidayOpen(false);
       void load();
     } catch (e) {
@@ -277,27 +279,25 @@ export function WorkingHoursPage() {
       )}
 
       <Modal
-        open={holidayOpen}
+        open={holidayOpen && !hWarning}
         title="Khai báo ngày nghỉ của tiệm"
-        onClose={() => setHolidayOpen(false)}
+        onClose={() => { if (!hSaving) setHolidayOpen(false); }}
         size="sm"
         footer={
           <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => setHolidayOpen(false)}>Đóng</Button>
-            {hWarning
-              ? <Button variant="danger" loading={hSaving} onClick={() => createHoliday(true)}>Vẫn lưu ngày nghỉ</Button>
-              : <Button loading={hSaving} onClick={() => createHoliday(false)}>Lưu ngày nghỉ</Button>}
+            <Button variant="ghost" disabled={hSaving} onClick={() => setHolidayOpen(false)}>Đóng</Button>
+            <Button loading={hSaving} onClick={() => createHoliday(false)}>Lưu ngày nghỉ</Button>
           </div>
         }
       >
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <Field label="Từ ngày" required error={hShown.past}>
-              <input type="date" className="field-input" value={hStart} min={today}
+              <input type="date" className="field-input" value={hStart} min={today} disabled={hSaving}
                      onChange={(e) => { setHStart(e.target.value); if (e.target.value > hEnd) setHEnd(e.target.value); setHWarning(null); }} />
             </Field>
             <Field label="Đến ngày" required error={hShown.range}>
-              <input type="date" className="field-input" value={hEnd} min={hStart}
+              <input type="date" className="field-input" value={hEnd} min={hStart} disabled={hSaving}
                      onChange={(e) => { setHEnd(e.target.value); setHWarning(null); }} />
             </Field>
           </div>
@@ -305,17 +305,21 @@ export function WorkingHoursPage() {
             <p className="text-xs text-ink-muted">Tiệm nghỉ {dayCount(hStart, hEnd)} ngày.</p>
           )}
           <Field label="Lý do" required error={hShown.reason}>
-            <Input value={hReason} maxLength={200} onChange={(e) => setHReason(e.target.value)}
+            <Input value={hReason} maxLength={200} disabled={hSaving} onChange={(e) => setHReason(e.target.value)}
                    placeholder="VD: Nghỉ Tết Nguyên đán" invalid={!!hShown.reason} />
           </Field>
           {hShown.overlap && <Notice tone="danger">{hShown.overlap}</Notice>}
-          {hWarning && (
-            <Notice tone="warning" icon={<AlertTriangle size={16} />} title={hWarning.warning}>
-              <span className="text-xs">Lịch bị ảnh hưởng: {hWarning.codes.join(', ')}</span>
-            </Notice>
-          )}
         </div>
       </Modal>
+
+      <ConfirmDialog
+        open={holidayOpen && !!hWarning}
+        title="Xác nhận tạo ngày nghỉ"
+        confirmLabel="Xác nhận tạo"
+        message={<>{hWarning?.warning}<p className="mt-2">Lịch bị ảnh hưởng: {hWarning?.codes.join(', ')}</p></>}
+        onConfirm={() => createHoliday(true)}
+        onClose={() => setHWarning(null)}
+      />
 
       <ConfirmDialog
         open={!!removeTarget}

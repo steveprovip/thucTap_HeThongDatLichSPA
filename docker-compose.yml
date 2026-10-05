@@ -26,9 +26,9 @@ services:
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - salon_pgdata:/var/lib/postgresql/data
-      # Nạp tự động lần đầu khởi tạo volume: schema rồi seed (thứ tự theo tên file)
-      - ./database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
-      - ./database/seed.sql:/docker-entrypoint-initdb.d/02_seed.sql:ro
+      # KHÔNG gắn schema.sql / seed.sql vào /docker-entrypoint-initdb.d nữa: volume mới phải ra CSDL TRỐNG để
+      # `migration:run` dựng cấu trúc, còn dữ liệu mẫu chỉ do `npm run seed` (máy phát triển) nạp. Gắn seed ở đây
+      # sẽ đưa tài khoản mẫu (mật khẩu công khai trong README) vào máy chủ chạy thật ngay lần dựng đầu tiên.
     healthcheck:
       # Kiểm tra qua TCP (-h 127.0.0.1) chứ KHÔNG qua Unix socket: lần đầu dựng volume,
       # entrypoint chạy init script trên một máy chủ TẠM chỉ mở socket rồi khởi động lại.

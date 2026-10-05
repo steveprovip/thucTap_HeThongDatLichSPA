@@ -5,13 +5,20 @@ process.env.LOOKUP_IP_LIMIT_PER_HOUR = process.env.LOOKUP_IP_LIMIT_PER_HOUR ?? '
 
 import { INestApplication, ValidationPipe, BadRequestException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { DataSource } from 'typeorm';
 import { ValidationError } from 'class-validator';
 import { AppModule } from '../src/app.module';
 import { MSG } from '../src/common/constants/messages.constant';
 
 /** Dựng ứng dụng thật (có kết nối CSDL) cho các bộ kiểm thử end-to-end. */
 export async function createTestApp(): Promise<INestApplication> {
-
+  // Chốt chặn cuối: test KHÔNG BAO GIỜ được chạy trên CSDL không phải *_test (xem test/support/test-db.ts)
+  if (!/_test$/.test(process.env.DB_NAME ?? '')) {
+    throw new Error(
+      `Từ chối chạy test: DB_NAME="${process.env.DB_NAME}" không phải CSDL kiểm thử (phải kết thúc bằng _test). ` +
+        'Hãy chạy qua `npm run test:e2e` để cấu hình cô lập được áp dụng.',
+    );
+  }
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
   const app = moduleRef.createNestApplication();
 
@@ -44,6 +51,11 @@ export async function createTestApp(): Promise<INestApplication> {
   // tránh bọc hai lần thành { success, data: { success, data } }.
 
   await app.init();
+  const db = await app.get(DataSource).query('SELECT current_database() AS name');
+  if (!/_test$/.test(db[0].name)) {
+    await app.close();
+    throw new Error(`Từ chối chạy test: đang kết nối CSDL "${db[0].name}" (không phải *_test).`);
+  }
   return app;
 }
 

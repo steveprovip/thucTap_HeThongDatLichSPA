@@ -12,6 +12,13 @@
  *                                          chờ /health = 200 rồi mở trình duyệt, tự khởi động lại
  *                                          tiến trình bị sập, Ctrl+C dừng sạch cả cây tiến trình.
  *   node scripts/launcher.mjs open         (tương thích cũ) chờ sẵn sàng, mở trình duyệt rồi thoát
+ *   node scripts/launcher.mjs serve        CHẾ ĐỘ MÁY CHỦ (start_server.bat): migration -> bootstrap -> build -> chạy bản
+ *                                          production, NestJS phục vụ cả web lẫn API ở một cổng. KHÔNG nạp dữ liệu mẫu.
+ *   node scripts/launcher.mjs update       CẬP NHẬT 1 CHẠM (update_project.bat): git pull -> gói npm -> build -> dừng ->
+ *                                          sao lưu + migration -> chạy lại. Lỗi ở bước nào thì quay về bản cũ.
+ *   node scripts/launcher.mjs tunnel       Mở Quick Tunnel của Cloudflare (HTTPS công khai, miễn phí, không cần tên miền) tới máy chủ này
+ *   node scripts/launcher.mjs resume       Chạy lại bản máy chủ ĐÃ build sẵn (không migration, không build) - dùng nội bộ khi cập nhật
+ *   node scripts/launcher.mjs stop         Dừng hệ thống đang chạy (do launcher quản lý)
  *
  * Mã thoát của "prepare": 0 = sẵn sàng, 1 = lỗi, 10 = hệ thống ĐANG chạy ở cửa sổ khác (đã mở trình duyệt).
  *
@@ -25,9 +32,10 @@
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
-import { copyFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import net from 'node:net';
+import { networkInterfaces } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -39,6 +47,11 @@ const API_PORT = Number(readEnvValue(join(ROOT, 'backend', '.env'), 'PORT') ?? 3
 const WEB_PORT = 5173;
 const APP_URL = `http://localhost:${WEB_PORT}`;
 const HEALTH_URL = `http://127.0.0.1:${API_PORT}/health`;
+/** Chế độ MÁY CHỦ: NestJS đã build phục vụ cả giao diện lẫn API trên MỘT cổng (cho đường hầm Cloudflare / mạng LAN). */
+const SERVER_URL = `http://localhost:${API_PORT}`;
+const STATE_FILE = join(ROOT, '.salon-run.json');
+const BUILD_STAMP = join(ROOT, '.salon-build.json');
+const SELF = fileURLToPath(import.meta.url);
 const MIN_NODE_MAJOR = 20;
 const IS_WIN = process.platform === 'win32';
 
@@ -234,19 +247,21 @@ async function prepare() {
 
 /* ------------------------------------------------------------------------ open */
 /** Chờ API /health = 200 VÀ Vite phản hồi. true = sẵn sàng, false = hết thời gian. */
-async function waitUntilReady({ isStopping = () => false } = {}) {
+async function waitUntilReady({ isStopping = () => false, mode = 'dev' } = {}) {
   const timeoutSec = Number(process.env.SALON_OPEN_TIMEOUT ?? 300);
+  const appUrl = mode === 'serve' ? SERVER_URL : APP_URL;
   const deadline = Date.now() + timeoutSec * 1000;
   let lastNote = 0;
   const started = Date.now();
   while (Date.now() < deadline && !isStopping()) {
-    const [api, web] = await Promise.all([httpStatus(HEALTH_URL), httpStatus(APP_URL)]);
+    // Chế độ máy chủ chỉ có MỘT tiến trình (NestJS phục vụ luôn giao diện), không có Vite để chờ
+    const [api, web] = await Promise.all([httpStatus(HEALTH_URL), mode === 'serve' ? Promise.resolve(200) : httpStatus(APP_URL)]);
     if (api === 200 && web > 0 && web < 500) {
       const secs = Math.round((Date.now() - started) / 1000);
       log('');
       log('============================================================');
-      log(`  HỆ THỐNG ĐÃ SẴN SÀNG sau ${secs} giây -> ${APP_URL}`);
-      log(`  Đăng nhập nhân viên: ${APP_URL}/dang-nhap`);
+      log(`  HỆ THỐNG ĐÃ SẴN SÀNG sau ${secs} giây -> ${appUrl}`);
+      log(`  Đăng nhập nhân viên: ${appUrl}/dang-nhap`);
       log('  Nhấn Ctrl+C trong cửa sổ này để dừng toàn bộ.');
       log('============================================================');
       return true;
@@ -348,16 +363,16 @@ async function waitForDatabase(viaDocker) {
 }
 
 /** Bước 3: bảo đảm có PostgreSQL chạy được (Docker, hoặc PostgreSQL tự cài khi SALON_SKIP_DOCKER=1). */
-async function ensureDatabase() {
+async function ensureDatabase(step = '[3/6]') {
   const target = dbTarget();
   const where = `${target.host}:${target.port}`;
   if (process.env.SALON_SKIP_DOCKER?.trim() === '1') {
-    log(`[3/6] Bỏ qua Docker (SALON_SKIP_DOCKER=1). Dùng PostgreSQL tại ${where} theo backend/.env`);
+    log(`${step} Bỏ qua Docker (SALON_SKIP_DOCKER=1). Dùng PostgreSQL tại ${where} theo backend/.env`);
     return waitForDatabase(false);
   }
   if (!dockerInstalled()) {
     if (await dbReachable(target)) {
-      log(`[3/6] [CẢNH BÁO] Không tìm thấy Docker nhưng đã có PostgreSQL tại ${where} - dùng luôn.`);
+      log(`${step} [CẢNH BÁO] Không tìm thấy Docker nhưng đã có PostgreSQL tại ${where} - dùng luôn.`);
       log('      Hộp thư ảo Maildev sẽ không có (email xác nhận không đọc được ở http://localhost:1080).');
       return true;
     }
@@ -367,7 +382,7 @@ async function ensureDatabase() {
     err('              (Windows cmd: set SALON_SKIP_DOCKER=1&& run_project.bat   |   macOS/Linux: SALON_SKIP_DOCKER=1 ./run_project.sh)');
     return false;
   }
-  log('[3/6] Kiểm tra Docker ...');
+  log(`${step} Kiểm tra Docker ...`);
   if (!(await waitForDocker())) {
     err('[LỖI] Docker không phản hồi sau 2 phút.');
     err('      Windows/macOS: mở Docker Desktop, đợi biểu tượng cá voi chuyển sang "Engine running" rồi chạy lại.');
@@ -481,7 +496,26 @@ const isInterruptExit = (code, signal) => signal === 'SIGINT' || signal === 'SIG
 // Xoá chuỗi xoá-màn-hình của tsc watch để log của WEB không bị cuốn mất
 const CLEAR_SCREEN = /\x1b\[[0-3]?J|\x1b\[H|\x1bc/g;
 
-function makeServices() {
+function makeServices(mode = 'dev') {
+  if (mode === 'serve') {
+    return [
+      {
+        name: 'API',
+        color: 36,
+        cwd: join(ROOT, 'backend'),
+        bin: join(ROOT, 'backend', 'dist', 'main.js'),
+        args: [],
+        npmScript: 'start:prod',
+        // Bản production: NestJS phục vụ cả frontend/dist. Biến của tiến trình thắng backend/.env nên không cần sửa .env.
+        env: {
+          NODE_ENV: 'production',
+          SERVE_FRONTEND: 'true',
+          FRONTEND_DIST: join(ROOT, 'frontend', 'dist'),
+          PORT: String(API_PORT),
+        },
+      },
+    ].map((s) => ({ ...s, child: null, restarts: [], buf: { out: '', err: '' } }));
+  }
   return [
     {
       name: 'API',
@@ -517,8 +551,26 @@ function killTree(child) {
   }
 }
 
-async function run() {
-  const services = makeServices();
+/**
+ * Máy chủ chạy trong cửa sổ riêng (Windows) sẽ bị đóng khi tự quay về bản cũ -> ghi song song ra logs/server.log
+ * để còn đọc được lỗi của bản mới. (POSIX: startDetached đã chuyển hướng toàn bộ đầu ra vào chính tệp đó.)
+ */
+function openServerLog() {
+  if (process.env.SALON_LOG_REDIRECTED === '1') return () => {};
+  const dir = join(ROOT, 'logs');
+  const file = join(dir, 'server.log');
+  try {
+    mkdirSync(dir, { recursive: true });
+    if (existsSync(file) && statSync(file).size > 5 * 1024 * 1024) renameSync(file, join(dir, 'server.log.1'));
+    appendFileSync(file, `\n===== ${new Date().toISOString()} khởi động máy chủ (${short(currentCommit())}) =====\n`);
+  } catch { return () => {}; }
+  // eslint-disable-next-line no-control-regex
+  return (text) => { try { appendFileSync(file, text.replace(/\x1b\[[0-9;]*m/g, '')); } catch { /* đĩa đầy: bỏ qua, không làm sập máy chủ */ } };
+}
+
+async function run(mode = 'dev') {
+  const services = makeServices(mode);
+  const toLog = mode === 'serve' ? openServerLog() : () => {};
   const useColor = process.stdout.isTTY;
   let stopping = false;
   let exitCode = 0;
@@ -529,10 +581,14 @@ async function run() {
     const lines = text.split(/\r?\n/);
     svc.buf[key] = lines.pop();
     for (const line of lines) stream.write(`${prefix(svc)}${line}\n`);
+    toLog(lines.map((l) => `[${svc.name}] ${l}\n`).join(''));
   };
   const flush = (svc) => {
     for (const [key, stream] of [['out', process.stdout], ['err', process.stderr]]) {
-      if (svc.buf[key]) stream.write(`${prefix(svc)}${svc.buf[key]}\n`);
+      if (svc.buf[key]) {
+        stream.write(`${prefix(svc)}${svc.buf[key]}\n`);
+        toLog(`[${svc.name}] ${svc.buf[key]}\n`);
+      }
       svc.buf[key] = '';
     }
   };
@@ -569,7 +625,7 @@ async function run() {
     stopping = true;
     exitCode = code;
     log('');
-    log('Đang dừng API và giao diện ...');
+    log(mode === 'serve' ? 'Đang dừng máy chủ ...' : 'Đang dừng API và giao diện ...');
     for (const svc of services) killTree(svc.child);
     const done = () => services.every((s) => !s.child);
     const t0 = Date.now();
@@ -603,20 +659,644 @@ async function run() {
     try { process.on(sig, () => stopAll(0)); } catch { /* tín hiệu không hỗ trợ trên HĐH này */ }
   }
   // Launcher chết bất ngờ -> không để API/WEB mồ côi giữ cổng 3000/5173
-  process.on('exit', () => { for (const svc of services) killTree(svc.child); });
+  process.on('exit', () => {
+    for (const svc of services) killTree(svc.child);
+    clearState();
+  });
 
   for (const svc of services) start(svc);
+  writeState(mode);
 
   // Mở trình duyệt đúng MỘT lần, ngay trong tiến trình giám sát -> không còn tiến trình phụ nào "exited"
-  if (await waitUntilReady({ isStopping: () => stopping })) openBrowser(APP_URL);
+  if (await waitUntilReady({ isStopping: () => stopping, mode })) openBrowser(mode === 'serve' ? SERVER_URL : APP_URL);
 
   // Giữ tiến trình sống bằng một handle thật (Promise treo KHÔNG giữ được event loop của Node)
   return new Promise(() => { setInterval(() => {}, 1 << 30); });
 }
 
+/* ================================================================ MÁY CHỦ + CẬP NHẬT 1 CHẠM */
+/*
+ * Hai chế độ chạy:
+ *   dev   (run_project.bat)    : Vite + NestJS watch, nạp dữ liệu MẪU. Dành cho máy lập trình / kiểm thử.
+ *   serve (start_server.bat)   : bản production, NestJS phục vụ cả web lẫn API ở một cổng, KHÔNG nạp dữ liệu mẫu.
+ *                                Dành cho máy tiệm (máy bàn làm máy chủ), đi cùng đường hầm Cloudflare.
+ * update_project.bat nhận ra chế độ nào đang chạy qua tệp trạng thái .salon-run.json để dừng và bật lại đúng kiểu.
+ */
+const pidAlive = (pid) => {
+  try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; }
+};
+
+function writeState(mode) {
+  try {
+    writeFileSync(STATE_FILE, JSON.stringify({ mode, pid: process.pid, ppid: process.ppid, port: API_PORT, startedAt: new Date().toISOString() }));
+  } catch { /* không ghi được thì chỉ mất khả năng tự dừng khi cập nhật */ }
+}
+
+/** Trạng thái của launcher ĐANG SỐNG, hoặc null (không có / tệp cũ của tiến trình đã chết). */
+function readState() {
+  try {
+    const s = JSON.parse(readFileSync(STATE_FILE, 'utf8'));
+    return s && Number.isInteger(s.pid) && pidAlive(s.pid) ? s : null;
+  } catch { return null; }
+}
+
+function clearState() {
+  try {
+    const s = JSON.parse(readFileSync(STATE_FILE, 'utf8'));
+    if (s.pid === process.pid) rmSync(STATE_FILE, { force: true });
+  } catch { /* chưa có tệp */ }
+}
+
+const npm = (args, opts = {}) => spawnSync('npm', args, { cwd: ROOT, shell: IS_WIN, ...opts });
+const git = (args, opts = {}) => spawnSync('git', args, { cwd: ROOT, encoding: 'utf8', ...opts });
+const gitOut = (args) => {
+  const r = git(args);
+  return r.status === 0 ? r.stdout.trim() : '';
+};
+const gitAvailable = () => !spawnSync('git', ['--version'], { stdio: 'ignore' }).error;
+const currentCommit = () => gitOut(['rev-parse', 'HEAD']);
+/** Tệp mã nguồn (đã theo dõi) đang bị sửa. KHÔNG dùng gitOut: nó trim() làm mất ký tự đầu của dòng đầu tiên. */
+const dirtyFiles = () =>
+  (git(['status', '--porcelain', '--untracked-files=no']).stdout ?? '')
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => ({ line, file: line.slice(3).trim() }));
+/** package-lock.json do `npm install` tự sửa trên máy tiệm thì bỏ qua (không phải thay đổi của con người). */
+const LOCKFILE = /(^|\/)package-lock\.json$/;
+const isDirty = () => dirtyFiles().some((d) => !LOCKFILE.test(d.file));
+const short = (rev) => (rev ? rev.slice(0, 7) : '?');
+
+async function waitPortFree(port, timeoutMs = 20_000) {
+  const end = Date.now() + timeoutMs;
+  while (Date.now() < end) {
+    if (!(await portInUse(port))) return true;
+    await sleep(500);
+  }
+  return false;
+}
+
+/** Windows: cửa sổ cmd.exe đang chứa launcher (để đóng luôn, không để lại cửa sổ trống). */
+function isCmdWindow(pid) {
+  if (!IS_WIN || !pid) return false;
+  const r = spawnSync('tasklist', ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH'], { encoding: 'utf8', windowsHide: true });
+  return /"cmd\.exe"/i.test(r.stdout || '');
+}
+
+async function stopRunning(state) {
+  if (!state) return true;
+  log(`      Dừng hệ thống đang chạy (PID ${state.pid}, chế độ ${state.mode === 'serve' ? 'máy chủ' : 'phát triển'}) ...`);
+  if (IS_WIN) {
+    spawnSync('taskkill', ['/PID', String(state.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
+    if (isCmdWindow(state.ppid)) spawnSync('taskkill', ['/PID', String(state.ppid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
+  } else {
+    try { process.kill(state.pid, 'SIGTERM'); } catch { /* đã dừng */ }
+  }
+  const deadline = Date.now() + 20_000;
+  while (pidAlive(state.pid) && Date.now() < deadline) await sleep(300);
+  if (pidAlive(state.pid) && !IS_WIN) { try { process.kill(state.pid, 'SIGKILL'); } catch { /* đã dừng */ } }
+  return waitPortFree(API_PORT, 20_000);
+}
+
+/* --------------------------------------------------------------- build vào thư mục tạm */
+/**
+ * Build vào backend/dist-next và frontend/dist-next TRƯỚC, trong lúc bản cũ vẫn đang phục vụ khách.
+ * Lỗi biên dịch thì dừng ngay, hệ thống đang chạy không bị đụng tới. Chỉ khi build xong mới dừng - đổi thư mục - chạy lại.
+ */
+function buildNext() {
+  const be = join(ROOT, 'backend');
+  const fe = join(ROOT, 'frontend');
+  rmSync(join(be, 'dist-next'), { recursive: true, force: true });
+  rmSync(join(fe, 'dist-next'), { recursive: true, force: true });
+  log('      Biên dịch backend vào backend/dist-next (bản đang chạy chưa bị đụng tới) ...');
+  const b = npm(['run', 'build:next', '--prefix', 'backend'], { stdio: 'inherit' });
+  if (b.status !== 0 || !existsSync(join(be, 'dist-next', 'main.js'))) {
+    err('[LỖI] Biên dịch backend thất bại (xem lỗi TypeScript phía trên).');
+    rmSync(join(be, 'dist-next'), { recursive: true, force: true });
+    return false;
+  }
+  log('      Build giao diện vào frontend/dist-next ...');
+  const f = npm(['run', 'build', '--prefix', 'frontend', '--', '--outDir', 'dist-next'], { stdio: 'inherit' });
+  if (f.status !== 0 || !existsSync(join(fe, 'dist-next', 'index.html'))) {
+    err('[LỖI] Build giao diện thất bại (xem lỗi phía trên).');
+    rmSync(join(be, 'dist-next'), { recursive: true, force: true });
+    rmSync(join(fe, 'dist-next'), { recursive: true, force: true });
+    return false;
+  }
+  return true;
+}
+
+async function renameRetry(from, to) {
+  for (let i = 0; ; i += 1) {
+    try { renameSync(from, to); return; } catch (e) {
+      // Windows: antivirus / Explorer đôi khi giữ thư mục vài giây
+      if (i >= 9) throw e;
+      await sleep(500);
+    }
+  }
+}
+
+/** dist -> dist-prev (giữ bản cũ để quay lại), dist-next -> dist. Gọi khi hệ thống ĐÃ dừng. */
+async function swapNext() {
+  for (const dir of ['backend', 'frontend']) {
+    const cur = join(ROOT, dir, 'dist');
+    const next = join(ROOT, dir, 'dist-next');
+    const prev = join(ROOT, dir, 'dist-prev');
+    rmSync(prev, { recursive: true, force: true });
+    if (existsSync(cur)) await renameRetry(cur, prev);
+    await renameRetry(next, cur);
+  }
+  writeFileSync(BUILD_STAMP, JSON.stringify({ commit: currentCommit(), builtAt: new Date().toISOString() }));
+}
+
+/** Quay lại dist cũ. builtCommit = commit mà dist cũ được build (rỗng nếu không chắc -> lần chạy sau sẽ build lại cho an toàn). */
+async function restorePrev(builtCommit = '') {
+  for (const dir of ['backend', 'frontend']) {
+    const cur = join(ROOT, dir, 'dist');
+    const prev = join(ROOT, dir, 'dist-prev');
+    if (!existsSync(prev)) continue;
+    rmSync(cur, { recursive: true, force: true });
+    await renameRetry(prev, cur);
+  }
+  if (builtCommit) writeFileSync(BUILD_STAMP, JSON.stringify({ commit: builtCommit, builtAt: new Date().toISOString() }));
+  else rmSync(BUILD_STAMP, { force: true });
+}
+
+/** Thư mục có package.json / package-lock.json khác lần cài trước (hoặc chưa cài). */
+function staleDeps() {
+  return ['.', 'backend', 'frontend'].filter((dir) => {
+    const abs = join(ROOT, dir);
+    const stampFile = join(abs, 'node_modules', STAMP);
+    const have = existsSync(stampFile) ? readFileSync(stampFile, 'utf8').trim() : '';
+    return !(existsSync(join(abs, 'node_modules')) && have === depsHash(abs));
+  });
+}
+
+function readStampCommit() {
+  try { return JSON.parse(readFileSync(BUILD_STAMP, 'utf8')).commit ?? ''; } catch { return ''; }
+}
+
+function needsBuild() {
+  if (!existsSync(join(ROOT, 'backend', 'dist', 'main.js')) || !existsSync(join(ROOT, 'frontend', 'dist', 'index.html'))) return true;
+  if (!existsSync(join(ROOT, '.git')) || !gitAvailable()) return false;
+  if (isDirty()) return true;
+  return readStampCommit() !== currentCommit();
+}
+
+/* ------------------------------------------------------------ các bước CSDL (không nạp dữ liệu mẫu) */
+/** Chạy npm script của backend: in ra màn hình ĐÚNG THỨ TỰ (stdout + stderr) và trả về nội dung stdout để phân tích. */
+function backendScript(script, extra = []) {
+  return new Promise((resolve) => {
+    const child = spawn('npm', ['run', script, '--prefix', 'backend', ...(extra.length ? ['--', ...extra] : [])], {
+      cwd: ROOT,
+      shell: IS_WIN,
+      stdio: ['inherit', 'pipe', 'pipe'],
+    });
+    let out = '';
+    child.stdout.on('data', (c) => { out += c.toString('utf8'); process.stdout.write(c); });
+    child.stderr.on('data', (c) => process.stderr.write(c));
+    child.on('error', () => resolve({ ok: false, out }));
+    child.on('close', (code) => resolve({ ok: code === 0, out }));
+  });
+}
+
+async function migrateAndBootstrap(backup) {
+  log('      Cập nhật cấu trúc CSDL (migration; KHÔNG nạp dữ liệu mẫu, KHÔNG xoá dữ liệu khách) ...');
+  const m = await backendScript('migration:run', [`--backup=${backup}`]);
+  if (!m.ok) return { ok: false, applied: [], backupFile: null };
+  const applied = [...m.out.matchAll(/✓ (\S+)/g)].map((x) => x[1]);
+  const backupFile = /Đã sao lưu \([^)]*\): (.+)/.exec(m.out)?.[1]?.trim() ?? null;
+  const b = await backendScript('bootstrap');
+  if (!b.ok) return { ok: false, applied, backupFile };
+  const noAdmin = /CSDL chưa có tài khoản nào/.test(b.out); // bootstrap chỉ cảnh báo khi thiếu BOOTSTRAP_ADMIN_*
+  // Cảnh báo (không chặn): tài khoản mẫu còn mật khẩu mặc định thì không được mở hệ thống ra Internet
+  await backendScript('security:check');
+  return { ok: true, applied, backupFile, noAdmin };
+}
+
+/** Địa chỉ trong mạng LAN để laptop / điện thoại cùng Wi-Fi truy cập trực tiếp (không cần Internet). */
+function lanUrls() {
+  const out = [];
+  for (const list of Object.values(networkInterfaces())) {
+    for (const i of list ?? []) {
+      if (i.family === 'IPv4' && !i.internal) out.push(`http://${i.address}:${API_PORT}`);
+    }
+  }
+  return out;
+}
+
+const printServerBanner = () => {
+  const lan = lanUrls();
+  log(`
+[6/6] Khởi động máy chủ (bản production, một cổng cho cả web lẫn API) ...
+
+  Trên máy này   : ${SERVER_URL}
+${lan.map((u) => `  Cùng Wi-Fi/LAN : ${u}   (laptop, điện thoại; Windows có thể hỏi cho phép Node.js qua tường lửa)`).join('\n') || '  (không thấy mạng LAN)'}
+  Từ xa          : chạy đường hầm Cloudflare trỏ về ${SERVER_URL} (xem docs/TRIEN-KHAI.md, Phương án 2)
+
+  KHÔNG có dữ liệu mẫu: đăng nhập bằng tài khoản thật. Cập nhật phiên bản mới: update_project.bat
+  Nhấn Ctrl+C để dừng máy chủ.
+============================================================
+`);
+};
+
+/** Chế độ MÁY CHỦ cho máy tiệm. Chạy lại bao nhiêu lần cũng không đụng tới dữ liệu khách. */
+async function serve() {
+  if (checkNode() !== 0) return 1;
+  log('============================================================');
+  log('  HỆ THỐNG ĐẶT LỊCH SALON - SPA  |  CHẾ ĐỘ MÁY CHỦ');
+  log('  Bản production, giữ nguyên dữ liệu khách, không nạp dữ liệu mẫu');
+  log('============================================================');
+  log('');
+  log(`[1/6] Node.js ${process.version}`);
+  log('[2/6] Chuẩn bị tệp .env ...');
+  ensureEnvFiles();
+
+  if (await portInUse(API_PORT)) {
+    if ((await httpStatus(HEALTH_URL)) === 200) {
+      log(`[!] Máy chủ ĐANG chạy ở một cửa sổ khác. Mở ${SERVER_URL} ...`);
+      openBrowser(SERVER_URL);
+      return 0;
+    }
+    err(`[LỖI] Cổng ${API_PORT} đang bị chương trình khác chiếm. Đóng chương trình đó rồi chạy lại.`);
+    return 1;
+  }
+  if (!(await ensureDatabase())) return 1;
+  log('[4/6] Kiểm tra gói npm ...');
+  if (!ensureDeps()) return 1;
+  log('[5/6] Cấu trúc CSDL ...');
+  const mig = await migrateAndBootstrap(process.env.MIGRATION_BACKUP ?? 'auto');
+  if (!mig.ok) {
+    err('[LỖI] Không cập nhật được cấu trúc CSDL. Máy chủ KHÔNG khởi động để tránh chạy sai dữ liệu. Xem lỗi phía trên.');
+    return 1;
+  }
+  if (mig.noAdmin) {
+    err('[LỖI] CSDL chưa có tài khoản nào nên không ai đăng nhập được. Máy chủ chưa khởi động.');
+    err('      Mở backend\\.env, điền BOOTSTRAP_ADMIN_EMAIL và BOOTSTRAP_ADMIN_PASSWORD (>= 8 ký tự, có chữ và số, không dấu;');
+    err('      tránh ký tự #), lưu lại rồi chạy lại start_server.bat. Tài khoản quản trị đầu tiên sẽ được tạo tự động.');
+    return 1;
+  }
+  if (needsBuild()) {
+    log('      Bản build chưa có hoặc đã cũ so với mã nguồn - build lại (vài chục giây) ...');
+    if (!buildNext()) return 1;
+    await swapNext();
+  } else {
+    log('      Bản build đã khớp mã nguồn.');
+  }
+  printServerBanner();
+  return run('serve');
+}
+
+function stopCommand() {
+  const state = readState();
+  if (!state) {
+    log('Không có hệ thống nào do launcher quản lý đang chạy.');
+    return 0;
+  }
+  return stopRunning(state).then((freed) => {
+    log(freed ? 'Đã dừng.' : `[CẢNH BÁO] Đã gửi lệnh dừng nhưng cổng ${API_PORT} vẫn còn bận.`);
+    return freed ? 0 : 1;
+  });
+}
+
+/* ------------------------------------------------------------------- cập nhật 1 chạm */
+/** Chạy lại bản máy chủ ĐÃ build sẵn: không migration, không build, không đụng CSDL. Dùng khi cập nhật và khi quay về bản cũ. */
+async function resume() {
+  if (checkNode() !== 0) return 1;
+  if (!existsSync(join(ROOT, 'backend', 'dist', 'main.js')) || !existsSync(join(ROOT, 'frontend', 'dist', 'index.html'))) {
+    err('[LỖI] Chưa có bản build. Chạy start_server.bat (sẽ build rồi chạy).');
+    return 1;
+  }
+  ensureEnvFiles();
+  if (await portInUse(API_PORT)) {
+    err(`[LỖI] Cổng ${API_PORT} đang bị chương trình khác chiếm.`);
+    return 1;
+  }
+  printServerBanner();
+  return run('serve');
+}
+
+/** Mở lại hệ thống trong cửa sổ MỚI (cửa sổ cập nhật được đóng lại sau khi xong). Trả về false nếu không mở được. */
+function startDetached(mode) {
+  // serve -> `resume`: chạy bản ĐÃ build + ĐÃ migration, không làm lại (nếu làm lại, bản hỏng sẽ chặn luôn việc bật bản cũ).
+  // dev   -> `run`   : KHÔNG phải `start` vì start nạp lại dữ liệu mẫu, việc cập nhật tuyệt đối không được làm.
+  const command = mode === 'serve' ? 'resume' : 'run';
+  const env = { ...process.env, SALON_NO_BROWSER: '1' };
+  try {
+    if (IS_WIN) {
+      // start "tiêu đề" /D "thư mục" cmd /k ... : cửa sổ riêng, giữ lại để đọc log
+      const line = `/d /c start "Salon ${command}" /D "${ROOT}" cmd /k node scripts\\launcher.mjs ${command}`;
+      const child = spawn('cmd.exe', [line], { detached: true, stdio: 'ignore', env, windowsVerbatimArguments: true });
+      child.on('error', () => {});
+      child.unref();
+    } else {
+      mkdirSync(join(ROOT, 'logs'), { recursive: true });
+      const out = openSync(join(ROOT, 'logs', 'server.log'), 'a');
+      const child = spawn(process.execPath, [SELF, command], { cwd: ROOT, detached: true, stdio: ['ignore', out, out], env: { ...env, SALON_LOG_REDIRECTED: '1' } });
+      child.on('error', () => {});
+      child.unref();
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function waitHealthy(seconds) {
+  const end = Date.now() + seconds * 1000;
+  while (Date.now() < end) {
+    if ((await httpStatus(HEALTH_URL)) === 200) return true;
+    await sleep(1500);
+  }
+  return false;
+}
+
+const BAR = '============================================================';
+
+/* ------------------------------------------------------------------- đường hầm Cloudflare */
+/** Tìm cloudflared: biến CLOUDFLARED_PATH, tools/, C:\Cloudflared\bin (đúng thư mục trong hướng dẫn của Cloudflare), rồi PATH. */
+function findCloudflared() {
+  const exe = IS_WIN ? 'cloudflared.exe' : 'cloudflared';
+  const candidates = [process.env.CLOUDFLARED_PATH, join(ROOT, 'tools', exe), IS_WIN ? 'C:\\Cloudflared\\bin\\cloudflared.exe' : null].filter(Boolean);
+  for (const c of candidates) if (existsSync(c)) return c;
+  const r = spawnSync(IS_WIN ? 'where' : 'which', ['cloudflared'], { encoding: 'utf8', windowsHide: true });
+  return r.status === 0 ? (r.stdout.split(/\r?\n/)[0] || '').trim() || null : null;
+}
+
+/**
+ * Quick Tunnel của Cloudflare: HTTPS công khai tới máy chủ này, KHÔNG cần tài khoản hay tên miền, miễn phí.
+ * Giới hạn do Cloudflare ghi rõ: địa chỉ ngẫu nhiên và ĐỔI mỗi lần chạy, không cam kết hoạt động liên tục, tối đa 200 yêu cầu
+ * đồng thời, KHÔNG hỗ trợ Server-Sent Events (giao diện tự chuyển sang hỏi định kỳ mỗi 15 giây, vẫn cập nhật được).
+ */
+async function tunnel() {
+  if (checkNode() !== 0) return 1;
+  const bin = findCloudflared();
+  if (!bin) {
+    err('[LỖI] Chưa có cloudflared (chương trình tạo đường hầm của Cloudflare, miễn phí).');
+    err('      Windows: tải https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe');
+    err('               đổi tên thành cloudflared.exe và đặt vào C:\\Cloudflared\\bin (hoặc thư mục tools\\ của dự án).');
+    err('      macOS/Linux: xem https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/downloads/');
+    return 1;
+  }
+  if ((await httpStatus(HEALTH_URL)) !== 200) {
+    err(`[CẢNH BÁO] Máy chủ chưa chạy ở cổng ${API_PORT}. Hãy chạy start_server.bat trước; đường hầm vẫn mở nhưng người dùng sẽ gặp lỗi cho tới khi máy chủ lên.`);
+  }
+  const args = ['tunnel', '--url', SERVER_URL];
+  const allowed = process.env.CLOUDFLARED_ALLOWED_MAIL?.trim();
+  if (allowed) args.push('--allowed-mail', allowed);
+
+  log(`Mở đường hầm tới ${SERVER_URL} bằng ${bin} ...`);
+  const child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+  let shown = false;
+  const onData = (chunk) => {
+    const text = chunk.toString('utf8');
+    const m = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/i.exec(text);
+    if (m && !shown) {
+      shown = true;
+      log(`
+${BAR}
+  ĐƯỜNG HẦM ĐÃ MỞ - dùng địa chỉ này trên laptop / điện thoại (HTTPS):
+
+      ${m[0]}
+
+  - Địa chỉ ĐỔI mỗi lần chạy lại lệnh này. Đừng đặt nó vào FRONTEND_URL (link trong email gửi khách).
+  - Không có cam kết hoạt động liên tục; Cloudflare coi Quick Tunnel là để thử nghiệm.
+  - Quick Tunnel không hỗ trợ SSE: giao diện tự chuyển sang hỏi mỗi 15 giây (dữ liệu vẫn đồng bộ, chậm hơn vài giây).
+  - Địa chỉ này ai biết cũng mở được: hãy chắc chắn đã chạy "npm run security:check" (không còn tài khoản mẫu).
+  Nhấn Ctrl+C để đóng đường hầm.
+${BAR}`);
+    }
+    // cloudflared ghi nhật ký ra stderr; chỉ in các dòng cảnh báo / lỗi để màn hình gọn
+    for (const line of text.split(/\r?\n/)) if (/\b(ERR|WRN)\b/.test(line)) process.stderr.write(`[cloudflared] ${line}\n`);
+  };
+  child.stdout.on('data', onData);
+  child.stderr.on('data', onData);
+  child.on('error', (e) => err(`[LỖI] Không chạy được cloudflared: ${e.message}`));
+  for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGBREAK']) {
+    try { process.on(sig, () => { try { child.kill(); } catch { /* đã thoát */ } }); } catch { /* HĐH không hỗ trợ */ }
+  }
+  return new Promise((resolve) => {
+    child.on('exit', (code) => {
+      if (code && !shown) err('[LỖI] cloudflared dừng trước khi mở được đường hầm (kiểm tra kết nối Internet / tường lửa chặn cổng 7844).');
+      resolve(code ?? 0);
+    });
+  });
+}
+
+
+/** Bước 1 (chạy bằng mã CŨ): kiểm tra Git, lấy mã mới. Sau đó chạy lại chính launcher bằng mã MỚI (update-apply). */
+async function update() {
+  if (checkNode() !== 0) return 1;
+  const force = process.argv.includes('--force');
+  log(BAR);
+  log('  CẬP NHẬT PHIÊN BẢN MỚI  |  giữ nguyên dữ liệu khách và phiên đăng nhập');
+  log(BAR);
+  log('');
+
+  log('[1/7] Kiểm tra Git ...');
+  if (!gitAvailable()) {
+    err('[LỖI] Máy chưa cài Git. Tải tại https://git-scm.com/download/win , cài xong chạy lại update_project.bat.');
+    return 1;
+  }
+  if (!existsSync(join(ROOT, '.git'))) {
+    err('[LỖI] Thư mục này không phải bản sao Git (có thể tải về dạng .zip) nên không tự cập nhật được.');
+    err('      Hãy lấy dự án bằng: git clone <địa-chỉ-kho-mã> rồi dùng bản đó.');
+    return 1;
+  }
+  const branch = gitOut(['rev-parse', '--abbrev-ref', 'HEAD']);
+  if (branch !== 'main') {
+    err(`[LỖI] Máy đang ở nhánh "${branch}", cập nhật chỉ chạy trên nhánh main.`);
+    err('      Chạy: git checkout main   rồi thử lại update_project.bat');
+    return 1;
+  }
+  const real = dirtyFiles().filter((d) => !LOCKFILE.test(d.file));
+  if (real.length) {
+    err('[LỖI] Có tệp mã nguồn bị sửa tại máy này, cập nhật có thể ghi đè hoặc xung đột:');
+    err(real.slice(0, 10).map((d) => `        ${d.line}`).join('\n'));
+    err('      Hãy gửi các thay đổi đó cho người lập trình (hoặc hoàn lại: git checkout -- <tệp>) rồi chạy lại.');
+    return 1;
+  }
+  const state = readState();
+  if (!state && (await portInUse(API_PORT))) {
+    err(`[LỖI] Cổng ${API_PORT} đang có chương trình chạy mà launcher không quản lý (một cửa sổ cũ, hoặc chương trình khác).`);
+    err('      Đóng cửa sổ đang chạy hệ thống (Ctrl+C) rồi chạy lại update_project.bat. CHƯA có gì bị thay đổi.');
+    return 1;
+  }
+
+  const oldRev = currentCommit();
+  log('[2/7] Lấy phiên bản mới: git pull origin main ...');
+  if (git(['fetch', '--quiet', 'origin', 'main'], { stdio: 'inherit' }).status !== 0) {
+    err('[LỖI] Không kết nối được kho mã (kiểm tra Internet / quyền truy cập GitHub). CHƯA có gì bị thay đổi.');
+    return 1;
+  }
+  const remoteRev = gitOut(['rev-parse', 'origin/main']);
+  const builtRev = readStampCommit();
+  if (remoteRev === oldRev && builtRev === oldRev && !force && state) {
+    log(`      Đã là phiên bản mới nhất (${short(oldRev)}). Không có gì để cập nhật.`);
+    return 0;
+  }
+  if (force) rmSync(BUILD_STAMP, { force: true }); // buộc build lại
+  if (remoteRev !== oldRev) {
+    // package-lock.json bị npm sửa tại máy + bản mới cũng đổi chính tệp đó -> hoàn lại bản của máy để kéo về không xung đột
+    const incoming = gitOut(['diff', '--name-only', `${oldRev}..origin/main`]).split('\n');
+    const clash = dirtyFiles().filter((d) => LOCKFILE.test(d.file) && incoming.includes(d.file)).map((d) => d.file);
+    if (clash.length) {
+      git(['checkout', '--', ...clash]);
+      log(`      Hoàn lại ${clash.join(', ')} (do npm tự sửa trên máy này) để kéo bản mới không xung đột.`);
+    }
+    // --ff-only: chỉ tiến tới, không bao giờ tự tạo commit hợp nhất hay ghi đè
+    const pull = git(['pull', '--ff-only', 'origin', 'main'], { stdio: 'inherit' });
+    if (pull.status !== 0) {
+      err('[LỖI] git pull thất bại (lịch sử máy này khác kho mã). CHƯA có gì bị thay đổi; hãy liên hệ người lập trình.');
+      return 1;
+    }
+  }
+  const newRev = currentCommit();
+  // Từ đây chạy bằng mã MỚI vừa kéo về: logic cập nhật mới (nếu có) áp dụng ngay trong lần này
+  const r = spawnSync(process.execPath, [SELF, 'update-apply', oldRev, newRev], { cwd: ROOT, stdio: 'inherit' });
+  return r.status ?? 1;
+}
+
+/** Bước 2 (chạy bằng mã MỚI): gói npm, build, dừng, sao lưu + migration, chạy lại, kiểm tra, tự quay về nếu lỗi. */
+async function updateApply() {
+  const oldRev = process.argv[3] ?? '';
+  const newRev = process.argv[4] ?? currentCommit();
+  const t0 = Date.now();
+  const state = readState();
+  const mode = state?.mode ?? 'serve';
+  const wasRunning = !!state;
+  const backupPolicy = process.env.UPDATE_BACKUP ?? 'required';
+  const oldBuilt = !!oldRev && readStampCommit() === oldRev; // thư mục dist hiện tại được build đúng từ bản cũ
+  let stopped = false; // đã dừng hệ thống cũ chưa
+  let swapped = false; // đã đổi dist-next -> dist chưa
+
+  /**
+   * Cập nhật hỏng -> đưa MÃ NGUỒN về bản cũ (cây mã đã được kiểm tra là sạch nên không mất gì của máy này).
+   * Nếu không, lần khởi động sau (mất điện, bật máy) sẽ build lại đúng bản hỏng và tiệm không có hệ thống để dùng.
+   */
+  const revertCode = () => {
+    if (!oldRev || currentCommit() === oldRev) return;
+    const r = git(['reset', '--hard', oldRev], { stdio: 'ignore' });
+    log(r.status === 0 ? `      Đã đưa mã nguồn về phiên bản cũ ${short(oldRev)}.` : `      [CẢNH BÁO] Không tự đưa mã nguồn về ${short(oldRev)} được: chạy git reset --hard ${short(oldRev)}`);
+  };
+
+  /** Lỗi sau khi đã dừng hệ thống cũ -> bật lại bản cũ ĐÃ BUILD SẴN (không migration, không build), để tiệm vẫn làm việc. */
+  const restartOld = async () => {
+    if (!wasRunning || !stopped) return;
+    if (mode === 'serve' && !existsSync(join(ROOT, 'backend', 'dist', 'main.js'))) {
+      err('      Không còn bản cũ để bật lại. Chạy start_server.bat để xem lỗi chi tiết.');
+      return;
+    }
+    log('      Bật lại BẢN CŨ để tiệm tiếp tục làm việc ...');
+    startDetached(mode);
+    const back = await waitHealthy(90);
+    err(back ? '      Đã bật lại bản cũ, tiệm làm việc bình thường.' : '      Bản cũ cũng chưa lên. Chạy start_server.bat để xem lỗi chi tiết.');
+  };
+  const fail = async (...lines) => {
+    for (const l of lines) err(l);
+    revertCode();
+    await restartOld();
+    return 1;
+  };
+
+  log(`      ${short(oldRev)} -> ${short(newRev)}`);
+  const changes = oldRev && newRev && oldRev !== newRev ? gitOut(['log', '--oneline', '--no-decorate', '-n', '12', `${oldRev}..${newRev}`]) : '';
+  if (changes) log(changes.split('\n').map((l) => `        ${l}`).join('\n'));
+
+  log('[3/7] Kiểm tra gói npm (chỉ cài khi package.json / package-lock.json đổi) ...');
+  ensureEnvFiles();
+  if (staleDeps().length && wasRunning) {
+    // Cài gói lúc hệ thống còn chạy có thể lỗi khoá tệp .node (bcrypt...) trên Windows -> dừng trước, chỉ khi có gói mới
+    log('      Có gói npm mới: dừng hệ thống trước khi cài (tránh khoá tệp trên Windows) ...');
+    if (!(await stopRunning(state))) return fail(`[LỖI] Không dừng được hệ thống cũ (cổng ${API_PORT} vẫn bận). Chưa thay đổi gì.`);
+    stopped = true;
+  }
+  if (!ensureDeps()) return fail('[LỖI] Cài gói thất bại.');
+
+  const needBuild = mode === 'serve' && needsBuild();
+  if (mode !== 'serve') {
+    log('[4/7] Chế độ phát triển: không cần build.');
+  } else if (needBuild) {
+    log(stopped ? '[4/7] Build bản mới ...' : '[4/7] Build bản mới ở thư mục tạm (bản cũ vẫn phục vụ trong lúc này) ...');
+    if (!buildNext()) {
+      return fail(stopped ? '[LỖI] Build thất bại.' : '[LỖI] Build thất bại. Hệ thống đang chạy KHÔNG bị đụng tới, vẫn là bản cũ.');
+    }
+  } else {
+    log('[4/7] Bản build đã khớp mã nguồn, bỏ qua build.');
+  }
+
+  log('[5/7] Dừng hệ thống, sao lưu CSDL và cập nhật cấu trúc ...');
+  if (!stopped) {
+    if (!(await stopRunning(state))) return fail(`[LỖI] Không dừng được hệ thống cũ (cổng ${API_PORT} vẫn bận). Chưa thay đổi gì.`);
+    stopped = true;
+  }
+  if (!(await ensureDatabase('     -'))) return fail('[LỖI] Không kết nối được PostgreSQL.');
+  const mig = await migrateAndBootstrap(backupPolicy);
+  if (!mig.ok) {
+    return fail(
+      '[LỖI] Cập nhật cấu trúc CSDL thất bại. Dữ liệu cũ được giữ nguyên (mỗi migration chạy trong một giao dịch, lỗi thì tự huỷ).',
+      ...(mig.backupFile ? [`      Bản sao lưu trước khi cập nhật: ${mig.backupFile}`] : []),
+    );
+  }
+
+  log('[6/7] Chuyển sang bản mới ...');
+  if (needBuild) {
+    await swapNext();
+    swapped = true;
+  }
+
+  log('[7/7] Khởi động lại và kiểm tra ...');
+  if (!startDetached(mode)) {
+    err('[CẢNH BÁO] Không tự mở được cửa sổ mới. Hãy chạy start_server.bat (hoặc run_project.bat) để bật hệ thống.');
+    return 1;
+  }
+  const healthy = await waitHealthy(Number(process.env.UPDATE_HEALTH_TIMEOUT ?? 150));
+  let versionOk = true;
+  if (healthy && mode === 'serve') {
+    try {
+      const want = JSON.parse(readFileSync(join(ROOT, 'frontend', 'dist', 'version.json'), 'utf8')).id;
+      const got = await new Promise((resolve) => {
+        http.get(`${SERVER_URL}/version.json`, (res) => {
+          let body = '';
+          res.on('data', (c) => { body += c; });
+          res.on('end', () => { try { resolve(JSON.parse(body).id); } catch { resolve(''); } });
+        }).on('error', () => resolve(''));
+      });
+      versionOk = got === want;
+    } catch { versionOk = false; }
+  }
+
+  if (!healthy || !versionOk) {
+    err(`[LỖI] Bản mới không chạy đúng (${healthy ? 'giao diện không khớp bản build' : 'API không phản hồi'}). Quay lại bản cũ ...`);
+    await stopRunning(readState());
+    if (swapped) await restorePrev(oldBuilt ? oldRev : '');
+    return fail(
+      `      CSDL đã được nâng cấp (chỉ thêm cấu trúc, bản cũ vẫn dùng được). ${mig.backupFile ? `Bản sao lưu trước đó: ${mig.backupFile}` : ''}`,
+      `      Nhật ký lỗi của bản mới: ${join('logs', 'server.log')} (nếu không có, chạy start_server.bat để xem trực tiếp). Gửi cho người lập trình.`,
+    );
+  }
+
+  const secs = Math.round((Date.now() - t0) / 1000);
+  log('');
+  log(BAR);
+  log(`  CẬP NHẬT XONG sau ${secs} giây`);
+  log(`  Phiên bản        : ${short(oldRev)} -> ${short(newRev)}`);
+  log(`  Cấu trúc CSDL    : ${mig.applied.length ? `đã áp dụng ${mig.applied.join(', ')}` : 'không có thay đổi'}`);
+  log(`  Sao lưu trước đó : ${mig.backupFile ?? 'không cần (CSDL chưa có thay đổi cấu trúc)'}`);
+  log('  Dữ liệu khách    : giữ nguyên, không nạp dữ liệu mẫu');
+  log('  Phiên đăng nhập  : giữ nguyên (khoá JWT trong backend/.env không đổi, phiên lưu trong CSDL)');
+  log(`  Địa chỉ          : ${mode === 'serve' ? SERVER_URL : APP_URL}`);
+  log('  Thiết bị đang mở trang sẽ thấy nút "Tải lại" để lấy giao diện mới.');
+  if (!wasRunning) log('  (Trước đó hệ thống chưa chạy - đã bật ở chế độ máy chủ.)');
+  log(BAR);
+  return 0;
+}
+
 /* ------------------------------------------------------------------------ main */
 const cmd = process.argv[2];
-const handlers = { start, 'check-node': checkNode, prepare, open: openWhenReady, run };
+const handlers = {
+  start, 'check-node': checkNode, prepare, open: openWhenReady, run,
+  serve, resume, tunnel, stop: stopCommand, update, 'update-apply': updateApply,
+};
 if (!handlers[cmd]) {
   err(`Cách dùng: node scripts/launcher.mjs <${Object.keys(handlers).join('|')}>`);
   process.exit(1);
