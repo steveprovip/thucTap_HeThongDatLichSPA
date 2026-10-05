@@ -4,6 +4,7 @@ import { customersApi, getErrorMessage } from '@/api';
 import type { Customer, VisitHistoryItem } from '@/types';
 import { Button, EmptyState, Field, Input, Modal, Pagination, SectionTitle, Textarea, TableSkeleton } from '@/components';
 import { formatDate } from '@/utils/format';
+import { CUSTOMER_METRIC_LABELS, historyCaption } from '@/utils/customerMetrics';
 import { STATUS_LABELS } from '@/utils/constants';
 import { useToast } from '@/contexts/ToastContext';
 
@@ -59,7 +60,7 @@ export function CustomersPage() {
                placeholder="Tìm theo tên hoặc số điện thoại" className="pl-11" />
       </div>
 
-      {loading ? <TableSkeleton cols={5} /> : !data || data.items.length === 0 ? (
+      {loading ? <TableSkeleton cols={6} /> : !data || data.items.length === 0 ? (
         <EmptyState icon={<Users size={30} />} title="Không tìm thấy hồ sơ khách" />
       ) : (
         <>
@@ -67,8 +68,10 @@ export function CustomersPage() {
             <table className="table">
               <thead>
                 <tr>
-                  <th>Khách hàng</th><th>Số điện thoại</th><th className="text-right">Lượt đến</th>
-                  <th className="text-right">Không đến</th><th>Ghi chú</th><th></th>
+                  <th>Khách hàng</th><th>Số điện thoại</th>
+                  <th className="text-right">{CUSTOMER_METRIC_LABELS.visits}</th>
+                  <th className="text-right">{CUSTOMER_METRIC_LABELS.noShows}</th>
+                  <th className="text-right">{CUSTOMER_METRIC_LABELS.total}</th><th>Ghi chú</th><th></th>
                 </tr>
               </thead>
               <tbody>
@@ -81,6 +84,7 @@ export function CustomersPage() {
                     <td className="font-mono text-xs">{c.phone}</td>
                     <td className="text-right">{c.totalVisits}</td>
                     <td className={`text-right ${c.noShowCount >= 2 ? 'font-bold text-red-600' : ''}`}>{c.noShowCount}</td>
+                    <td className="text-right">{c.totalAppointments}</td>
                     <td className="max-w-[240px] truncate text-xs text-ink-muted">{c.note}</td>
                     <td><Button size="sm" variant="ghost" onClick={() => open(c)}>Xem</Button></td>
                   </tr>
@@ -101,12 +105,13 @@ export function CustomersPage() {
       >
         {detail && (
           <div className="space-y-4">
-            <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+            <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
               <div><dt className="text-ink-muted">Số điện thoại</dt><dd className="font-semibold">{detail.phone}</dd></div>
               <div><dt className="text-ink-muted">Email</dt><dd className="font-semibold">{detail.email ?? '—'}</dd></div>
-              <div><dt className="text-ink-muted">Lượt đến</dt><dd className="font-semibold">{detail.totalVisits}</dd></div>
-              <div><dt className="text-ink-muted">Không đến</dt>
+              <div><dt className="text-ink-muted">{CUSTOMER_METRIC_LABELS.visits}</dt><dd className="font-semibold">{detail.totalVisits}</dd></div>
+              <div><dt className="text-ink-muted">{CUSTOMER_METRIC_LABELS.noShows}</dt>
                    <dd className={`font-semibold ${detail.noShowCount >= 2 ? 'text-red-600' : ''}`}>{detail.noShowCount}</dd></div>
+              <div><dt className="text-ink-muted">{CUSTOMER_METRIC_LABELS.total}</dt><dd className="font-semibold">{detail.totalAppointments}</dd></div>
             </dl>
 
             <Field label="Ghi chú riêng của tiệm" hint="Chỉ nhân sự của tiệm nhìn thấy">
@@ -115,11 +120,11 @@ export function CustomersPage() {
 
             <div>
               <p className="mb-2 flex items-center gap-2 text-sm font-semibold">
-                <History size={16} /> Lịch sử dịch vụ ({history.length})
+                <History size={16} /> Lịch sử đặt lịch ({historyCaption(history.length, detail.totalAppointments)})
               </p>
               {history.length === 0 ? (
                 <p className="rounded-xl bg-surface-alt px-3.5 py-3 text-sm text-ink-muted">
-                  Khách mới, chưa có lịch sử dịch vụ.
+                  Khách mới, chưa có lịch sử đặt lịch.
                 </p>
               ) : (
                 <div className="table-wrap">

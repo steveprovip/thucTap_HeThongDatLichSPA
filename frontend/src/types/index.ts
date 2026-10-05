@@ -269,7 +269,9 @@ export interface Appointment {
   estimatedTotalText: string;
   customer: {
     id: string; fullName: string; phone: string; phoneMasked: boolean;
-    email: string | null; totalVisits: number; noShowCount: number;
+    email: string | null;
+    /** Lượt hoàn tất / lượt không đến / tổng lịch đã đặt — đều đếm từ bảng lịch hẹn. */
+    totalVisits: number; noShowCount: number; totalAppointments: number;
   };
   stylist: { id: string; fullName: string };
   services: AppointmentServiceLine[];
@@ -329,8 +331,12 @@ export interface Customer {
   phone: string;
   phoneMasked: boolean;
   email: string | null;
+  /** Lượt hoàn tất (lịch trạng thái "Hoàn tất"). */
   totalVisits: number;
+  /** Lượt không đến (lịch trạng thái "Không đến"). */
   noShowCount: number;
+  /** Tổng lịch đã đặt (mọi trạng thái). */
+  totalAppointments: number;
   note: string | null;
   isNew: boolean;
   createdAt: string;

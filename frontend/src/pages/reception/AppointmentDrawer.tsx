@@ -8,9 +8,10 @@ import {
 import { appointmentsApi, getErrorMessage, stylistsApi } from '@/api';
 import type { Appointment, AppointmentStatus, Availability, Stylist, VisitHistoryItem } from '@/types';
 import {
-  BackButton, Button, ConfirmDialog, Field, Modal, Notice, Select, StatusBadge, Textarea,
+  BackButton, Button, ConfirmDialog, CustomerMetrics, Field, Modal, Notice, Select, StatusBadge, Textarea,
 } from '@/components';
-import { formatDate, formatDateTime, formatDuration, formatTime } from '@/utils/format';
+import { formatDate, formatDateTime, formatDuration, formatTime, salonClosedMessage } from '@/utils/format';
+import { historyCaption } from '@/utils/customerMetrics';
 import { STATUS_LABELS } from '@/utils/constants';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
@@ -74,7 +75,7 @@ export function AppointmentDrawer({ appointment, onClose, onChanged }: Appointme
     const t = window.requestAnimationFrame(() => setVisible(true));
     setHistory([]);
     appointmentsApi.customerHistory(appointment.id)
-      .then((r) => setHistory(r.history.filter((h) => h.appointmentId !== appointment.id)))
+      .then((r) => setHistory(r.history))
       .catch(() => undefined);
     return () => window.cancelAnimationFrame(t);
   }, [appointment]);
@@ -191,9 +192,7 @@ export function AppointmentDrawer({ appointment, onClose, onChanged }: Appointme
               {a.customer.phoneMasked ? a.customer.phone : <a href={`tel:${a.customer.phone}`} className="hover:underline">{a.customer.phone}</a>}
               {a.customer.phoneMasked && <span className="text-xs text-ink-muted">(đã che theo quyền)</span>}
             </p>
-            <p className="mt-1 text-xs text-ink-muted">
-              Đã đến {a.customer.totalVisits} lần · {a.customer.noShowCount} lần không đến
-            </p>
+            <CustomerMetrics data={a.customer} className="mt-1 text-xs text-ink-muted" />
             {a.customer.noShowCount >= 2 && (
               <Notice tone="danger" className="mt-2">Khách đã lỡ hẹn {a.customer.noShowCount} lần — nên gọi xác nhận trước.</Notice>
             )}
@@ -230,13 +229,13 @@ export function AppointmentDrawer({ appointment, onClose, onChanged }: Appointme
           {history.length > 0 && (
             <details className="rounded-xl border border-slate-200 p-3.5">
               <summary className="flex cursor-pointer items-center gap-2 text-sm font-semibold">
-                <History size={15} /> {history.length} lượt gần đây của khách
+                <History size={15} /> Lịch sử đặt lịch ({historyCaption(history.length, a.customer.totalAppointments)})
               </summary>
               <ul className="mt-2 space-y-1.5 text-xs text-ink-soft">
-                {history.slice(0, 8).map((h) => (
+                {history.map((h) => (
                   <li key={h.appointmentId} className="border-b border-slate-200 pb-1.5 last:border-0">
                     <span className="font-medium">{formatDate(h.date)}</span> · {h.services.join(', ')} · thợ {h.stylistName}
-                    <span className="ml-1 text-ink-muted">({STATUS_LABELS[h.status]})</span>
+                    <span className="ml-1 text-ink-muted">({STATUS_LABELS[h.status]}{h.appointmentId === a.id ? ' · lịch này' : ''})</span>
                     {h.technicalNote && <em className="block text-ink-muted">Ghi chú: {h.technicalNote}</em>}
                   </li>
                 ))}
@@ -474,16 +473,20 @@ function RescheduleModal({ open, appointment, onClose, onDone }: {
   useEffect(() => {
     if (!open) return;
     setAvailability(null);
+    let stale = false;
     appointmentsApi
       .availability({
         date, serviceIds: appointment.services.map((s) => s.serviceId), stylistId, excludeAppointmentId: appointment.id,
       })
-      .then(setAvailability)
-      .catch(() => setAvailability(null));
+      .then((r) => { if (!stale) setAvailability(r); })
+      .catch(() => { if (!stale) setAvailability(null); });
+    return () => { stale = true; };
   }, [open, date, stylistId, appointment]);
 
   const capable = stylists.filter((s) => appointment.services.every((sv) => s.serviceIds.includes(sv.serviceId)));
   const unchanged = stylistId === appointment.stylist.id && date === appointment.date && time === appointment.startTime;
+  // Ngày đích là ngày tiệm nghỉ cả ngày (nghỉ lễ / nghỉ cố định): chặn hẳn, không cho lưu
+  const closedDay = !!availability && availability.date === date && availability.salonClosed;
 
   const save = async () => {
     setBusy(true);
@@ -502,7 +505,7 @@ function RescheduleModal({ open, appointment, onClose, onDone }: {
     <Modal open={open} title="Đổi thợ hoặc dời giờ" onClose={onClose} size="md"
            footer={<div className="flex justify-end gap-2">
              <Button variant="ghost" onClick={onClose}>Đóng</Button>
-             <Button loading={busy} onClick={save} disabled={!time || unchanged}>Lưu thay đổi</Button>
+             <Button loading={busy} onClick={save} disabled={!time || unchanged || closedDay}>Lưu thay đổi</Button>
            </div>}>
       <div className="space-y-4">
         <div className="grid gap-3 sm:grid-cols-2">
@@ -519,7 +522,7 @@ function RescheduleModal({ open, appointment, onClose, onDone }: {
         <div>
           <p className="field-label">Khung giờ còn trống</p>
           {!availability ? <p className="text-sm text-ink-muted">Đang tính…</p>
-            : availability.salonClosed ? <Notice tone="warning">{availability.closedReason ?? 'Tiệm nghỉ ngày này'}</Notice>
+            : availability.salonClosed ? <Notice tone="danger">{salonClosedMessage(availability.closedReason, 'reschedule')}</Notice>
               : availability.slots.length === 0 ? <Notice tone="warning">Thợ này không còn khung giờ trống trong ngày đã chọn.</Notice>
                 : (
                   <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
