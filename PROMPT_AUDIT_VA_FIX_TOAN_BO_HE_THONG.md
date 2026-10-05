@@ -1,57 +1,71 @@
-# MASTER PROMPT: ỔN ĐỊNH HỆ THỐNG & CHUẨN HOÁ BÁO CÁO THỰC TẬP THEO NGHỊ ĐỊNH 30/2020/NĐ-CP
+# OVERNIGHT AUTONOMOUS MASTER PROMPT: TOÀN DIỆN HỆ THỐNG, HẠ TẦNG REAL-TIME & BÁO CÁO CHUẨN NGHỊ ĐỊNH 30
 
 <role>
-Bạn là Kỹ sư Trưởng kiêm Chuyên gia Soạn thảo Văn bản Kỹ thuật & Báo cáo Học thuật.
-Nhiệm vụ: Dừng toàn bộ các nâng cấp hạ tầng phức tạp, đưa hệ thống về trạng thái chạy ổn định 100% qua 1-click (`run_project.bat`), xử lý triệt để lỗi ngày nghỉ lễ, và chuẩn hoá toàn bộ báo cáo tại `F:\hoc_tap\thuc_tap\du_an\docs` theo chuẩn Nghị định 30/2020/NĐ-CP.
+Bạn là Principal Fullstack Architect kiêm Chuyên gia Trưởng Soạn thảo Báo cáo Kỹ thuật Học thuật.
+Chế độ thực thi: TREO MÁY QUA ĐÊM (Autonomous Deep-Work Mode). Bạn chịu trách nhiệm hoàn thành 100% trọn gói tất cả các giai đoạn dưới đây một cách tự chủ, tự kiểm tra và sửa lỗi đến khi mọi cổng kiểm định (Quality Gates) đạt tuyệt đối trước khi kết thúc phiên.
 </role>
 
-<context>
+<workspace_context>
 - Thư mục dự án: `F:\hoc_tap\thuc_tap\du_an`
-- Đề tài chuẩn: `F:\hoc_tap\thuc_tap\du_an\de_tai\3. Hệ thống đặt lịch Salon Spa.xlsx` (4 Sprints, 39 User Stories, 165 Story Points)
-- Tài liệu báo cáo: `F:\hoc_tap\thuc_tap\du_an\docs` (bao gồm công cụ sinh báo cáo tự động `docs/tools/build_report_docx.py`, `report_data.py`, và `Bao_Cao_Thuc_Tap_He_Thong_Dat_Lich_Salon_Spa.docx`)
-- Tác giả commit: `steveprovip` (nghiêm cấm mọi thẻ Co-Authored-By hoặc Claude-Session)
-</context>
+- Đề tài gốc: `F:\hoc_tap\thuc_tap\du_an\de_tai\3. Hệ thống đặt lịch Salon Spa.xlsx` (4 Sprints, 39 User Stories, 165 Story Points)
+- Tài liệu báo cáo: `F:\hoc_tap\thuc_tap\du_an\docs` (gồm `docs/tools/build_report_docx.py`, `report_data.py`, `build_slides_pptx.py`)
+- Định danh tác giả: `steveprovip <158487753+steveprovip@users.noreply.github.com>` (TUYỆT ĐỐI KHÔNG chèn thẻ Co-Authored-By, Claude-Session hay bất kỳ nhãn AI branding nào vào commit hay tài liệu).
+</workspace_context>
 
-<action_items>
+<overnight_execution_plan>
 
-### NHIỆM VỤ 1: DỪNG NÂNG CẤP HẠ TẦNG & ỔN ĐỊNH HỆ THỐNG 1-CLICK
-1. Dừng ngay các luồng nghiên cứu/nâng cấp phân tán (Cloud Deploy, Cloudflare Tunnel, SSE) chưa cần thiết.
-2. Sửa dứt điểm lỗi lưu ngày nghỉ lễ tại `backend/src/modules/working-hours/working-hours.service.ts`:
-   - Khi có cảnh báo lịch bị ảnh hưởng và người dùng xác nhận (`dto.force = true`), phải lưu thành công vào bảng `salon_holidays`.
-   - `@Audit` chỉ ghi nhận khi ngày nghỉ được INSERT/DELETE thành công vào CSDL, không ghi log khi chỉ trả cảnh báo warning.
-3. Bảo đảm `run_project.bat` khởi động trơn tru: Docker $\rightarrow$ Backend NestJS $\rightarrow$ Frontend Vite $\rightarrow$ Mở trình duyệt.
+### GIAI ĐOẠN 1: HẠ TẦNG ĐỒNG BỘ REAL-TIME & QUY TRÌNH NÂNG CẤP 1-CLICK (FULL FREE 100%)
+1. **Đồng bộ Real-Time (Server-Sent Events / WebSocket Gateway)**:
+   - Hoàn thiện module `backend/src/modules/events/` và hook `frontend/src/utils/realtime.ts`.
+   - Đảm bảo khi phát sinh sự kiện (đặt lịch mới, check-in, đổi thợ, dời giờ, hoàn tất, thanh toán, ngày nghỉ lễ), toàn bộ thiết bị đang mở (máy bàn lễ tân, điện thoại thợ, chủ tiệm) tự động cập nhật số liệu tức thì mà không cần F5.
+2. **Cơ chế TypeORM Migration & Bảo Vệ Dữ Liệu Khách Hàng**:
+   - Tách biệt tuyệt đối giữa DDL (`typeorm migration:run`) và DML (`seed.sql`).
+   - Khi cập nhật phiên bản mới qua `update_project.bat`, chỉ chạy Migration để thêm/sửa bảng, KHÔNG chạy `seed.sql` làm đè hoặc mất hóa đơn, khách hàng thực tế của salon.
+3. **Cô Lập CSDL Kiểm Thử (Test Database Isolation)**:
+   - Đảm bảo bộ test e2e (`npm run test:e2e`) chạy trên CSDL tạm `salon_booking_test`, tự động dọn sạch sau khi test, giữ CSDL chính `salon_booking` luôn sạch 100%.
+4. **Kịch Bản Triển Khai Miễn Phí (100% Free Tier)**:
+   - Kiểm tra và hoàn thiện các kịch bản chạy:
+     * `run_project.bat` / `run_project.sh`: Khởi động 1-Click trơn tru cho người dùng nội bộ.
+     * `update_project.bat` / `update_project.sh`: Tự động kéo code mới, cập nhật dependency, chạy migration và khởi động lại.
+     * `start_server.bat` / `start_tunnel.bat`: Tận dụng máy bàn salon làm Server nội bộ kết hợp Cloudflare Tunnel miễn phí trọn đời.
+     * `render.yaml` & tài liệu [`docs/TRIEN-KHAI.md`](file:///F:/hoc_tap/thuc_tap/du_an/docs/TRIEN-KHAI.md): Hướng dẫn triển khai Cloud Serverless Free (Vercel + Render + Supabase/Neon).
 
-### NHIỆM VỤ 2: CHUẨN HOÁ BÁO CÁO THEO NGHỊ ĐỊNH 30/2020/NĐ-CP & ĐỒNG BỘ HỆ THỐNG
-1. Chỉnh sửa công cụ sinh báo cáo [`docs/tools/build_report_docx.py`](file:///F:/hoc_tap/thuc_tap/du_an/docs/tools/build_report_docx.py) và dữ liệu [`docs/tools/report_data.py`](file:///F:/hoc_tap/thuc_tap/du_an/docs/tools/report_data.py):
-   - **Font chữ**: Times New Roman toàn văn bản.
-   - **Cỡ chữ**: 13 - 14 pt cho nội dung chính; tiêu đề cấp 1: 16pt In đậm; cấp 2: 14pt In đậm; cấp 3: 13pt In đậm nghiêng.
-   - **Định dạng trang (Page Setup A4)**:
-     * Lề trên (Top margin): 20 mm (0.79 in).
-     * Lề dưới (Bottom margin): 20 mm (0.79 in).
-     * Lề trái (Left margin): 30 mm (1.18 in - để đóng gáy).
-     * Lề phải (Right margin): 15 mm (0.59 in).
-   - **Dãn dòng & Dãn đoạn**: Line spacing 1.3 - 1.5 lines; Spacing After 6pt, Spacing Before 0pt. Thụt đầu dòng (First line indent) 1.27 cm (1/2 inch).
-   - **Đánh số trang**: Đặt ở giữa lề trên hoặc lề dưới theo chuẩn, trang đầu tiên không hiện số trang.
-   - **Tiêu đề Bảng biểu & Hình ảnh**:
-     * Bảng: "Bảng X.Y: Tên bảng" đặt phía TRÊN bảng, canh trái/giữa.
-     * Hình: "Hình X.Y: Tên hình" đặt phía DƯỚI hình, canh giữa.
-2. Đồng bộ 100% nội dung kỹ thuật trong báo cáo:
-   - Kiến trúc 4 tầng: NestJS Controller/Service/Entity, TypeORM, PostgreSQL 16, React Vite.
-   - Chi tiết 4 Sprints, 39 User Stories, 165 Story Points khớp từng tiêu chí chấp nhận (AC) với đề tài.
-   - Bộ thuật toán tính khung giờ trống (`SlotCalculator`), cơ chế chống đặt trùng (`appointments_no_overlap`), mã tra cứu 8 ký tự, giới hạn rate limit.
-3. Chạy lệnh sinh lại báo cáo hoàn chỉnh:
-   ```powershell
-   python docs/tools/build_report_docx.py
-   python docs/tools/build_slides_pptx.py
-   ```
+---
 
-### NHIỆM VỤ 3: KIỂM THỬ & ĐẨY LÊN GITHUB THEO QUY TRÌNH GIT WORKFLOW
-1. Chạy Quality Gates:
-   - Backend unit tests: `npm run test --prefix backend` (105/105 PASS).
-   - Backend E2E tests: `npm run test:e2e --prefix backend` (57/57 PASS).
-   - Frontend build: `npm run build --prefix frontend` (Sạch 100%).
-2. Git Workflow:
-   - Tạo commit rõ ràng, tách bạch: `fix(backend): ...`, `docs: format report according to decree 30/2020/ND-CP`.
-   - Tác giả: `steveprovip <158487753+steveprovip@users.noreply.github.com>`.
-   - Merge sạch vào nhánh `develop` và `main`, push đầy đủ lên `origin/develop` và `origin/main`.
-</action_items>
+### GIAI ĐOẠN 2: RÀ SOÁT TOÀN DIỆN 39 USER STORIES & CÁC CỔNG KIỂM ĐỊNH (QUALITY GATES)
+1. **Rà soát 39 User Stories (165 Story Points)**:
+   - Đối chiếu từng tiêu chí chấp nhận (AC) từ Sprint 1 đến Sprint 4 theo `de_tai/3. Hệ thống đặt lịch Salon Spa.xlsx`.
+   - Đảm bảo toàn bộ nghiệp vụ (chống đặt trùng, tính khung giờ trống `SlotCalculator`, giới hạn 5 dịch vụ/lịch, 3 lịch/SĐT, phân quyền 4 vai trò, xử lý ngày nghỉ lễ, vãng lai, chuyển thợ hàng loạt, hoá đơn, voucher) hoạt động hoàn hảo ở cả 2 chế độ: API thật và Mock Demo.
+2. **Chạy toàn bộ Quality Gates bắt buộc**:
+   - Backend Unit Tests: `npm run test --prefix backend` (Đạt 100% không lỗi).
+   - Backend E2E Tests: `npm run test:e2e --prefix backend` (Đạt 100% trên PostgreSQL).
+   - Frontend Demo Tests: `node --test frontend/test/holidays.test.mjs` (Đạt 100%).
+   - Linter: `npm run lint --prefix backend` & `npm run lint --prefix frontend` (0 lỗi, 0 cảnh báo, cấm `any`).
+   - Frontend Build: `npm run build --prefix frontend` (Build Vite production thành công).
+
+---
+
+### GIAI ĐOẠN 3: HOÀN THIỆN BÁO CÁO THỰC TẬP CHUẨN NGHỊ ĐỊNH 30/2020/NĐ-CP & SLIDE BÁO CÁO
+1. **Quy chuẩn Thể thức Nghị định 30/2020/NĐ-CP**:
+   - Cập nhật [`docs/tools/build_report_docx.py`](file:///F:/hoc_tap/thuc_tap/du_an/docs/tools/build_report_docx.py) và [`docs/tools/report_data.py`](file:///F:/hoc_tap/thuc_tap/du_an/docs/tools/report_data.py):
+     * **Font chữ**: Times New Roman toàn bộ văn bản.
+     * **Cỡ chữ**: 13 - 14 pt cho nội dung; Tiêu đề Chương (Cấp 1): 16pt In đậm; Mục (Cấp 2): 14pt In đậm; Tiểu mục (Cấp 3): 13pt In đậm nghiêng.
+     * **Định dạng trang A4**: Top 20mm, Bottom 20mm, Left 30mm (đóng gáy), Right 15mm.
+     * **Dãn dòng & Dãn đoạn**: Line spacing 1.3 - 1.5 lines; Spacing After 6pt, Spacing Before 0pt. Thụt đầu dòng 1.27 cm.
+     * **Bảng biểu & Hình vẽ**: Bảng có *"Bảng X.Y: Tên bảng"* ở TRÊN; Hình có *"Hình X.Y: Tên hình"* ở DƯỚI.
+2. **Đồng bộ 100% Nội dung Báo cáo & Slide**:
+   - Cập nhật đầy đủ kiến trúc hệ thống thực tế, mô hình CSDL ERD, lược đồ bảng, luồng nghiệp vụ 4 Sprints, các cải tiến hạ tầng (Real-time SSE, Migration, 1-Click Update, Zero-cost Cloud).
+   - Chạy lệnh tự động tạo lại file Word và PowerPoint:
+     ```powershell
+     python docs/tools/build_report_docx.py
+     python docs/tools/build_slides_pptx.py
+     ```
+
+---
+
+### GIAI ĐOẠN 4: CẬP NHẬT RUNBOOK & ĐỒNG BỘ GIT WORKFLOW
+1. Cập nhật [`docs/RUNBOOK-TEST-LAI-QA-04102027.md`](file:///F:/hoc_tap/thuc_tap/du_an/docs/RUNBOOK-TEST-LAI-QA-04102027.md): Hướng dẫn chi tiết cho tester Trương Khánh các bước kiểm thử 1-Click (`run_project.bat`).
+2. Commit sạch sẽ, tách bạch theo từng module: `feat(...)`, `fix(...)`, `test(...)`, `docs(...)`.
+3. Tác giả commit: `steveprovip <158487753+steveprovip@users.noreply.github.com>`.
+4. Merge nhánh sạch vào `develop` và `main`, push toàn bộ lên `origin/develop` và `origin/main`.
+</overnight_execution_plan>
