@@ -12,3 +12,11 @@ frontend/.vite/
 ~$*
 *.tsbuildinfo
 Claude outputs/
+backups/
+# Bản build tạm / bản cũ giữ để quay lại khi cập nhật hỏng (scripts/launcher.mjs)
+dist-next/
+dist-prev/
+# Trạng thái chạy của launcher, nhật ký máy chủ, bản sao lưu CSDL trước khi migration
+.salon-run.json
+.salon-build.json
+logs/

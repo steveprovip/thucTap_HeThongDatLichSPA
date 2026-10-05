@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, R
 import { authApi, onUnauthorized, tokenStore } from '@/api';
 import type { AuthUser, Role } from '@/types';
 import { DEMO_MODE, demoRole } from '@/api/mockBackend';
+import { startRealtime, stopRealtime } from '@/utils/realtime';
 
 interface AuthContextValue {
   user: AuthUser | null;
@@ -64,6 +65,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (DEMO_MODE) demoRole.set('customer');
     setUser(null);
   }, []);
+
+  // Nhân viên đã đăng nhập thì giữ luồng đồng bộ trực tiếp giữa các thiết bị; đăng xuất / chưa đổi mật khẩu lần đầu thì dừng
+  const liveUserId = user && !user.mustChangePassword ? user.id : null;
+  useEffect(() => {
+    if (!liveUserId || DEMO_MODE) return undefined;
+    startRealtime();
+    return () => stopRealtime();
+  }, [liveUserId]);
 
   const hasRole = useCallback(
     (...roles: Role[]) => !!user && roles.includes(user.role),

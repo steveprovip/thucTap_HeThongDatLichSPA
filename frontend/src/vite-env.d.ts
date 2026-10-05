@@ -1,5 +1,8 @@
 /// <reference types="vite/client" />
 
+/** Mã bản dựng do vite.config.ts định nghĩa (so với /version.json để biết có bản mới). */
+declare const __APP_BUILD_ID__: string;
+
 interface ImportMetaEnv {
   readonly VITE_API_BASE_URL: string;
   readonly VITE_SALON_NAME: string;

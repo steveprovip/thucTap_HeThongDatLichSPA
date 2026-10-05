@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BeforeApplicationShutdown, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Between, FindOptionsWhere, Repository } from 'typeorm';
 import { AuditAction, AuditLog } from '../../database/entities/audit-log.entity';
@@ -19,15 +19,31 @@ export interface WriteAuditInput {
 }
 
 @Injectable()
-export class AuditService {
+export class AuditService implements BeforeApplicationShutdown {
   private readonly logger = new Logger(AuditService.name);
+  /** Các dòng nhật ký đang ghi nền (interceptor không chờ chúng xong). */
+  private readonly pending = new Set<Promise<void>>();
 
   constructor(
     @InjectRepository(AuditLog) private readonly repo: Repository<AuditLog>,
   ) {}
 
   /** Ghi nhật ký. Lỗi ghi nhật ký KHÔNG được làm hỏng nghiệp vụ chính. */
-  async write(input: WriteAuditInput): Promise<void> {
+  write(input: WriteAuditInput): Promise<void> {
+    const task: Promise<void> = this.persist(input).finally(() => this.pending.delete(task));
+    this.pending.add(task);
+    return task;
+  }
+
+  /**
+   * Tắt hệ thống (Ctrl+C, update_project dừng máy chủ, test kết thúc): chờ các dòng nhật ký đang ghi nền xong rồi mới đóng
+   * kết nối CSDL. Nếu không, thao tác cuối cùng trước lúc tắt mất dấu vết kiểm toán (và ghi vào kết nối đã đóng thì báo lỗi).
+   */
+  async beforeApplicationShutdown(): Promise<void> {
+    await Promise.allSettled([...this.pending]);
+  }
+
+  private async persist(input: WriteAuditInput): Promise<void> {
     try {
       const row = this.repo.create({
         actorId: input.actorId,

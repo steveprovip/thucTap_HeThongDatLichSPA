@@ -5,7 +5,7 @@ import {
   LogOut, Menu, Receipt, ScrollText, Scissors, Settings, Ticket, UserCircle2, Users, X,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { BackButton, ErrorBoundary, NotificationBell, Spinner } from '@/components';
+import { BackButton, ErrorBoundary, LiveStatus, NotificationBell, Spinner } from '@/components';
 import { ROLE_LABELS, ROLE_LANDING } from '@/utils/constants';
 import type { Role } from '@/types';
 
@@ -163,6 +163,7 @@ export function AdminLayout() {
           </div>
 
           <div className="flex items-center gap-1.5">
+            <LiveStatus />
             <NotificationBell />
             <div className="hidden text-right sm:block">
               <p className="text-sm font-semibold leading-tight">{user?.fullName}</p>

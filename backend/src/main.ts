@@ -31,8 +31,15 @@ async function bootstrap(): Promise<void> {
   const prefix = config.get<string>('app.apiPrefix')!;
   app.setGlobalPrefix(prefix, { exclude: ['health'] });
 
+  // CORS_ORIGINS: giao diện đặt trên tên miền khác API (vd. Cloudflare Pages -> API trên Render).
+  // Khi NestJS tự phục vụ giao diện (SERVE_FRONTEND=true) thì cùng một nguồn, không cần CORS.
   app.enableCors({
-    origin: [config.get<string>('app.frontendUrl')!, 'http://localhost:5173', 'http://127.0.0.1:5173'],
+    origin: [
+      config.get<string>('app.frontendUrl')!,
+      'http://localhost:5173',
+      'http://127.0.0.1:5173',
+      ...(config.get<string[]>('app.corsOrigins') ?? []),
+    ],
     credentials: true,
   });
 

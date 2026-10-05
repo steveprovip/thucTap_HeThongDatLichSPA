@@ -29,7 +29,7 @@ Máy mới clone chỉ cần **bật Docker Desktop** rồi nhấp đúp `run_pr
 2. Tạo các tệp `.env` còn thiếu (gốc, `backend`, `frontend`), sinh khoá JWT ngẫu nhiên thay giá trị mẫu và **ghi `VITE_DEMO_MODE=false`**: launcher luôn chạy với **API thật**, không bao giờ rơi vào chế độ Demo.
 3. Chờ Docker sẵn sàng (tối đa 2 phút; Windows/macOS tự thử mở Docker Desktop), `docker compose up -d` — PostgreSQL (healthcheck qua TCP) + PgAdmin + Maildev — rồi chờ PostgreSQL báo `healthy`. Chưa cài Docker thì in hướng dẫn tiếng Việt: cài Docker Desktop, hoặc dùng PostgreSQL riêng với `SALON_SKIP_DOCKER=1`.
 4. **Cài gói khi chưa có `node_modules` hoặc khi `package.json`/`package-lock.json` đổi** (vd. sau `git pull`). Kiểm tra cổng 3000/5173 còn trống: đang bận thì nêu rõ cổng nào và lệnh tìm chương trình đang chiếm; nếu hệ thống đang chạy ở cửa sổ khác thì chỉ mở trình duyệt.
-5. Nạp lược đồ `schema.sql` + dữ liệu mẫu `seed.sql` (chạy lại bao nhiêu lần cũng an toàn).
+5. Áp dụng migration (cấu trúc CSDL; `schema.sql` là migration gốc) rồi nạp dữ liệu mẫu `seed.sql` (chạy lại bao nhiêu lần cũng an toàn). **Chỉ máy phát triển làm bước nạp mẫu này.**
 6. Chạy API + giao diện dưới **một tiến trình giám sát** (`node scripts/launcher.mjs run`, không qua
    concurrently/npm): **trình duyệt chỉ mở khi `GET /health` trả 200** (API biên dịch xong và truy vấn được
    CSDL) và Vite đã phản hồi; dịch vụ nào sập (vd. `exited with code 3221226505`) được **tự khởi động lại**
@@ -155,18 +155,43 @@ Tiền hiển thị dạng `250.000 đ`, giờ dạng `14:30`. Chi tiết: [`doc
 
 ---
 
+## Chạy cho tiệm thật và cập nhật 1 chạm
+
+`run_project.bat` là chế độ **phát triển** (có dữ liệu mẫu, nạp lại mỗi lần chạy). Máy dùng thật (máy bàn của tiệm) chạy chế độ **máy chủ**:
+bản production, NestJS phục vụ cả giao diện lẫn API ở **một cổng**, chạy migration nhưng **không nạp dữ liệu mẫu**, không đụng tới dữ liệu khách.
+
+| Việc | Windows | macOS / Linux |
+|---|---|---|
+| Chạy chế độ máy chủ | `start_server.bat` | `./start_server.sh` |
+| **Cập nhật phiên bản mới (1 chạm)** | `update_project.bat` | `./update_project.sh` |
+| Mở đường hầm HTTPS ra Internet (Cloudflare Quick Tunnel, miễn phí) | `start_tunnel.bat` | `./start_tunnel.sh` |
+| Sao lưu CSDL ngay | `npm run db:backup` | `npm run db:backup` |
+
+`update_project.bat` thực hiện: `git pull --ff-only` → cài gói nếu `package.json` đổi → build bản mới ở thư mục tạm → dừng → **sao lưu CSDL + migration** → chạy lại → kiểm tra `/health`.
+Lỗi ở bước nào thì giữ hoặc **tự quay về bản cũ**; dữ liệu khách và phiên đăng nhập không mất.
+Laptop / điện thoại chỉ cần mở địa chỉ của máy chủ (cùng Wi-Fi, hoặc qua đường hầm): thay đổi trên máy này **hiện ngay** trên máy kia nhờ luồng đồng bộ thời gian thực (SSE), và dải
+"Hệ thống vừa có phiên bản mới" báo khi cần bấm Tải lại.
+
+Hai phương án triển khai miễn phí (Cloud: Render + Neon/Supabase + Cloudflare Pages, hoặc máy bàn làm máy chủ + Cloudflare Tunnel), quy ước migration, cô lập kiểm thử e2e,
+giới hạn của từng gói miễn phí và xử lý sự cố: [`docs/TRIEN-KHAI.md`](docs/TRIEN-KHAI.md). **Trước khi mở máy chủ ra Internet** hãy khoá tài khoản mẫu: `npm run security:check`.
+
+---
+
 ## Lệnh thường dùng
 
 ```bash
 npm run install:all      # cài gói cho backend + frontend
 npm run db:up            # chỉ dựng docker (postgres, pgadmin, maildev)
-npm run db:reset         # xoá volume và dựng lại từ đầu
-npm run db:seed          # nạp lại dữ liệu mẫu (chạy lại nhiều lần vẫn an toàn)
+npm run db:reset         # xoá volume, dựng lại CSDL TRỐNG (rồi npm run db:seed để có dữ liệu mẫu)
+npm run db:migrate       # áp dụng migration còn chờ (tự sao lưu nếu CSDL đã có dữ liệu); db:status để xem
+npm run db:backup        # sao lưu CSDL ngay vào backups/
+npm run migration:generate -- TenThayDoi   # sinh migration từ khác biệt entity
+npm run db:seed          # nạp dữ liệu mẫu (chỉ máy phát triển; chạy lại nhiều lần vẫn an toàn)
 npm run start:all        # chạy song song API + giao diện
 npm run start:launch     # tiến trình giám sát: API + giao diện, tự khởi động lại khi sập, mở trình duyệt khi /health = 200
 npm run build            # build backend và frontend cho môi trường thật
 npm test                 # 35 kiểm thử đơn vị bộ tính khung giờ
-npm run test:e2e         # 25 kiểm thử end-to-end (cần CSDL đang chạy)
+npm run test:e2e         # kiểm thử end-to-end trên CSDL TẠM salon_booking_test (tự tạo, tự xoá; cần PostgreSQL đang chạy)
 npm run lint             # ESLint cho cả hai phía
 ```
 

@@ -6,6 +6,10 @@ import { Role } from '../../common/constants/roles.constant';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Audit } from '../../common/decorators/audit.decorator';
 import { AuditAction } from '../../database/entities/audit-log.entity';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { ClientIp } from '../../common/decorators/client-ip.decorator';
+import { AuthUser } from '../../common/types/auth.types';
+import { AuditService } from '../audit/audit.service';
 
 @Controller('working-hours')
 @UseGuards(RolesGuard)
@@ -29,7 +33,7 @@ export class WorkingHoursController {
 @Controller('holidays')
 @UseGuards(RolesGuard)
 export class HolidaysController {
-  constructor(private readonly service: WorkingHoursService) {}
+  constructor(private readonly service: WorkingHoursService, private readonly audit: AuditService) {}
 
   @Get()
   @Roles(Role.ADMIN, Role.OWNER, Role.RECEPTIONIST, Role.STYLIST)
@@ -45,9 +49,15 @@ export class HolidaysController {
 
   @Post()
   @Roles(Role.OWNER)
-  @Audit(AuditAction.CREATE, 'salon_holiday', 'Khai báo ngày nghỉ của tiệm')
-  create(@Body() dto: CreateHolidayDto) {
-    return this.service.createHoliday(dto);
+  async create(@Body() dto: CreateHolidayDto, @CurrentUser() user: AuthUser, @ClientIp() ip: string) {
+    const result = await this.service.createHoliday(dto);
+    if ('warning' in result) return result;
+    await this.audit.write({
+      actorId: user.id, actorEmail: user.email, actorRole: user.role,
+      action: AuditAction.CREATE, entityType: 'salon_holiday', entityId: result.id,
+      summary: 'Khai báo ngày nghỉ của tiệm', changes: { ...dto }, ipAddress: ip,
+    });
+    return result;
   }
 
   @Delete(':id')

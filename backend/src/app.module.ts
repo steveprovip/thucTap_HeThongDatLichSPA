@@ -4,9 +4,9 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { join } from 'path';
 import configuration from './config/configuration';
 import { buildTypeOrmOptions } from './config/database.config';
+import { buildStaticOptions } from './config/static.config';
 
 import { AuditModule } from './modules/audit/audit.module';
 import { RateLimitModule } from './modules/rate-limit/rate-limit.module';
@@ -21,6 +21,7 @@ import { BookingEngineModule } from './modules/booking-engine/booking-engine.mod
 import { ReviewsModule } from './modules/reviews/reviews.module';
 import { InvoicesModule } from './modules/invoices/invoices.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
+import { EventsModule } from './modules/events/events.module';
 import { HealthController } from './health.controller';
 
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
@@ -29,6 +30,7 @@ import { MustChangePasswordGuard } from './common/guards/must-change-password.gu
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 import { AuditLogInterceptor } from './common/interceptors/audit-log.interceptor';
+import { RealtimeInterceptor } from './modules/events/realtime.interceptor';
 
 @Module({
   imports: [
@@ -38,11 +40,9 @@ import { AuditLogInterceptor } from './common/interceptors/audit-log.interceptor
       inject: [ConfigService],
       useFactory: (config: ConfigService) => buildTypeOrmOptions(config),
     }),
-    // Ảnh đại diện của thợ lưu trên thư mục máy chủ
-    ServeStaticModule.forRoot({
-      rootPath: join(process.cwd(), process.env.UPLOAD_DIR ?? 'uploads'),
-      serveRoot: '/uploads',
-      serveStaticOptions: { index: false, fallthrough: true },
+    ServeStaticModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => buildStaticOptions(config),
     }),
 
     AuditModule,
@@ -58,6 +58,7 @@ import { AuditLogInterceptor } from './common/interceptors/audit-log.interceptor
     ReviewsModule,
     InvoicesModule,
     AnalyticsModule,
+    EventsModule,
   ],
   controllers: [HealthController],
   providers: [
@@ -68,6 +69,8 @@ import { AuditLogInterceptor } from './common/interceptors/audit-log.interceptor
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
     { provide: APP_INTERCEPTOR, useClass: TransformInterceptor },
     { provide: APP_INTERCEPTOR, useClass: AuditLogInterceptor },
+    // Sau mỗi thao tác ghi thành công: báo cho các thiết bị khác tải lại (đồng bộ trực tiếp, xem modules/events)
+    { provide: APP_INTERCEPTOR, useClass: RealtimeInterceptor },
   ],
 })
 export class AppModule {}

@@ -20,6 +20,12 @@ export function affectsAppointments(method: string | undefined, url: string | un
   return LIVE_PATH.test(url.split('?')[0]);
 }
 
+/** Thiết bị KHÁC vừa thay đổi dữ liệu (nhận qua luồng trực tiếp): chỉ làm mới tab này, không phát lại cho các tab cùng máy. */
+export function dispatchRemoteChange(): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(EVENT));
+}
+
 export function notifyAppointmentsChanged(): void {
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new CustomEvent(EVENT));

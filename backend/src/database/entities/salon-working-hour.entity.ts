@@ -10,10 +10,10 @@ export class SalonWorkingHour {
   @Column({ name: 'day_of_week', type: 'smallint' })
   dayOfWeek!: number;
 
-  @Column({ name: 'open_time', type: 'time' })
+  @Column({ name: 'open_time', type: 'time', default: '08:00:00' })
   openTime!: string;
 
-  @Column({ name: 'close_time', type: 'time' })
+  @Column({ name: 'close_time', type: 'time', default: '20:00:00' })
   closeTime!: string;
 
   @Column({ name: 'is_closed', default: false })

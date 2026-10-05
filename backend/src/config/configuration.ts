@@ -1,3 +1,5 @@
+import { resolveDbConnection } from './db-connection';
+
 /**
  * Tập trung toàn bộ biến môi trường về một nơi, có ép kiểu và giá trị mặc định.
  * Mọi module khác chỉ đọc qua ConfigService để tránh rải rác process.env.
@@ -29,6 +31,11 @@ const configuration = () => ({
     apiPrefix: process.env.API_PREFIX ?? 'api',
     timezone: process.env.APP_TIMEZONE ?? 'Asia/Ho_Chi_Minh',
     frontendUrl: process.env.FRONTEND_URL ?? 'http://localhost:5173',
+    /** Các nguồn (origin) được phép gọi API từ trình duyệt, cách nhau bằng dấu phẩy: giao diện đặt trên tên miền khác (Cloudflare Pages…). */
+    corsOrigins: (process.env.CORS_ORIGINS ?? '').split(',').map((s) => s.trim().replace(/\/+$/, '')).filter(Boolean),
+    /** true: NestJS phục vụ luôn giao diện đã build (frontend/dist) -> chỉ cần MỘT địa chỉ / một đường hầm cho cả web lẫn API. */
+    serveFrontend: bool(process.env.SERVE_FRONTEND, false),
+    frontendDist: process.env.FRONTEND_DIST ?? '',
     /** Express 'trust proxy': chỉ tin X-Forwarded-For do proxy tin cậy gắn (mặc định: proxy chạy trên cùng máy, vd. Vite). */
     trustProxy: process.env.TRUST_PROXY ?? 'loopback',
     swaggerEnabled: bool(process.env.SWAGGER_ENABLED, process.env.NODE_ENV !== 'production'),
@@ -37,11 +44,8 @@ const configuration = () => ({
     salonHotline: process.env.SALON_HOTLINE ?? '028 3838 6868',
   },
   database: {
-    host: process.env.DB_HOST ?? 'localhost',
-    port: int(process.env.DB_PORT, 5432),
-    username: process.env.DB_USER ?? 'salon',
-    password: process.env.DB_PASSWORD ?? 'salon123',
-    database: process.env.DB_NAME ?? 'salon_booking',
+    // DATABASE_URL (Supabase / Neon / Render) hoặc DB_HOST… (Docker tại máy); xem config/db-connection.ts
+    ...resolveDbConnection(),
     logging: bool(process.env.DB_LOGGING, false),
   },
   jwt: {

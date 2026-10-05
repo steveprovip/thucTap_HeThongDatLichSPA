@@ -1,0 +1,62 @@
+# =============================================================================
+#  PHƯƠNG ÁN 1 - CLOUD MIỄN PHÍ: API (NestJS) chạy trên Render Free.
+#  CSDL: Neon hoặc Supabase (gói Free)  |  Giao diện: Cloudflare Pages  -> xem docs/TRIEN-KHAI.md
+#
+#  Mỗi lần đẩy lên nhánh main, Render tự build và chạy lại (autoDeployTrigger: checksPass = chờ CI xanh).
+#  Cách dùng: Render Dashboard > New > Blueprint > chọn repo này. Các biến "sync: false" Render sẽ hỏi lúc tạo.
+# =============================================================================
+services:
+  - type: web
+    runtime: node
+    name: salon-spa-api
+    plan: free                 # 750 giờ/tháng, ngủ sau 15 phút không có truy cập, đĩa tạm (xem docs/TRIEN-KHAI.md)
+    region: singapore          # gần Việt Nam nhất; chọn cùng khu vực với CSDL để giảm độ trễ
+    rootDir: backend
+    autoDeployTrigger: checksPass
+    buildCommand: npm ci && npm run build
+    # Gói Free KHÔNG có preDeployCommand (chỉ gói trả phí) -> chạy migration ngay trước khi bật máy chủ:
+    #   1. migration:run:prod   chỉ thêm/sửa CẤU TRÚC, tuyệt đối không nạp dữ liệu mẫu, không xoá dữ liệu khách
+    #   2. bootstrap:prod       CSDL trống thì tạo admin đầu tiên từ BOOTSTRAP_ADMIN_*; đã có người dùng thì bỏ qua
+    #   3. security:lock:prod   khoá tài khoản mẫu còn mật khẩu mặc định (nếu ai lỡ nạp seed.sql vào CSDL này)
+    # Một bước lỗi (&&) thì máy chủ KHÔNG khởi động và Render giữ nguyên bản đang chạy trước đó.
+    startCommand: npm run migration:run:prod && npm run bootstrap:prod && npm run security:lock:prod && npm run start:prod
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "20"
+      - key: TRUST_PROXY    # Render đặt đúng 1 proxy phía trước -> IP khách lấy từ X-Forwarded-For
+        value: "1"
+      - key: APP_TIMEZONE
+        value: Asia/Ho_Chi_Minh
+      - key: DB_STARTUP_TIMEZONE   # Neon / Supabase pooler từ chối tuỳ chọn múi giờ lúc kết nối
+        value: "false"
+      - key: DB_SSL
+        value: require       # Neon cũng chạy được với "true"; Supabase pooler cần "require"
+      - key: DB_POOL_MAX
+        value: "10"          # gói Free của CSDL có giới hạn số kết nối
+      - key: JWT_ACCESS_SECRET
+        generateValue: true  # Render sinh chuỗi ngẫu nhiên 256 bit; không bao giờ đổi sau khi đã có người đăng nhập
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: DATABASE_URL    # chuỗi KẾT NỐI TRỰC TIẾP của Neon / Supabase (xem docs/TRIEN-KHAI.md mục 3.1)
+        sync: false
+      - key: FRONTEND_URL    # địa chỉ công khai của giao diện, vd. https://salon-spa.pages.dev (có trong link email gửi khách)
+        sync: false
+      - key: CORS_ORIGINS    # thường trùng FRONTEND_URL
+        sync: false
+      - key: BOOTSTRAP_ADMIN_EMAIL
+        sync: false
+      - key: BOOTSTRAP_ADMIN_PASSWORD   # >= 8 ký tự, có chữ và số; có thể xoá khỏi Render sau lần đăng nhập đầu tiên
+        sync: false
+      - key: SMTP_HOST       # Render Free chặn cổng 25/465/587 -> dùng dịch vụ email có API/cổng khác (xem tài liệu)
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: MAIL_FROM_ADDRESS
+        sync: false

@@ -185,8 +185,19 @@ const hash = (s: string) => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >
  * thợ chưa có ảnh nhận một ảnh ổn định theo mã NHƯNG đúng giới tính (Nam/Nữ).
  * Chưa rõ giới tính và chưa có ảnh → trả chuỗi rỗng để hiện chữ viết tắt, không gán bừa ảnh sai giới.
  */
+/**
+ * Ảnh tải lên được lưu dạng đường dẫn tương đối "/uploads/xxx.jpg". Khi giao diện và API ở HAI địa chỉ khác nhau
+ * (Cloudflare Pages + Render: VITE_API_BASE_URL là địa chỉ đầy đủ) thì phải nối thêm địa chỉ máy chủ API,
+ * nếu không trình duyệt tìm ảnh ngay trên máy chủ giao diện và không thấy.
+ */
+export function assetUrl(url: string): string {
+  const base = import.meta.env.VITE_API_BASE_URL || '';
+  if (!url.startsWith('/uploads/') || !/^https?:\/\//i.test(base)) return url;
+  return `${new URL(base).origin}${url}`;
+}
+
 export function stylistPhoto(id: string, url?: string | null, gender?: StylistGender | null): string {
-  if (url && !url.includes('images.unsplash.com')) return url;
+  if (url && !url.includes('images.unsplash.com')) return assetUrl(url);
   const own = STYLIST_BY_ID[id] ?? url ?? '';
   if (!gender) return own;
   const pool = STYLIST_POOL[gender];

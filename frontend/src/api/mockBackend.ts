@@ -288,7 +288,7 @@ const salonClosedReason = (date: string): string | null => {
   const holiday = db.holidays.find(h => h.startDate <= date && h.endDate >= date);
   if (holiday) return holiday.reason;
   const hours = db.workingHours.find(h => h.dayOfWeek === new Date(`${date}T12:00:00`).getDay());
-  return hours?.isClosed ? MSG.SALON_CLOSED_WEEKLY : null;
+  return !hours || hours.isClosed ? MSG.SALON_CLOSED_WEEKLY : null;
 };
 function syncCustomerStats() {
   const cache = new Map<string, ReturnType<typeof customerStats>>();
@@ -575,10 +575,11 @@ const createAppointment = (p: Record<string, unknown>, walkIn = false) => {
   db.appointments.unshift(a); save(); return a;
 };
 
-const record = (action: string, entityType: string, summary: string) => {
+const record = (action: string, entityType: string, summary: string, entityId: string | null = null,
+  changes: Record<string, unknown> | null = null) => {
   const user = getUser();
   db.audit.unshift({ id: uid(), actorEmail: user?.email ?? null, actorRole: user?.role ?? null,
-    action, entityType, entityId: null, summary, changes: null, ipAddress: '127.0.0.1',
+    action, entityType, entityId, summary, changes, ipAddress: '127.0.0.1',
     createdAt: new Date().toISOString() });
   save();
 };
@@ -1059,12 +1060,15 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
   if (path === '/holidays' && method === 'get') return db.holidays.filter(h =>
     (!q.from || h.endDate >= String(q.from)) && (!q.to || h.startDate <= String(q.to)));
   if (path === '/holidays' && method === 'post') {
+    if (String(p.endDate) < String(p.startDate)) bad('Ngày kết thúc phải bằng hoặc sau ngày bắt đầu');
     const affected = db.appointments.filter(a => a.date >= String(p.startDate) && a.date <= String(p.endDate) &&
-      !['cancelled', 'no_show'].includes(a.status));
-    if (affected.length && !p.force) return { warning: `${affected.length} lịch hẹn nằm trong ngày nghỉ. Hãy liên hệ và chuyển lịch trước khi lưu.`,
+      ACTIVE_STATUSES.includes(a.status)).sort((a, b) => a.startAt.localeCompare(b.startAt));
+    if (affected.length && !p.force) return { warning: `Khoảng ngày nghỉ này đang có ${affected.length} lịch hẹn chưa hoàn tất. Xác nhận để lưu và xử lý các lịch hẹn đó.`,
       affected: affected.length, codes: affected.map(a => a.code) };
-    const holiday: Holiday = { id: uid(), startDate: String(p.startDate), endDate: String(p.endDate), reason: String(p.reason) };
-    db.holidays.push(holiday); save(); return holiday;
+    const holiday: Holiday = { id: uid(), startDate: String(p.startDate), endDate: String(p.endDate), reason: String(p.reason).trim() };
+    db.holidays.push(holiday); save();
+    record('create', 'salon_holiday', 'Khai báo ngày nghỉ của tiệm', holiday.id, { ...p });
+    return holiday;
   }
   if (path.startsWith('/holidays/') && method === 'delete') {
     db.holidays = db.holidays.filter(h => h.id !== path.split('/')[2]); save(); return {};

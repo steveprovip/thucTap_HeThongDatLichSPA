@@ -4,6 +4,7 @@ import { Bell } from 'lucide-react';
 import { notificationsApi } from '@/api';
 import type { AppNotification } from '@/types';
 import { formatDateTime } from '@/utils/format';
+import { useAppointmentsSync } from '@/utils/liveSync';
 
 /** Chuông thông báo trong ứng dụng cho nhân sự (S4-06). */
 export function NotificationBell() {
@@ -23,6 +24,8 @@ export function NotificationBell() {
     const id = window.setInterval(loadCount, 60_000);
     return () => window.clearInterval(id);
   }, [loadCount]);
+  // Có thay đổi từ thiết bị khác (ví dụ lễ tân vừa giao lịch cho thợ) -> cập nhật số thông báo ngay, khỏi chờ 60 giây
+  useAppointmentsSync(() => { void loadCount(); });
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
