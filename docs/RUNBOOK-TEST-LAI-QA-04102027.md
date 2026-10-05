@@ -1,6 +1,6 @@
 # Runbook test lại lỗi QA Sprint 2 (04/10/2027)
 
-Dành cho tester **Trương Khánh**. Làm lần lượt từng bước, không bỏ bước. Bản **v1.3.4** (nhánh `fix/qa-round4-0410`) bổ sung 7 lỗi vòng 3 ở mục 7b và 2 lỗi vòng 4 ở mục 7c.
+Dành cho tester **Trương Khánh**. Làm lần lượt từng bước, không bỏ bước. Bản **v1.3.5** (nhánh `fix/qa-round5-0510`) bổ sung 7 lỗi vòng 3 ở mục 7b, 2 lỗi vòng 4 ở mục 7c và 2 lỗi vòng 5 ở mục 7d.
 
 ## 0. Vì sao lần trước thấy "lỗi"
 
@@ -17,8 +17,8 @@ Bản này sửa tận gốc: giao diện **mặc định gọi API thật** (De
 
 ```bash
 git fetch origin
-git checkout fix/qa-round4-0410
-git pull origin fix/qa-round4-0410
+git checkout fix/qa-round5-0510
+git pull origin fix/qa-round5-0510
 git log --oneline -3
 ```
 
@@ -60,7 +60,7 @@ npm run db:up
 docker compose ps
 ```
 
-Đợi cột `STATUS` của `salon_postgres` ghi `healthy` (tối đa ~2 phút lần đầu), rồi nạp lược đồ + dữ liệu mẫu. Bước này thêm cột `gender` cho thợ và đặt giới tính 5 thợ mẫu:
+Đợi cột `STATUS` của `salon_postgres` ghi `healthy` (tối đa ~2 phút lần đầu), rồi nạp lược đồ + dữ liệu mẫu. Bước này thêm cột `gender` cho thợ, cột `total_appointments` cho khách và tính lại số liệu của mọi khách từ bảng lịch hẹn:
 
 ```bash
 npm run db:seed
@@ -125,6 +125,25 @@ Dữ liệu mẫu thật: thứ 2–6 mở cửa **08:30 – 20:00**, thứ 7 v�
 | H | Thiếu khuyên tách 2 hoặc nhiều lần hẹn khi dịch vụ vượt ca dài nhất | Dựng tình huống như dòng 5 ở mục 7 (dịch vụ 240 phút + thợ chỉ có ca làm thực tế 3 giờ), vào trang khách và chọn dịch vụ đó. Ở Demo: chọn "Uốn sóng lơi", "Một ngày thư giãn", "Nhuộm màu thời trang", "Liệu trình phục hồi tóc". Bấm **Tiếp tục** sang các bước sau, rồi bỏ bớt dịch vụ | Khung **vàng đậm** nằm trong thanh dính đáy, **ngay trên số dịch vụ, tổng tiền và nút Tiếp tục**, với đúng câu: *"⚠️ Tổng thời lượng dịch vụ (4 giờ) vượt quá ca làm việc dài nhất trong tuần (3 giờ). Quý khách nên tách thành 2 hoặc nhiều lần hẹn khác nhau để tiệm phục vụ trọn vẹn nhất!"* (Demo hiện 8 giờ 30 phút và 8 giờ). Khung vẫn hiện ở các bước 2, 3, 4 và biến mất khi tổng thời lượng không còn vượt ca |
 | I | Nhập sai mã tra cứu quá 10 lần vẫn bấm Tra cứu được | **Xoá bộ đếm** (mục 8) và xoá khoá `salon.lookupLockedUntil` trong Local Storage. Trang *Tra cứu lịch hẹn* → nhập mã sai 8 ký tự (ví dụ `AAAAAAAA`, `AAAAAAAB`…) và bấm Tra cứu **11 lần**. Sau đó thử bấm nút, gõ vào ô nhập, đổi tab, rồi nhấn F5 | Lần 11 hiện khung vàng *"Bạn đã thử sai quá 10 lần. Chức năng tra cứu tạm khóa trong 30 phút để bảo mật thông tin."* kèm **đếm ngược mm:ss** (bắt đầu 30:00, giảm mỗi giây) và giờ mở lại. Nút đổi thành xám **"Tạm khoá · mm:ss"** và không bấm được; ô nhập và hai tab *Theo mã / Theo số điện thoại* bị khoá; không còn thẻ "Không tìm thấy lịch hẹn". Nhấn F5 vẫn khoá. Hết đếm ngược thì tự mở lại |
 
+## 7d. Kiểm thử 2 lỗi vòng 5 (bản v1.3.5, QA 05/10/2026)
+
+**Bắt buộc chạy lại `npm run db:seed`** (hoặc `run_project.bat`, script đã tự chạy) để thêm cột `total_appointments` và tính lại số liệu của mọi khách. Đăng nhập `reception@salon.vn / Reception@123`; riêng bước thêm ngày nghỉ dùng `owner@salon.vn / Owner@123`.
+
+Ba số liệu của khách đều **đếm trực tiếp từ bảng lịch hẹn** và dùng đúng một bộ nhãn ở mọi màn hình: **Lượt hoàn tất** (lịch trạng thái Hoàn tất), **Lượt không đến** (lịch trạng thái Không đến), **Tổng lịch đã đặt** (mọi lịch từng đặt, kể cả đã huỷ và sắp tới).
+
+| # | Lỗi | Cách thử | Kết quả đúng |
+|---|---|---|---|
+| J | Số liệu và lịch sử khách mỗi màn hình một kiểu | (1) Menu **Hồ sơ khách**: xem bảng, bấm **Xem** một khách (ví dụ Phan Thuỳ Linh, `0911000003`). (2) **Lịch ngày** → mở một lịch hẹn của khách đó → xem khối thông tin khách và mục **Lịch sử đặt lịch**. (3) **Khách vãng lai** → nhập SĐT `0911000003`, rồi thử một SĐT chưa từng có (ví dụ `0988000111`). (4) Tạo thêm 1 lịch cho khách đó, rồi tải lại trang Hồ sơ khách. Sau đó huỷ lịch vừa tạo | Bảng khách có 3 cột **Lượt hoàn tất · Lượt không đến · Tổng lịch đã đặt**; hộp hồ sơ, chi tiết lịch và thẻ *Khách quen* ở Khách vãng lai hiện **cùng ba con số** theo dạng *"Lượt hoàn tất: X · Lượt không đến: Y · Tổng lịch đã đặt: Z"*. Tiêu đề lịch sử nêu rõ *"Lịch sử đặt lịch (10 lịch gần nhất trong tổng Z lịch đã đặt)"*; lịch đang xem được gắn *"· lịch này"*. SĐT mới: 0 · 0 · 0. Tạo lịch mới: Tổng lịch đã đặt **tăng 1**, hai số còn lại giữ nguyên. Huỷ lịch: Tổng **giữ nguyên**. Hoàn tất một lịch: Lượt hoàn tất tăng 1 |
+| K | Vẫn tạo / dời được lịch vào ngày nghỉ lễ | Owner → **Giờ mở cửa & ngày nghỉ**: dùng kỳ nghỉ mẫu *"Nghỉ bảo trì và đào tạo nội bộ"* (từ hôm nay + 21 đến + 23 ngày) hoặc thêm một ngày nghỉ mới, ví dụ **18/10/2026, lý do "Nghỉ Lễ"**. Lễ tân → **Khách vãng lai** → *Hẹn ngày/giờ khác* → chọn ngày nghỉ đó, nhập tên, SĐT, chọn dịch vụ. Sau đó mở một lịch đang *Chờ xác nhận / Đã xác nhận* → **Đổi thợ / Dời giờ** → đổi ngày sang ngày nghỉ. Cuối cùng đổi lại sang một ngày thường | Khách vãng lai: khung đỏ **"Tiệm nghỉ trong ngày này (Nghỉ Lễ). Không thể tạo lịch hẹn."** (đúng lý do đã nhập), nút **Tạo lịch** xám, không thợ nào ghi *Rảnh*, không có gợi ý giờ trống. Dời lịch: khung đỏ **"Tiệm nghỉ trong ngày này (Nghỉ Lễ). Không thể dời lịch hẹn vào ngày này."**, nút **Lưu thay đổi** xám, lịch gốc giữ nguyên. Chọn lại ngày thường: khung đỏ biến mất, đặt và dời bình thường. Gọi thẳng API (F12 → Network hoặc `curl`) `POST /api/appointments/walk-in` hay `PATCH /api/appointments/:id/reschedule` với ngày nghỉ: **HTTP 400**, mã **`SALON_CLOSED`**, cùng câu thông báo trên |
+
+Kiểm tra chéo số liệu trong CSDL (cột bên trái phải bằng cột bên phải ở mọi hàng):
+
+```bash
+docker compose exec -T postgres psql -U salon -d salon_booking -c "SELECT c.phone, c.total_visits, c.no_show_count, c.total_appointments, COUNT(*) FILTER (WHERE a.status='completed') AS hoan_tat, COUNT(*) FILTER (WHERE a.status='no_show') AS khong_den, COUNT(a.id) AS tong FROM customers c LEFT JOIN appointments a ON a.customer_id=c.id GROUP BY c.id ORDER BY c.phone LIMIT 8;"
+```
+
+Chạy Demo: Demo **không** có sẵn ngày nghỉ, hãy đăng nhập vai Chủ tiệm và thêm một ngày nghỉ ở *Giờ mở cửa & ngày nghỉ* trước khi thử dòng K.
+
 ## 8. Đặt lại bộ đếm giới hạn (QA-06, QA-07)
 
 Giới hạn tính theo IP; test trên cùng một máy nên dùng chung một IP. Muốn thử lại ngay không chờ hết giờ:
@@ -133,7 +152,7 @@ Giới hạn tính theo IP; test trên cùng một máy nên dùng chung một I
 docker compose exec -T postgres psql -U salon -d salon_booking -c "DELETE FROM rate_limits;"
 ```
 
-Giao diện tra cứu còn nhớ mốc khoá trong Local Storage (khoá `salon.lookupLockedUntil`): xoá khoá này nếu nút Tra cứu vẫn xám sau khi đã xoá bộ đếm. Cần đặt lại giữa các lần thử ở mục 7, 7b và 7c, và sau khi thử xong để không ảnh hưởng người khác.
+Giao diện tra cứu còn nhớ mốc khoá trong Local Storage (khoá `salon.lookupLockedUntil`): xoá khoá này nếu nút Tra cứu vẫn xám sau khi đã xoá bộ đếm. Cần đặt lại giữa các lần thử ở mục 7, 7b và 7c (mục 7d không bị giới hạn này), và sau khi thử xong để không ảnh hưởng người khác.
 
 ## 9. Chạy Demo (không cần máy chủ)
 
@@ -152,7 +171,7 @@ npm run lint
 npm --prefix frontend run build
 ```
 
-Kết quả mong đợi: `npm test` 100/100, `npm run test:e2e` 55/55 (8 bộ), lint không lỗi và không cảnh báo, build thành công. Các test e2e tự xoá bộ đếm giới hạn trước và sau khi chạy.
+Kết quả mong đợi: `npm test` 105/105, `npm run test:e2e` 57/57 (9 bộ), lint không lỗi và không cảnh báo, build thành công. Các test e2e tự xoá bộ đếm giới hạn trước và sau khi chạy.
 
 ## 11. Nếu gặp lỗi
 
@@ -168,6 +187,8 @@ Kết quả mong đợi: `npm test` 100/100, `npm run test:e2e` 55/55 (8 bộ), 
 | Nút Tra cứu vẫn xám, đếm ngược chưa hết | Giao diện nhớ mốc khoá. Xoá khoá `salon.lookupLockedUntil` trong Local Storage rồi tải lại trang (và xoá bộ đếm theo mục 8 nếu máy chủ cũng đang khoá) |
 | Không thấy khung vàng tách lịch dù dịch vụ rất dài | Khung chỉ hiện khi tổng thời lượng **lớn hơn** ca dài nhất trong 7 ngày tới của các thợ làm được dịch vụ đó, và phải có ít nhất một ca được xếp. Kiểm tra lại ca làm của thợ (mục 7, dòng 5) |
 | Bị 429 sớm hơn lượt thứ 6 | Mọi lượt thử đặt trong cùng một giờ (kể cả lượt bị từ chối vì trùng giờ, sai SĐT) đều tính vào hạn mức. Xoá bộ đếm theo mục 8 rồi thử lại |
+| Hồ sơ khách không có cột *Tổng lịch đã đặt* hoặc số liệu bằng 0 | Backend / CSDL còn bản cũ: dừng hẳn hệ thống, `git pull`, chạy lại bằng `run_project.bat` (hoặc `npm run db:seed`) để thêm cột `total_appointments` và tính lại. Ở Demo: xoá khoá `salon.demo.v6` rồi tải lại trang |
+| Không thấy khung đỏ "Tiệm nghỉ trong ngày này…" | Ngày đó chưa được khai báo nghỉ. Owner vào *Giờ mở cửa & ngày nghỉ* thêm ngày nghỉ (hoặc dùng kỳ nghỉ mẫu hôm nay + 21 đến + 23 ngày) rồi tải lại màn hình. Thợ đã có ca sẵn trong ngày nghỉ vẫn không nhận được lịch |
 | Mãi không bị 429 / khoá | Kiểm tra `backend/.env`: `BOOKING_IP_LIMIT_PER_HOUR=5`, `LOOKUP_IP_LIMIT_PER_HOUR=10`, `LOOKUP_BLOCK_MINUTES=30`, `MAX_ACTIVE_BOOKINGS_PER_PHONE=3` (giá trị trong `.env.example`), rồi chạy lại backend |
 
 Báo lỗi mới kèm: nhánh + mã commit (`git log -1 --oneline`), chế độ đang chạy (API thật hay Demo), các bước, ảnh chụp F12 → Network của yêu cầu lỗi.
