@@ -214,7 +214,7 @@ export class AppointmentsService {
       salonOpen: wh ? trimSeconds(wh.openTime) : '08:00',
       salonClose: wh ? trimSeconds(wh.closeTime) : '20:00',
       salonClosed: !wh || wh.isClosed || !!holiday,
-      closedReason: holiday ? holiday.reason : wh?.isClosed ? 'Tiệm nghỉ theo lịch hằng tuần' : null,
+      closedReason: holiday ? holiday.reason : !wh || wh.isClosed ? MSG.SALON_CLOSED_WEEKLY : null,
       stepMinutes: this.config.get<number>('business.slotStepMinutes')!,
       columns,
       summary,
@@ -425,6 +425,9 @@ export class AppointmentsService {
       const [unchanged] = await this.decorate([appt], user.role);
       return unchanged;
     }
+
+    // Tiệm nghỉ cả ngày (nghỉ lễ / nghỉ cố định): không dời lịch vào ngày đó, báo rõ lý do
+    await this.availability.assertSalonOpen(newDate, 'reschedule');
 
     // Kiểm tra kỹ năng thợ mới
     if (newStylistId !== appt.stylistId) {
@@ -753,7 +756,9 @@ export class AppointmentsService {
     const appt = await this.getOrFail(id);
     this.assertOwnership(appt, user);
     const history = await this.customers.visitHistory(appt.customerId, 10);
-    return { customerId: appt.customerId, isNewCustomer: history.length <= 1, history };
+    // "Khách mới" = chưa có lượt hoàn tất nào — cùng định nghĩa với hồ sơ khách (không suy từ độ dài lịch sử)
+    const customer = await this.customerRepo.findOne({ where: { id: appt.customerId } });
+    return { customerId: appt.customerId, isNewCustomer: (customer?.totalVisits ?? 0) === 0, history };
   }
 
   /** Số liệu tổng quan hôm nay cho dashboard chủ tiệm (S4-08). */

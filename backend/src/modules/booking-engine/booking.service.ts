@@ -150,6 +150,9 @@ export class BookingService {
       }
     }
 
+    // ----- 3b. Tiệm nghỉ cả ngày (nghỉ lễ / nghỉ cố định hằng tuần): báo rõ lý do, áp dụng mọi nguồn đặt lịch
+    await this.availability.assertSalonOpen(dto.date, 'create');
+
     // ----- 4. Giới hạn số lịch chưa hoàn tất trên một số điện thoại (S2-07)
     const maxActive = this.config.get<number>('business.maxActiveBookingsPerPhone')!;
     const existingCustomer = await this.customerRepo.findOne({ where: { phone: dto.phone } });
@@ -307,6 +310,11 @@ export class BookingService {
       );
 
       return { appointment, customer, nameConflict };
+    });
+
+    // Số liệu hồ sơ khách (tổng lịch đã đặt…) luôn đếm lại từ bảng appointments. Lịch đã commit nên lỗi ở đây chỉ ghi log.
+    await this.customers.refreshCounters(result.customer.id).catch((e: unknown) => {
+      this.logger.warn(`Không cập nhật được số liệu hồ sơ khách: ${e instanceof Error ? e.message : String(e)}`);
     });
 
     const stylist = await this.stylistRepo.findOne({ where: { id: stylistId } });

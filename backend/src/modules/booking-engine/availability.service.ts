@@ -7,7 +7,7 @@ import { ServiceCategory } from '../../database/entities/service-category.entity
 import { StylistService as StylistServiceLink } from '../../database/entities/stylist-service.entity';
 import { Stylist } from '../../database/entities/stylist.entity';
 import { Appointment, ACTIVE_STATUSES } from '../../database/entities/appointment.entity';
-import { MSG } from '../../common/constants/messages.constant';
+import { ERROR_CODES, MSG } from '../../common/constants/messages.constant';
 import { formatVnd } from '../../common/utils/currency.util';
 import {
   addDays, dayOfWeek, endOfDay, isValidDateString, startOfDay, todaySalon, toSalon, trimSeconds,
@@ -163,6 +163,32 @@ export class AvailabilityService {
     return nowSalon.hour * 60 + nowSalon.minute + leadMinutes;
   }
 
+  /**
+   * Lý do tiệm đóng cửa CẢ NGÀY: ngày nghỉ lễ (lấy lý do của ngày nghỉ) hoặc ngày nghỉ cố định hằng tuần.
+   * Trả null khi tiệm mở cửa. Dùng chung cho timeline, tra khung giờ và các thao tác tạo / dời lịch.
+   */
+  async closedReason(date: string): Promise<string | null> {
+    const holiday = await this.workingHours.isHoliday(date);
+    if (holiday) return holiday.reason;
+    const wh = await this.workingHours.getByDayOfWeek(dayOfWeek(date));
+    return !wh || wh.isClosed ? MSG.SALON_CLOSED_WEEKLY : null;
+  }
+
+  /**
+   * Chặn tạo / dời lịch vào ngày tiệm nghỉ cả ngày bằng thông báo rõ lý do (thay vì lỗi "khung giờ không hợp lệ" chung).
+   * Mọi nguồn (đặt online, lịch tại quầy, dời lịch) đều đi qua đây nên API bị gọi thẳng cũng không lách được giao diện.
+   */
+  async assertSalonOpen(date: string, action: 'create' | 'reschedule'): Promise<void> {
+    const reason = await this.closedReason(date);
+    if (reason === null) return;
+    throw new BadRequestException({
+      message: action === 'create' ? MSG.SALON_CLOSED_CREATE(reason) : MSG.SALON_CLOSED_RESCHEDULE(reason),
+      field: 'date',
+      code: ERROR_CODES.SALON_CLOSED,
+      details: { date, reason },
+    });
+  }
+
   /** Dựng dữ liệu đầu vào cho bộ tính khung giờ của một thợ trong một ngày. */
   private async buildCalcInput(params: {
     date: string;
@@ -283,7 +309,7 @@ export class AvailabilityService {
       estimatedTotal,
       estimatedTotalText: formatVnd(estimatedTotal),
       salonClosed,
-      closedReason: holiday ? holiday.reason : wh?.isClosed ? 'Tiệm nghỉ theo lịch hằng tuần' : null,
+      closedReason: holiday ? holiday.reason : !wh || wh.isClosed ? MSG.SALON_CLOSED_WEEKLY : null,
       slots,
       suggestedDates,
       exceedsLongestShift: longest > 0 && totalDuration > longest,

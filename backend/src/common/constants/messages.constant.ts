@@ -52,6 +52,12 @@ export const MSG = {
     `Ca làm phải nằm trong giờ mở cửa của tiệm hôm đó (${open} - ${close})`,
   SHIFT_HAS_APPOINTMENTS: 'Ca làm đang chứa lịch hẹn nên không xoá được',
   SALON_CLOSED_THAT_DAY: 'Tiệm đóng cửa vào ngày này',
+  /** Lý do mặc định khi ngày đó là ngày nghỉ cố định hằng tuần (không có bản ghi ngày nghỉ lễ). */
+  SALON_CLOSED_WEEKLY: 'Tiệm nghỉ theo lịch hằng tuần',
+  /** Tiệm nghỉ cả ngày (nghỉ lễ / nghỉ cố định): chặn tạo lịch hẹn. */
+  SALON_CLOSED_CREATE: (reason: string) => `Tiệm nghỉ trong ngày này (${reason}). Không thể tạo lịch hẹn.`,
+  /** Tiệm nghỉ cả ngày: chặn dời lịch hẹn vào ngày đó. */
+  SALON_CLOSED_RESCHEDULE: (reason: string) => `Tiệm nghỉ trong ngày này (${reason}). Không thể dời lịch hẹn vào ngày này.`,
   WORKING_HOURS_MIN_60: 'Giờ đóng cửa phải sau giờ mở cửa ít nhất 60 phút',
   HOLIDAY_NOT_FOUND: 'Không tìm thấy ngày nghỉ',
   TIME_OFF_NOT_FOUND: 'Không tìm thấy khai báo nghỉ',
@@ -124,6 +130,7 @@ export const ERROR_CODES = {
   LOOKUP_LOCKED: 'LOOKUP_LOCKED',
   EXCEEDS_LONGEST_SHIFT: 'EXCEEDS_LONGEST_SHIFT',
   RATE_LIMITED: 'RATE_LIMITED',
+  SALON_CLOSED: 'SALON_CLOSED',
 } as const;
 
 export const APPOINTMENT_STATUS_LABELS: Record<string, string> = {
