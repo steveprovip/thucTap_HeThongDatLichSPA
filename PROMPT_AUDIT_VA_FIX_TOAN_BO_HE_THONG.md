@@ -1,59 +1,61 @@
-# MASTER PROMPT: DEEP AUDIT, ROUND 3 QA BUG FIX & TOTAL SYSTEM RESOLUTION
+# MASTER PROMPT: AUDIT & RESOLUTION FOR QA ROUND 05/10/2026
 ## Target Model: Claude Sonnet 3.7 / 5.5 Extra Cowork (Anthropic Context Engineering)
 ## Workspace: F:\hoc_tap\thuc_tap\du_an
 ## Requirements: F:\hoc_tap\thuc_tap\du_an\de_tai\3. Hệ thống đặt lịch Salon Spa.xlsx
-## QA Defect Logs: F:\hoc_tap\thuc_tap\du_an\loi_04102027 (Sprint_2_Danh_Sach_Loi_QA.docx & extracted_images/)
+## QA Defect Logs: F:\hoc_tap\thuc_tap\du_an\loi_05_10_2026 (Sprint_2_Danh_Sach_Loi_QA.docx & extracted_images/)
 
 ---
 
 <role>
-Bạn là Kỹ sư Trưởng Hệ thống kiêm QA Lead Auditor hàng đầu thế giới về NestJS, PostgreSQL 16, React 18, Vite, và State Management (LocalStorage / Context API).
-Nhiệm vụ của bạn là rà soát toàn diện từ đầu mã nguồn dự án tại `F:\hoc_tap\thuc_tap\du_an`, đối chiếu yêu cầu nghiệp vụ tại `F:\hoc_tap\thuc_tap\du_an\de_tai\3. Hệ thống đặt lịch Salon Spa.xlsx` và giải quyết dứt điểm 7 lỗi QA thực tế mới nhất mà tester Trương Khánh ghi nhận trong `F:\hoc_tap\thuc_tap\du_an\loi_04102027\Sprint_2_Danh_Sach_Loi_QA.docx`.
+Bạn là Kỹ sư Trưởng Hệ thống (Principal Fullstack Architect) kiêm Lead QA Auditor hàng đầu thế giới về NestJS, PostgreSQL 16, React 18 (Vite) và Tailwind CSS.
+Nhiệm vụ của bạn là rà soát toàn diện mã nguồn tại `F:\hoc_tap\thuc_tap\du_an`, đối chiếu yêu cầu nghiệp vụ tại `F:\hoc_tap\thuc_tap\du_an\de_tai\3. Hệ thống đặt lịch Salon Spa.xlsx`, tự động kiểm tra và xử lý dứt điểm 2 lỗi QA ghi nhận ngày 05/10/2026 tại `F:\hoc_tap\thuc_tap\du_an\loi_05_10_2026\Sprint_2_Danh_Sach_Loi_QA.docx`.
 </role>
 
 <context>
 - Đường dẫn mã nguồn: `F:\hoc_tap\thuc_tap\du_an`
 - Đề bài chuẩn: `F:\hoc_tap\thuc_tap\du_an\de_tai\3. Hệ thống đặt lịch Salon Spa.xlsx` (4 Sprints, 39 User Stories, 165 Story Points)
-- Danh sách lỗi QA mới nhất: `F:\hoc_tap\thuc_tap\du_an\loi_04102027\Sprint_2_Danh_Sach_Loi_QA.docx` (đã trích xuất 15 ảnh minh hoạ tại `loi_04102027\extracted_images`)
-- Nhánh hiện tại: `develop` / `main` (Release `v1.3.3`)
+- Nhật ký lỗi QA 05/10/2026: `F:\hoc_tap\thuc_tap\du_an\loi_05_10_2026\Sprint_2_Danh_Sach_Loi_QA.docx` (đã trích xuất 6 ảnh tại `loi_05_10_2026\extracted_images`)
+- Nhánh hiện tại: `develop` / `main` (Release `v1.3.5`)
 </context>
 
 <investigation_and_fix_tasks>
-Hãy trực tiếp đọc mã nguồn, kiểm tra bản chất từng lỗi và sửa dứt điểm 7 lỗi sau ở CẢ HAI PHÍA (Backend NestJS, Database & Frontend React / Mock Adapter):
+Hãy trực tiếp đọc mã nguồn và giải quyết triệt để 2 lỗi sau ở CẢ HAI PHÍA (Backend NestJS, Database & Frontend React / Mock Adapter):
 
-1. **[LỖI 1 - ĐẶT LỊCH CHỌN 2 DỊCH VỤ NHƯNG BÁO ĐÃ CHỌN 5/5]**:
-   - *Hiện tượng*: Khách chọn 2 dịch vụ nhưng giao diện báo "Bạn đã chọn tối đa 5 dịch vụ", nút thêm bị khóa không chọn tiếp được.
-   - *Nguyên nhân cốt lõi*: `BookingContext.tsx` nạp bản nháp cũ từ `localStorage.getItem('salon.bookingDraft')` chứa các dịch vụ của lần test trước đó (hoặc mảng `selected` không được làm sạch/lọc theo danh sách dịch vụ hợp lệ của danh mục hiện tại).
-   - *Giải pháp*: Làm sạch và đồng bộ lại `selected` khi danh mục dịch vụ thay đổi; thêm cơ chế reset/validate bản nháp trong `BookingContext.tsx` để không bị lưu rác 5 dịch vụ cũ.
+### 1. [LỖI 1: ĐỒNG BỘ THỐNG NHẤT CHỈ SỐ KHÁCH HÀNG & LỊCH SỬ DỊCH VỤ]
+- **Hiện tượng**: Số lần sử dụng dịch vụ, số lượt hoàn tất và số lượt không đến hiển thị không đồng nhất giữa các màn hình (Danh sách khách hàng `CustomersPage.tsx`, Ngăn kéo chi tiết lịch `AppointmentDrawer.tsx`, và Form khách vãng lai `WalkInPage.tsx`).
+- **Nguyên nhân**:
+  1. Thiếu sự phân biệt rõ ràng giữa:
+     - `totalVisits`: Số lượt đến / hoàn tất dịch vụ (`status = 'completed'`).
+     - `noShowCount`: Số lượt không đến (`status = 'no_show'`).
+     - `totalAppointments`: Tổng số lịch đã từng đặt (bao gồm cả lịch hẹn sắp tới, đã hủy, v.v.).
+  2. Dữ liệu mẫu (seed data) trong `mockBackend.ts` và `seed.sql` có chỉ số `totalVisits` chưa khớp với số bản ghi lịch sử tương ứng của khách.
+- **Giải pháp**:
+  - Chuẩn hóa nhãn giao diện rõ ràng, thống nhất trên toàn bộ trang:
+    * *"Lượt hoàn tất: X"* (hoặc *"Đã đến X lần"*).
+    * *"Lượt không đến: Y"*.
+    * *"Tổng lịch đã đặt: Z"*.
+  - Đảm bảo hàm tính `refreshCounters` ở backend và `customerStats` ở frontend mock đếm chính xác 100% từ bảng `appointments`.
 
-2. **[LỖI 2 - KHÔNG XỬ LÝ LỊCH HẸN / THÊM KHÁCH VÃNG LAI ĐƯỢC]**:
-   - *Hiện tượng*: Lễ tân tạo lịch nhanh tại quầy (`WalkInModal` trong `WalkInPage.tsx`) hoặc thao tác duyệt/chuyển trạng thái lịch hẹn bị lỗi / không bấm được.
-   - *Nguyên nhân cốt lõi*: Ràng buộc kiểm tra thợ rảnh `stylistFits()`, giờ bắt đầu ở quá khứ `timeToMinutes(nowRounded())`, hoặc endpoint `/appointments/walk-in` / `/appointments/:id/check-in` trong `mockBackend.ts` và backend bị thiếu quyền/xung đột dữ liệu.
-   - *Giải pháp*: Kiểm tra toàn bộ luồng tạo khách vãng lai ở cả backend và mock adapter; đảm bảo form điền đầy đủ dữ liệu là tạo thành công ngay lập tức.
-
-3. **[LỖI 3 - CẢNH BÁO TÁCH 2 LẦN HẸN KHI TỔNG THỜI LƯỢNG VƯỢT CA DÀI NHẤT]**:
-   - Kiểm tra logic API `publicApi.quote()` và hàm tính `longestShiftInWeek` ở backend lẫn frontend; đảm bảo chỉ hiện cảnh báo vàng khi tổng phút > ca dài nhất trong 7 ngày tới của thợ đủ kỹ năng.
-
-4. **[LỖI 4 - GIỚI HẠN TỐI ĐA 3 LỊCH HẸN CHƯA HOÀN TẤT / SĐT]**:
-   - Đảm bảo từ lần đặt thứ 4 trở đi trên cùng một SĐT, hệ thống từ chối bằng thông báo tiếng Việt: *"Số điện thoại này đang có 3 lịch hẹn chưa hoàn tất, vui lòng hoàn tất hoặc huỷ bớt trước khi đặt thêm"*.
-
-5. **[LỖI 5 - GIỚI HẠN 5 LƯỢT ĐẶT TỪ 1 IP TRONG 1 GIỜ]**:
-   - Đảm bảo trả về HTTP 429 Too Many Requests kèm mã `RATE_LIMITED` và `Retry-After`.
-
-6. **[LỖI 6 - TẠM KHÓA TRA CỨU 30 PHÚT SAU 10 LẦN TRA SAI]**:
-   - Kiểm tra bộ đếm brute-force tra cứu theo IP; khóa đúng 30 phút (`LOOKUP_LOCKED`).
-
-7. **[LỖI 7 - THỢ CHƯA XẾP CA KHÔNG ĐƯỢC NHẬN LỊCH]**:
-   - Tại Bước 3 (chọn thợ), thợ không có ca làm việc trong ngày được chọn TUYỆT ĐỐI không hiển thị ở danh sách thợ rảnh và không nhận lịch tự động.
+### 2. [LỖI 2: CHẶN ĐẶT LỊCH / TẠO LỊCH TRÊN NGÀY NGHỈ LỄ Ở PHÂN HỆ QUẢN TRỊ & LỄ TÂN]
+- **Hiện tượng**: Trang công khai của khách đã chặn ngày nghỉ lễ, nhưng trong giao diện của Chủ tiệm và Lễ tân (Tạo khách vãng lai `WalkInPage.tsx`, Dời lịch hẹn `AppointmentDrawer.tsx`) vẫn chưa chặn hoặc chưa có thông báo rõ ràng khi chọn trúng ngày nghỉ lễ của tiệm.
+- **Nguyên nhân**:
+  - `WalkInModal` trong `WalkInPage.tsx` khi chọn ngày (`date`) chưa kiểm tra thuộc tính `timeline.salonClosed` và `timeline.closedReason` để cảnh báo và chặn nút lưu.
+  - Form dời lịch trong `AppointmentDrawer.tsx` chưa hiển thị banner chặn khi ngày đích rơi vào ngày lễ tiệm đóng cửa.
+  - Backend API `POST /appointments/walk-in` và `PATCH /appointments/:id/reschedule` cần đảm bảo trả về lỗi tiếng Việt rõ ràng nếu ngày rơi vào ngày lễ toàn tiệm.
+- **Giải pháp**:
+  - Tại `WalkInPage.tsx`: Khi `timeline?.salonClosed` = true, hiển thị khung cảnh báo màu vàng/đỏ: *"Tiệm nghỉ trong ngày này ({lý_do_nghỉ_lễ}). Không thể tạo lịch hẹn."* và vô hiệu hóa nút Tạo lịch.
+  - Tại `AppointmentDrawer.tsx`: Chặn chọn ngày nghỉ lễ khi dời lịch.
+  - Đồng bộ logic kiểm tra ngày lễ vào cả Backend NestJS và `mockBackend.ts`.
 </investigation_and_fix_tasks>
 
 <execution_protocol>
-1. **BƯỚC 1 - RÀ SOÁT MÃ NGUỒN**: Đọc trực tiếp `BookingContext.tsx`, `Step1Services.tsx`, `WalkInPage.tsx`, `mockBackend.ts`, `booking.service.ts` và xác định chính xác dòng code gây lỗi.
-2. **BƯỚC 2 - VÁ CODE CHÍNH XÁC (SURGICAL FIX)**: Áp dụng YAGNI & Ponytail (tối giản diff, không sinh code thừa, sửa tận gốc).
-3. **BƯỚC 3 - CHẠY BỘ KIỂM ĐỊNH (QUALITY GATES)**:
+1. **BƯỚC 1: SỬA CODE CHÍNH XÁC (SURGICAL FIX)**:
+   - Sửa `CustomersPage.tsx`, `AppointmentDrawer.tsx`, `WalkInPage.tsx`.
+   - Sửa `mockBackend.ts`, `seed.sql`, `appointments.service.ts`, `customers.service.ts`.
+2. **BƯỚC 2: CHẠY BỘ KIỂM ĐỊNH (QUALITY GATES)**:
    - Backend unit tests: `npm --prefix backend run test` (Đạt 100%).
-   - Backend & Frontend lint: `npm --prefix backend run lint` & `npm --prefix frontend run lint` (0 error, 0 warning).
+   - Linting: `npm --prefix backend run lint` & `npm --prefix frontend run lint` (0 error, 0 warning, cấm `any`).
    - Frontend build: `npm --prefix frontend run build` (Build Vite thành công).
-4. **BƯỚC 4 - ĐỒNG BỘ GIT**: Commit toàn bộ bằng tác giả `steveprovip` (tuyệt đối không chèn thẻ Co-Authored-By).
-5. **BƯỚC 5 - RUNBOOK TEST CHO TRƯƠNG KHÁNH**: Viết hướng dẫn ngắn gọn cách chạy 1-Click (`run_project.bat`) và các bước bấm chuột để kiểm chứng cả 7 lỗi.
+3. **BƯỚC 3: ĐỒNG BỘ GIT**: Commit toàn bộ bằng tác giả `steveprovip` (tuyệt đối không chèn thẻ Co-Authored-By).
+4. **BƯỚC 4: RUNBOOK CHO TRƯƠNG KHÁNH**: Viết các bước 1-Click (`run_project.bat`) để Khánh kiểm chứng cả 2 mục trên.
 </execution_protocol>
