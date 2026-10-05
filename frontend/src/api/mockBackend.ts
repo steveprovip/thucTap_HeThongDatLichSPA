@@ -68,6 +68,9 @@ const MSG = {
   CODE_LENGTH: 'Mã tra cứu gồm 8 ký tự chữ hoặc số',
   SLOT_TAKEN: 'Khung giờ vừa có người đặt, vui lòng chọn khung giờ khác',
   SLOT_INVALID: 'Khung giờ không hợp lệ hoặc không còn trống',
+  SALON_CLOSED_WEEKLY: 'Tiệm nghỉ theo lịch hằng tuần',
+  SALON_CLOSED_CREATE: (reason: string) => `Tiệm nghỉ trong ngày này (${reason}). Không thể tạo lịch hẹn.`,
+  SALON_CLOSED_RESCHEDULE: (reason: string) => `Tiệm nghỉ trong ngày này (${reason}). Không thể dời lịch hẹn vào ngày này.`,
 };
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const money = (value: number) => `${new Intl.NumberFormat('vi-VN').format(value)} đ`;
@@ -166,8 +169,9 @@ function makeAppointment(id: string, offset: number, time: string, status: Appoi
     date, startTime: time, endTime: addMinutes(time, duration), startAt,
     endAt: `${date}T${addMinutes(time, duration)}:00+07:00`, startAtText: `${time}, ${date}`,
     totalDurationMinutes: duration, estimatedTotal: price, estimatedTotalText: money(price),
-    // Số lượt đến / không đến được tính lại từ lịch sử thật (syncCustomerStats) — không gán cứng
-    customer: { id: `c-${phone}`, fullName: customerName, phone, phoneMasked: false, email: null, totalVisits: 0, noShowCount: 0 },
+    // Lượt hoàn tất / không đến / tổng lịch đã đặt được tính lại từ lịch sử thật (syncCustomerStats) — không gán cứng
+    customer: { id: `c-${phone}`, fullName: customerName, phone, phoneMasked: false, email: null,
+      totalVisits: 0, noShowCount: 0, totalAppointments: 0 },
     stylist: { id: stylistId, fullName: stylist.fullName },
     services: services.map(s => ({ id: uid(), serviceId: s.id, name: s.name, durationMinutes: s.durationMinutes, price: s.price, priceText: s.priceText })),
     customerNote: null, isLate: false, lateMinutes: 0, arrivedAt: null, startedAt: null, completedAt: null,
@@ -259,8 +263,11 @@ const save = () => {
 };
 
 /**
- * CRM: lượt đến / không đến của khách tính từ lịch sử THẬT theo đúng số điện thoại.
- * Khách mới (SĐT chưa từng xuất hiện) luôn bắt đầu 0 lượt đến, 0 lần không đến.
+ * CRM: 3 chỉ số của khách đều đếm từ lịch sử THẬT theo đúng số điện thoại (giống refreshCounters ở máy chủ):
+ *  - totalVisits  = số lịch "completed"        (Lượt hoàn tất)
+ *  - noShowCount  = số lịch "no_show"          (Lượt không đến)
+ *  - total        = mọi lịch từng đặt          (Tổng lịch đã đặt, kể cả đã huỷ / sắp tới)
+ * Khách mới (SĐT chưa từng xuất hiện) luôn bắt đầu 0 / 0 / 0.
  */
 function customerStats(phone: string) {
   const visits = db.appointments.filter(a => a.customer.phone === phone);
@@ -270,12 +277,26 @@ function customerStats(phone: string) {
     total: visits.length,
   };
 }
+/** Lịch sử đặt lịch của khách: mới nhất trước, giới hạn như máy chủ (5 lượt ở ô tra SĐT, 10 ở hồ sơ / chi tiết lịch). */
+const customerHistory = (phone: string, limit: number) =>
+  db.appointments.filter(a => a.customer.phone === phone)
+    .sort((x, y) => y.startAt.localeCompare(x.startAt)).slice(0, limit)
+    .map(a => ({ appointmentId: a.id, code: a.code, date: a.startAt, status: a.status, stylistName: a.stylist.fullName,
+      services: a.services.map(s => s.name), technicalNote: db.notes[a.id] ?? null }));
+/** Lý do tiệm nghỉ CẢ NGÀY (ngày nghỉ lễ hoặc nghỉ cố định hằng tuần); null nếu tiệm mở cửa — giống availability.closedReason ở máy chủ. */
+const salonClosedReason = (date: string): string | null => {
+  const holiday = db.holidays.find(h => h.startDate <= date && h.endDate >= date);
+  if (holiday) return holiday.reason;
+  const hours = db.workingHours.find(h => h.dayOfWeek === new Date(`${date}T12:00:00`).getDay());
+  return hours?.isClosed ? MSG.SALON_CLOSED_WEEKLY : null;
+};
 function syncCustomerStats() {
   const cache = new Map<string, ReturnType<typeof customerStats>>();
   db.appointments.forEach(a => {
     const stats = cache.get(a.customer.phone) ?? customerStats(a.customer.phone);
     cache.set(a.customer.phone, stats);
     a.customer.totalVisits = stats.totalVisits; a.customer.noShowCount = stats.noShowCount;
+    a.customer.totalAppointments = stats.total;
   });
 }
 const paginate = <T,>(items: T[], params: Record<string, unknown>) => {
@@ -493,11 +514,11 @@ const availability = (date: string, serviceIds: string[], stylistId?: string, ex
       .map(s => s.id);
     if (ids.length) slots.push({ time, stylistIds: ids });
   }
-  const closed = db.holidays.find(h => h.startDate <= date && h.endDate >= date);
-  const shown = closed || hours?.isClosed ? [] : slots;
+  const closedReason = salonClosedReason(date);
+  const shown = closedReason !== null ? [] : slots;
   const longest = longestShiftInWeek(candidates.map(s => s.id), date);
   return { date, totalDurationMinutes: duration, estimatedTotal: price, estimatedTotalText: money(price),
-    salonClosed: !!closed || !!hours?.isClosed, closedReason: closed?.reason ?? (hours?.isClosed ? 'Salon nghỉ trong ngày này' : null),
+    salonClosed: closedReason !== null, closedReason,
     slots: shown,
     // Chỉ gợi ý ngày khác khi ngày đang chọn hết chỗ — và là những ngày THẬT SỰ còn khung giờ
     suggestedDates: shown.length || !withSuggestions ? [] : nearestAvailableDates(date, serviceIds, stylistId, 2),
@@ -520,11 +541,15 @@ const createAppointment = (p: Record<string, unknown>, walkIn = false) => {
   const ids = ((p.serviceIds as string[]) ?? []).filter(id => db.services.some(s => s.id === id));
   if (!ids.length) bad('Vui lòng chọn ít nhất một dịch vụ còn đang bán', 'serviceIds');
   const phone = String(p.phone ?? '').trim();
+  const date = String(p.date); const time = String(p.time);
+  // Tiệm nghỉ cả ngày (nghỉ lễ / nghỉ cố định): chặn mọi nguồn đặt lịch, báo rõ lý do (giống máy chủ)
+  const closedReason = salonClosedReason(date);
+  if (closedReason !== null) bad(MSG.SALON_CLOSED_CREATE(closedReason), 'date', 400,
+    { code: 'SALON_CLOSED', details: { date, reason: closedReason } });
   // QA-05: mỗi số điện thoại chỉ được có tối đa 3 lịch chưa hoàn tất
   const active = db.appointments.filter(a => a.customer.phone === phone && ACTIVE_STATUSES.includes(a.status)).length;
   if (active >= MAX_ACTIVE_BOOKINGS_PER_PHONE) bad(MSG.TOO_MANY_ACTIVE_BOOKINGS(active), 'phone', 400,
     { code: 'MAX_APPOINTMENTS_EXCEEDED', details: { activeAppointments: active, maxActiveAppointments: MAX_ACTIVE_BOOKINGS_PER_PHONE } });
-  const date = String(p.date); const time = String(p.time);
   let stylistId: string;
   if (walkIn) {
     // Lịch tại quầy chỉ được bỏ mốc đặt trước 60 phút và lưới 15 phút: thợ vẫn phải có ca và đang rảnh (QA-08)
@@ -565,7 +590,7 @@ const customerList = (): Customer[] => {
     const stats = customerStats(phone);
     return { id: first.customer.id, fullName: first.customer.fullName, phone, phoneMasked: false,
       email: first.customer.email, totalVisits: stats.totalVisits, noShowCount: stats.noShowCount,
-      note: db.notes[phone] ?? null, isNew: stats.totalVisits === 0,
+      totalAppointments: stats.total, note: db.notes[phone] ?? null, isNew: stats.totalVisits === 0,
       createdAt: visits[visits.length - 1]?.createdAt ?? first.createdAt };
   });
 };
@@ -607,11 +632,11 @@ const dayTimeline = (date: string, stylistId?: string) => {
   const stylists = db.stylists.filter(s => s.isActive && (!stylistId || s.id === stylistId));
   const appointments = db.appointments.filter(a => a.date === date);
   const hours = db.workingHours.find(h => h.dayOfWeek === new Date(`${date}T12:00:00`).getDay());
-  const holiday = db.holidays.find(h => h.startDate <= date && h.endDate >= date);
-  const closed = !!holiday || !!hours?.isClosed;
+  const closedReason = salonClosedReason(date);
+  const closed = closedReason !== null;
   return { date, dayLabel: new Intl.DateTimeFormat('vi-VN', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date(`${date}T00:00:00`)),
     salonOpen: hours?.openTime ?? '08:00', salonClose: hours?.closeTime ?? '21:00',
-    salonClosed: closed, closedReason: holiday?.reason ?? (hours?.isClosed ? 'Salon nghỉ trong ngày này' : null), stepMinutes: 15,
+    salonClosed: closed, closedReason, stepMinutes: 15,
     columns: stylists.map(s => ({ stylistId: s.id, stylistName: s.fullName, avatarUrl: s.avatarUrl, gender: s.gender,
       workingBlocks: (closed ? [] : db.shifts.filter(shift => shift.stylistId === s.id && shift.workDate === date))
         .map(shift => ({ start: shift.startTime, end: shift.endTime })),
@@ -768,14 +793,17 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
     if (!action) return forCurrentRole(a);
     if (action === 'customer-history') return { customerId: a.customer.id,
       isNewCustomer: customerStats(a.customer.phone).totalVisits === 0,
-      history: db.appointments.filter(item => item.customer.phone === a.customer.phone && item.id !== a.id).map(item => ({
-        appointmentId: item.id, code: item.code, date: item.startAt, status: item.status,
-        stylistName: item.stylist.fullName, services: item.services.map(s => s.name), technicalNote: db.notes[item.id] ?? null })) };
+      history: customerHistory(a.customer.phone, 10) };
     if (action === 'service-note') { db.notes[a.id] = String(p.content); save(); return { content: p.content }; }
     const status: Record<string, AppointmentStatus> = { confirm: 'confirmed', reject: 'cancelled',
       'check-in': 'arrived', start: 'in_progress', complete: 'completed', 'no-show': 'no_show',
       'undo-no-show': 'confirmed', cancel: 'cancelled' };
     if (action === 'reschedule') {
+      // Tiệm nghỉ cả ngày: không dời lịch vào ngày đó, báo rõ lý do (giống máy chủ)
+      const targetDate = p.date ? String(p.date) : a.date;
+      const closedReason = salonClosedReason(targetDate);
+      if (closedReason !== null) bad(MSG.SALON_CLOSED_RESCHEDULE(closedReason), 'date', 400,
+        { code: 'SALON_CLOSED', details: { date: targetDate, reason: closedReason } });
       if (p.date) a.date = String(p.date);
       if (p.time) { a.startTime = String(p.time); a.endTime = addMinutes(a.startTime, a.totalDurationMinutes); }
       if (p.stylistId) { const stylist = db.stylists.find(s => s.id === p.stylistId);
@@ -960,16 +988,12 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
     // Cùng dạng với máy chủ thật: SĐT mới → found=false, không mượn số liệu của hồ sơ khác
     const phone = decodeURIComponent(path.split('/')[3] ?? '');
     const customer = customerList().find(c => c.phone === phone) ?? null;
-    return { found: !!customer, customer, history: customer ? db.appointments.filter(a => a.customer.phone === phone)
-      .map(a => ({ appointmentId: a.id, code: a.code, date: a.startAt, status: a.status, stylistName: a.stylist.fullName,
-        services: a.services.map(s => s.name), technicalNote: db.notes[a.id] ?? null })) : [] };
+    return { found: !!customer, customer, history: customer ? customerHistory(phone, 5) : [] };
   }
   const customerMatch = path.match(/^\/customers\/([^/]+)(?:\/(history))?$/);
   if (customerMatch) {
     const customer = customerList().find(c => c.id === customerMatch[1]) ?? bad('Không tìm thấy khách hàng');
-    if (customerMatch[2]) return db.appointments.filter(a => a.customer.phone === customer.phone).map(a => ({
-      appointmentId: a.id, code: a.code, date: a.startAt, status: a.status, stylistName: a.stylist.fullName,
-      services: a.services.map(s => s.name), technicalNote: db.notes[a.id] ?? null }));
+    if (customerMatch[2]) return customerHistory(customer.phone, 10);
     if (method === 'patch') { db.notes[customer.phone] = String(p.note || ''); save(); return { ...customer, note: db.notes[customer.phone] }; }
     return customer;
   }

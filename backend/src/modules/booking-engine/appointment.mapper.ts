@@ -24,7 +24,7 @@ export interface AppointmentView {
   estimatedTotal: number;
   estimatedTotalText: string;
   customer: { id: string; fullName: string; phone: string; phoneMasked: boolean; email: string | null;
-    totalVisits: number; noShowCount: number };
+    totalVisits: number; noShowCount: number; totalAppointments: number };
   stylist: { id: string; fullName: string };
   services: { id: string; serviceId: string; name: string; durationMinutes: number; price: number; priceText: string }[];
   customerNote: string | null;
@@ -87,6 +87,7 @@ export const mapAppointment = (
       email: mask ? null : customer.email,
       totalVisits: customer.totalVisits,
       noShowCount: customer.noShowCount,
+      totalAppointments: customer.totalAppointments,
     },
     stylist: { id: stylist.id, fullName: stylist.fullName },
     services: services

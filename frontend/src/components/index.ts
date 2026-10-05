@@ -12,3 +12,4 @@ export * from './TempPasswordDialog';
 export * from './BackButton';
 export * from './VietQrCode';
 export * from './ErrorBoundary';
+export * from './CustomerMetrics';

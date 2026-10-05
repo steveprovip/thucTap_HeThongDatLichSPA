@@ -22,6 +22,10 @@ export class Customer {
   @Column({ name: 'no_show_count', type: 'int', default: 0 })
   noShowCount!: number;
 
+  /** Tổng số lịch đã đặt (mọi trạng thái) — đếm từ bảng appointments. */
+  @Column({ name: 'total_appointments', type: 'int', default: 0 })
+  totalAppointments!: number;
+
   @Column({ length: 1000, nullable: true, type: 'varchar' })
   note!: string | null;
 

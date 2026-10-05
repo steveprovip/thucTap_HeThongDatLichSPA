@@ -19,8 +19,12 @@ export interface CustomerView {
   phone: string;
   phoneMasked: boolean;
   email: string | null;
+  /** Lượt hoàn tất: số lịch trạng thái 'completed'. */
   totalVisits: number;
+  /** Lượt không đến: số lịch trạng thái 'no_show'. */
   noShowCount: number;
+  /** Tổng lịch đã đặt: mọi lịch từng được tạo (mọi trạng thái). */
+  totalAppointments: number;
   note: string | null;
   isNew: boolean;
   createdAt: Date;
@@ -57,6 +61,7 @@ export class CustomersService {
       email: c.email,
       totalVisits: c.totalVisits,
       noShowCount: c.noShowCount,
+      totalAppointments: c.totalAppointments,
       note: c.note,
       isNew: c.totalVisits === 0,
       createdAt: c.createdAt,
@@ -160,17 +165,23 @@ export class CustomersService {
     }));
   }
 
-  /** Cập nhật số lượt đến / số lần không đến sau mỗi thay đổi trạng thái. */
+  /**
+   * Tính lại 3 chỉ số của hồ sơ khách — LUÔN đếm trực tiếp từ bảng appointments:
+   * lượt hoàn tất (completed), lượt không đến (no_show), tổng lịch đã đặt (mọi trạng thái).
+   * Gọi sau mỗi lần tạo lịch / đổi trạng thái / huỷ để các màn hình luôn khớp nhau.
+   */
   async refreshCounters(customerId: string, manager?: EntityManager): Promise<void> {
     const runner = manager ?? this.repo.manager;
     await runner.query(
       `UPDATE customers c SET
-         total_visits  = COALESCE(t.visits, 0),
-         no_show_count = COALESCE(t.no_shows, 0)
+         total_visits       = COALESCE(t.visits, 0),
+         no_show_count      = COALESCE(t.no_shows, 0),
+         total_appointments = COALESCE(t.total, 0)
        FROM (
          SELECT $1::uuid AS customer_id,
                 COUNT(*) FILTER (WHERE status = 'completed') AS visits,
-                COUNT(*) FILTER (WHERE status = 'no_show')   AS no_shows
+                COUNT(*) FILTER (WHERE status = 'no_show')   AS no_shows,
+                COUNT(*)                                      AS total
            FROM appointments WHERE customer_id = $1::uuid
        ) t
        WHERE c.id = t.customer_id`,

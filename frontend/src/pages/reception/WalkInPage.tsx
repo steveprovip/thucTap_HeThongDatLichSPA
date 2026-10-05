@@ -8,11 +8,11 @@ import type {
   Appointment, Customer, DayTimeline, ServiceItem, VisitHistoryItem,
 } from '@/types';
 import {
-  Button, Card, EmptyState, Field, Input, Modal, Notice, SectionTitle, Spinner, StatusBadge, Textarea,
+  Button, Card, CustomerMetrics, EmptyState, Field, Input, Modal, Notice, SectionTitle, Spinner, StatusBadge, Textarea,
 } from '@/components';
 import {
-  addDaysISO, formatDate, formatDuration, formatVnd, matchSearch, minutesToTime, timeToMinutes, todayISO, VN_PHONE_MESSAGE,
-  VN_PHONE_REGEX,
+  addDaysISO, formatDate, formatDuration, formatVnd, matchSearch, minutesToTime, salonClosedMessage, timeToMinutes, todayISO,
+  VN_PHONE_MESSAGE, VN_PHONE_REGEX,
 } from '@/utils/format';
 import { useAppointmentsSync } from '@/utils/liveSync';
 import { MAX_SERVICES_PER_BOOKING, STATUS_LABELS } from '@/utils/constants';
@@ -49,7 +49,9 @@ function stylistFits(timeline: DayTimeline | null, services: ServiceItem[], skil
     const skills = skillMap[col.stylistId] ?? [];
     const skilled = services.every((s) => skills.includes(s.id));
     let reason: string | null = null;
-    if (!col.workingBlocks.length) reason = 'Không có ca hôm nay';
+    // Tiệm nghỉ cả ngày (nghỉ lễ / nghỉ cố định): kể cả thợ đã lỡ được xếp ca cũng không rảnh
+    if (timeline.salonClosed) reason = 'Tiệm nghỉ';
+    else if (!col.workingBlocks.length) reason = 'Không có ca hôm nay';
     else if (!col.workingBlocks.some((b) => timeToMinutes(b.start) <= start && timeToMinutes(b.end) >= end)) reason = 'Ngoài giờ ca';
     else if (col.offBlocks.some((b) => overlaps(start, end, timeToMinutes(b.start), timeToMinutes(b.end)))) reason = 'Trùng giờ nghỉ';
     else {
@@ -179,7 +181,7 @@ export function WalkInModal({ open, onClose, onCreated }: {
 
   // Gợi ý các mốc giờ trống gần nhất (bước 15 phút) — không áp ràng buộc 60 phút như trang khách
   const suggestions = useMemo(() => {
-    if (!timeline || !selected.length) return [];
+    if (!timeline || timeline.salonClosed || !selected.length) return [];
     const open = timeToMinutes(timeline.salonOpen);
     const close = timeToMinutes(timeline.salonClose);
     const from = isToday ? Math.max(open, Math.ceil(timeToMinutes(nowRounded()) / 15) * 15) : open;
@@ -193,6 +195,10 @@ export function WalkInModal({ open, onClose, onCreated }: {
   }, [timeline, selected, skillMap, duration, stylistId, isToday]);
 
   const closeMin = timeline ? timeToMinutes(timeline.salonClose) : 24 * 60;
+  // Lịch ngày đang hiển thị phải ĐÚNG ngày đã chọn (tránh dùng nhầm kết quả của ngày trước khi đổi ngày)
+  const dateChecking = !timeline || timeline.date !== date;
+  const closedDay = !dateChecking && !!timeline?.salonClosed;
+  const closedMessage = closedDay ? salonClosedMessage(timeline?.closedReason, 'create') : null;
   const errors = {
     phone: !VN_PHONE_REGEX.test(phone) ? VN_PHONE_MESSAGE : undefined,
     fullName: !fullName.trim() ? 'Vui lòng nhập tên khách' : undefined,
@@ -200,13 +206,13 @@ export function WalkInModal({ open, onClose, onCreated }: {
     services: !selected.length ? 'Chọn ít nhất một dịch vụ' : undefined,
     time: mode === 'later' && (!time || date < todayISO() || (isToday && timeToMinutes(time) < timeToMinutes(nowRounded()) - 5))
       ? 'Giờ bắt đầu không được ở quá khứ' : undefined,
-    stylist: selected.length && !resolvedStylist ? 'Không có thợ phù hợp rảnh vào giờ này'
+    stylist: closedDay ? undefined : selected.length && !resolvedStylist ? 'Không có thợ phù hợp rảnh vào giờ này'
       : resolvedStylist && !resolvedStylist.skilled ? `${resolvedStylist.name} chưa làm được toàn bộ dịch vụ đã chọn`
         : resolvedStylist && !resolvedStylist.free ? `${resolvedStylist.name}: ${resolvedStylist.reason}` : undefined,
     closing: selected.length && endMin > closeMin ? `Kết thúc lúc ${minutesToTime(endMin)}, sau giờ đóng cửa ${timeline?.salonClose}` : undefined,
   };
   const shown: Partial<typeof errors> = touched ? errors : {};
-  const blocking = Object.values(errors).some(Boolean);
+  const blocking = closedDay || Object.values(errors).some(Boolean);
 
   const toggleService = (id: string) => {
     if (selectedIds.includes(id)) return setSelectedIds(selectedIds.filter((x) => x !== id));
@@ -216,7 +222,7 @@ export function WalkInModal({ open, onClose, onCreated }: {
 
   const submit = async () => {
     setTouched(true);
-    if (blocking || !resolvedStylist) return;
+    if (dateChecking || blocking || !resolvedStylist) return;
     setSaving(true);
     try {
       const startTime = mode === 'now' ? nowRounded() : time;
@@ -260,7 +266,7 @@ export function WalkInModal({ open, onClose, onCreated }: {
           </p>
           <div className="flex gap-2">
             <Button variant="ghost" onClick={onClose}>Huỷ</Button>
-            <Button loading={saving} onClick={submit} icon={<Zap size={16} />}>
+            <Button loading={saving} onClick={submit} icon={<Zap size={16} />} disabled={closedDay || dateChecking}>
               {mode === 'now' && checkInNow ? 'Tạo & check-in' : 'Tạo lịch'}
             </Button>
           </div>
@@ -303,10 +309,8 @@ export function WalkInModal({ open, onClose, onCreated }: {
                 <p className="flex items-center gap-2 font-semibold text-emerald-800">
                   <UserCheck size={16} /> Khách quen: {customer.fullName}
                 </p>
-                <p className="mt-0.5 text-xs text-emerald-700">
-                  {customer.totalVisits} lượt hoàn tất · {customer.noShowCount} lần không đến
-                  {customer.email ? ` · ${customer.email}` : ''}
-                </p>
+                <CustomerMetrics data={customer} className="mt-0.5 text-xs text-emerald-700" />
+                {customer.email && <p className="text-xs text-emerald-700">{customer.email}</p>}
                 {customer.note && <p className="mt-1 text-xs italic text-emerald-800">Ghi chú: {customer.note}</p>}
                 {customer.noShowCount >= 2 && (
                   <p className="mt-1.5 text-xs font-semibold text-red-600">Lưu ý: khách từng lỡ hẹn {customer.noShowCount} lần.</p>
@@ -337,7 +341,9 @@ export function WalkInModal({ open, onClose, onCreated }: {
             )}
             {lookup === 'new' && (
               <Notice tone="info" icon={<Sparkles size={15} />}>
-                Khách mới — chưa có lịch sử (0 lượt đến · 0 lần không đến). Hồ sơ sẽ được tạo khi lưu lịch.
+                Khách mới — chưa có lịch sử.
+                <CustomerMetrics data={{ totalVisits: 0, noShowCount: 0, totalAppointments: 0 }} className="mt-0.5" />
+                Hồ sơ sẽ được tạo khi lưu lịch.
               </Notice>
             )}
 
@@ -385,6 +391,7 @@ export function WalkInModal({ open, onClose, onCreated }: {
 
             <div>
               <h4 className="mb-2 text-sm font-bold text-teal-700">3. Thời gian</h4>
+              {closedMessage && <Notice tone="danger" className="mb-2">{closedMessage}</Notice>}
               <div className="grid grid-cols-2 gap-2">
                 {([['now', 'Làm ngay', <Zap size={15} key="z" />], ['later', 'Hẹn ngày/giờ khác', <Clock size={15} key="c" />]] as const)
                   .map(([id, label, icon]) => (

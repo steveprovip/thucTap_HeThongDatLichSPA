@@ -2,6 +2,11 @@
 
 export const SALON_TZ = 'Asia/Ho_Chi_Minh';
 
+/** Thông báo chặn khi tiệm nghỉ cả ngày (nghỉ lễ / nghỉ cố định) — cùng câu chữ với máy chủ. */
+export const salonClosedMessage = (reason: string | null | undefined, action: 'create' | 'reschedule' = 'create'): string =>
+  `Tiệm nghỉ trong ngày này (${reason?.trim() || 'Tiệm nghỉ'}). ${
+    action === 'create' ? 'Không thể tạo lịch hẹn.' : 'Không thể dời lịch hẹn vào ngày này.'}`;
+
 /** 250000 -> "250.000 đ" */
 export const formatVnd = (value: number | string | null | undefined): string => {
   const n = Math.round(Number(value ?? 0));

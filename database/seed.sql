@@ -440,16 +440,23 @@ END $appts$;
 -- ---------------------------------------------------------------------------
 -- 12. CẬP NHẬT SỐ LIỆU TỔNG HỢP CỦA HỒ SƠ KHÁCH
 -- ---------------------------------------------------------------------------
+-- Cả 3 chỉ số đều đếm trực tiếp từ bảng appointments (không nhập tay):
+--   total_visits       = số lịch trạng thái 'completed'
+--   no_show_count      = số lịch trạng thái 'no_show'
+--   total_appointments = tổng số lịch đã đặt (mọi trạng thái)
 UPDATE customers c SET
-  total_visits  = COALESCE(t.visits, 0),
-  no_show_count = COALESCE(t.no_shows, 0)
-FROM (
+  total_visits       = COALESCE(t.visits, 0),
+  no_show_count      = COALESCE(t.no_shows, 0),
+  total_appointments = COALESCE(t.total, 0)
+FROM customers c2
+LEFT JOIN (
   SELECT customer_id,
          COUNT(*) FILTER (WHERE status = 'completed') AS visits,
-         COUNT(*) FILTER (WHERE status = 'no_show')   AS no_shows
+         COUNT(*) FILTER (WHERE status = 'no_show')   AS no_shows,
+         COUNT(*)                                      AS total
   FROM appointments GROUP BY customer_id
-) t
-WHERE t.customer_id = c.id;
+) t ON t.customer_id = c2.id
+WHERE c.id = c2.id;
 
 UPDATE vouchers v SET used_count = COALESCE(u.c, 0)
 FROM (SELECT voucher_id, COUNT(*) c FROM invoices WHERE voucher_id IS NOT NULL GROUP BY voucher_id) u

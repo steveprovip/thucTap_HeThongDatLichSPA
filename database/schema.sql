@@ -307,6 +307,8 @@ CREATE TABLE IF NOT EXISTS customers (
   CONSTRAINT customers_phone_format CHECK (phone ~ '^0[0-9]{9}$')
 );
 CREATE UNIQUE INDEX IF NOT EXISTS ux_customers_phone ON customers (phone);
+-- Tổng số lịch đã đặt (mọi trạng thái). Khác total_visits (chỉ 'completed') và no_show_count (chỉ 'no_show').
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS total_appointments INTEGER NOT NULL DEFAULT 0;
 CREATE INDEX IF NOT EXISTS ix_customers_name_trgm
   ON customers USING gin (f_unaccent(lower(full_name)) gin_trgm_ops);
 DROP TRIGGER IF EXISTS trg_customers_updated ON customers;
