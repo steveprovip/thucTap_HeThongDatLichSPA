@@ -11,3 +11,4 @@ export * from './users.api';
 export * from './customers.api';
 export * from './notifications.api';
 export * from './reviews.api';
+export * from './shiftRequests.api';

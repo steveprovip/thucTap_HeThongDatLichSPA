@@ -28,6 +28,109 @@ describe('Mentor Sprint 2', () => {
     await app?.close();
   });
 
+  // ------------------------------------------------------------------ helpers dùng chung
+  interface Hours { open: string; close: string }
+  const plus = (time: string, minutes: number): string => {
+    const total = Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5)) + minutes;
+    return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+  };
+  const isoIn = (days: number): string => {
+    const d = new Date(Date.now() + 7 * 3600_000);
+    d.setUTCDate(d.getUTCDate() + days);
+    return d.toISOString().slice(0, 10);
+  };
+  /** Ngày mở cửa, không phải ngày lễ, thợ chưa có ca — trong khoảng [start, start+span). */
+  const freeDays = async (stylistId: string, start: number, count: number, span = 18): Promise<{ date: string; hours: Hours }[]> => {
+    const out: { date: string; hours: Hours }[] = [];
+    for (let d = start; d < start + span && out.length < count; d += 1) {
+      const date = isoIn(d);
+      const dow = new Date(`${date}T12:00:00Z`).getUTCDay();
+      const [hours] = await ds.query(
+        `SELECT to_char(open_time,'HH24:MI') AS open, to_char(close_time,'HH24:MI') AS close
+           FROM salon_working_hours WHERE day_of_week = $1 AND is_closed = FALSE`, [dow]);
+      const [hol] = await ds.query('SELECT 1 FROM salon_holidays WHERE $1::date BETWEEN start_date AND end_date', [date]);
+      const [busy] = await ds.query('SELECT 1 FROM stylist_shifts WHERE stylist_id = $1 AND work_date = $2', [stylistId, date]);
+      const [off] = await ds.query('SELECT 1 FROM stylist_time_off WHERE stylist_id = $1 AND off_date = $2', [stylistId, date]);
+      if (hours && !hol && !busy && !off) out.push({ date, hours });
+    }
+    if (out.length < count) throw new Error('Không tìm đủ ngày trống cho thợ');
+    return out;
+  };
+
+  describe('Mục 6 — Thợ tự đăng ký ca, quản lý duyệt', () => {
+    let stylistId = '';
+    beforeAll(async () => {
+      const me = await request(server).get('/api/auth/me').set(as('stylist')).expect(200);
+      stylistId = me.body.data.stylistId as string;
+      expect(stylistId).toBeTruthy();
+    });
+
+    it('đăng ký -> trùng bị chặn -> duyệt có chỉnh giờ -> ca thật được tạo, thợ nhận thông báo', async () => {
+      const [a, b] = await freeDays(stylistId, 40, 2);
+      const created = await request(server).post('/api/shift-requests').set(as('stylist')).send({
+        items: [
+          { kind: 'shift', workDate: a.date, startTime: a.hours.open, endTime: plus(a.hours.open, 240), note: 'Rảnh buổi sáng' },
+          { kind: 'time_off', workDate: b.date },
+        ],
+      }).expect(201);
+      const [shiftReq, offReq] = created.body.data as { id: string; status: string; kind: string }[];
+      expect(shiftReq.status).toBe('pending');
+
+      await request(server).post('/api/shift-requests').set(as('stylist'))
+        .send({ items: [{ kind: 'shift', workDate: a.date, startTime: plus(a.hours.open, 60), endTime: plus(a.hours.open, 120) }] })
+        .expect(409);
+
+      const pending = await request(server).get(`/api/shift-requests?status=pending&from=${a.date}&to=${b.date}`).set(as('owner')).expect(200);
+      expect((pending.body.data as { id: string }[]).map((r) => r.id)).toEqual(expect.arrayContaining([shiftReq.id, offReq.id]));
+      const [{ count: notified }] = await ds.query(
+        `SELECT COUNT(*)::int AS count FROM notifications n JOIN users u ON u.id = n.user_id
+          WHERE u.role = 'owner' AND n.type = 'shift_request_new'`);
+      expect(notified).toBeGreaterThan(0);
+
+      await request(server).post(`/api/shift-requests/${shiftReq.id}/approve`).set(as('receptionist')).send({}).expect(403);
+      const ok = await request(server).post(`/api/shift-requests/${shiftReq.id}/approve`).set(as('owner'))
+        .send({ endTime: plus(a.hours.open, 180) }).expect(201);
+      expect(ok.body.data.status).toBe('approved');
+      const [shift] = await ds.query(
+        `SELECT to_char(end_time,'HH24:MI') AS end FROM stylist_shifts WHERE stylist_id = $1 AND work_date = $2`, [stylistId, a.date]);
+      expect(shift.end).toBe(plus(a.hours.open, 180));
+      await request(server).post(`/api/shift-requests/${shiftReq.id}/approve`).set(as('owner')).send({}).expect(409);
+
+      const rej = await request(server).post(`/api/shift-requests/${offReq.id}/reject`).set(as('owner'))
+        .send({ note: 'Tuần này thiếu người' }).expect(201);
+      expect(rej.body.data).toMatchObject({ status: 'rejected', reviewNote: 'Tuần này thiếu người' });
+      await request(server).delete(`/api/shift-requests/${offReq.id}`).set(as('stylist')).expect(400);
+
+      const mine = await request(server).get('/api/shift-requests/mine').set(as('stylist')).expect(200);
+      expect((mine.body.data as { id: string }[]).some((r) => r.id === offReq.id)).toBe(true);
+      const [{ count: reviewed }] = await ds.query(
+        `SELECT COUNT(*)::int AS count FROM notifications n JOIN stylists s ON s.user_id = n.user_id
+          WHERE s.id = $1 AND n.type = 'shift_request_reviewed'`, [stylistId]);
+      expect(reviewed).toBeGreaterThanOrEqual(2);
+    });
+
+    it('duyệt yêu cầu chồng lên ca đã có thì báo lỗi và yêu cầu quay lại "chờ duyệt"', async () => {
+      const [a] = await freeDays(stylistId, 58, 1, 2).catch(() => freeDays(stylistId, 30, 1));
+      const r1 = await request(server).post('/api/shift-requests').set(as('stylist'))
+        .send({ items: [{ kind: 'shift', workDate: a.date, startTime: a.hours.open, endTime: plus(a.hours.open, 120) }] }).expect(201);
+      // Quản lý tự xếp một ca chồng lên trước khi duyệt
+      await request(server).post(`/api/stylists/${stylistId}/shifts`).set(as('owner'))
+        .send({ shifts: [{ workDate: a.date, startTime: plus(a.hours.open, 60), endTime: plus(a.hours.open, 180) }] }).expect(201);
+      await request(server).post(`/api/shift-requests/${r1.body.data[0].id}/approve`).set(as('owner')).send({}).expect(409);
+      const [row] = await ds.query('SELECT status FROM shift_requests WHERE id = $1', [r1.body.data[0].id]);
+      expect(row.status).toBe('pending');
+    });
+
+    it('chặn ngày đã qua, quá 60 ngày, và tài khoản không phải thợ', async () => {
+      await request(server).post('/api/shift-requests').set(as('stylist'))
+        .send({ items: [{ kind: 'time_off', workDate: isoIn(-1) }] }).expect(400);
+      await request(server).post('/api/shift-requests').set(as('stylist'))
+        .send({ items: [{ kind: 'time_off', workDate: isoIn(75) }] }).expect(400);
+      await request(server).post('/api/shift-requests').set(as('owner'))
+        .send({ items: [{ kind: 'time_off', workDate: isoIn(3) }] }).expect(403);
+    });
+  });
+
   describe('Mục 5 — AI sinh ngày lễ cả năm', () => {
     const YEAR = 2099;
     afterAll(async () => {

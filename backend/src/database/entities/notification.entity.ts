@@ -9,6 +9,10 @@ export enum NotificationType {
   CUSTOMER_CHECKED_IN = 'customer_checked_in',
   OVERRUN_WARNING = 'overrun_warning',
   APPOINTMENT_NEW = 'appointment_new',
+  /** Thợ gửi yêu cầu đăng ký ca / nghỉ -> báo quản lý (Mentor S2 · mục 6). */
+  SHIFT_REQUEST_NEW = 'shift_request_new',
+  /** Quản lý duyệt / từ chối -> báo thợ. */
+  SHIFT_REQUEST_REVIEWED = 'shift_request_reviewed',
 }
 
 @Entity('notifications')

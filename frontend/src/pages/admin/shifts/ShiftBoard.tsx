@@ -1,5 +1,5 @@
 import { Coffee, Plus, Trash2, X } from 'lucide-react';
-import type { Shift, Stylist, TimeOff } from '@/types';
+import type { Shift, ShiftRequest, Stylist, TimeOff } from '@/types';
 import { StylistAvatar } from '@/components';
 import { DOW_LABELS } from '@/utils/constants';
 import { formatDuration, timeToMinutes } from '@/utils/format';
@@ -36,6 +36,8 @@ export interface ShiftBoardProps {
   stylists: Stylist[];
   shifts: Shift[];
   timeOff: TimeOff[];
+  /** Yêu cầu thợ tự đăng ký đang chờ duyệt — vẽ thành viên viền đứt để quản lý xếp ca theo lịch rảnh. */
+  pendingRequests?: ShiftRequest[];
   today: string;
   canEdit: boolean;
   canManageOff: boolean;
@@ -55,7 +57,7 @@ export interface ShiftBoardProps {
  *  - dòng cuối đếm số thợ trực mỗi ngày.
  */
 export function ShiftBoard({
-  days, stylists, shifts, timeOff, today, canEdit, canManageOff, understaffedDates, onAdd, onRemoveShift, onRemoveOff,
+  days, stylists, shifts, timeOff, pendingRequests = [], today, canEdit, canManageOff, understaffedDates, onAdd, onRemoveShift, onRemoveOff,
 }: ShiftBoardProps) {
   const byCell = new Map<string, Shift[]>();
   for (const s of shifts) {
@@ -66,6 +68,11 @@ export function ShiftBoard({
   for (const o of timeOff) {
     const key = `${o.stylistId}|${o.offDate}`;
     offByCell.set(key, [...(offByCell.get(key) ?? []), o]);
+  }
+  const reqByCell = new Map<string, ShiftRequest[]>();
+  for (const r of pendingRequests) {
+    const key = `${r.stylistId}|${r.workDate}`;
+    reqByCell.set(key, [...(reqByCell.get(key) ?? []), r]);
   }
   const weekMinutes = (stylistId: string) =>
     shifts.filter((s) => s.stylistId === stylistId).reduce((sum, s) => sum + shiftWorkMinutes(s), 0);
@@ -81,6 +88,7 @@ export function ShiftBoard({
         ))}
         <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full border border-dashed border-rose-400 bg-rose-50" /> Thợ nghỉ</span>
         <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-stripes" /> Tiệm nghỉ</span>
+        <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full border border-dashed border-teal-500 bg-white" /> Thợ đăng ký, chờ duyệt</span>
       </div>
       <div className="thin-scroll overflow-x-auto">
         <table className="w-full min-w-[920px] table-fixed border-collapse text-sm">
@@ -136,8 +144,9 @@ export function ShiftBoard({
                     const key = `${st.id}|${d.date}`;
                     const cellShifts = byCell.get(key) ?? [];
                     const offs = offByCell.get(key) ?? [];
+                    const reqs = reqByCell.get(key) ?? [];
                     const closed = !!d.closedReason;
-                    const empty = !cellShifts.length && !offs.length;
+                    const empty = !cellShifts.length && !offs.length && !reqs.length;
                     return (
                       <td key={d.date}
                           className={`group relative border-l border-slate-100 px-1.5 py-1.5 align-top
@@ -181,6 +190,13 @@ export function ShiftBoard({
                               </span>
                             );
                           })}
+                          {reqs.map((r) => (
+                            <span key={r.id} title={r.note ?? 'Thợ tự đăng ký, chờ duyệt'}
+                                  className="rounded-md border border-dashed border-teal-500 bg-white px-1.5 py-1 text-[11px] text-teal-800">
+                              <span className="block font-semibold">{r.kind === 'shift' ? `${hhmm(r.startTime)}–${hhmm(r.endTime)}` : 'Xin nghỉ'}</span>
+                              <span className="block text-[10px] opacity-75">Chờ duyệt</span>
+                            </span>
+                          ))}
                           {canEdit && !closed && (
                             <button type="button" onClick={() => onAdd(st.id, d.date)}
                                     aria-label={`Thêm ca cho ${st.fullName} ngày ${d.date}`}

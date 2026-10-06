@@ -9,7 +9,7 @@ import { EventsService } from './events.service';
  * Cố ý KHÔNG gồm: auth/*, analytics, audit-logs, notifications, public/quote, public/lookup (chỉ đọc hoặc không đổi dữ liệu dùng chung).
  */
 export const LIVE_PATH =
-  /^\/(appointments|public\/(bookings|cancel)|customers|invoices|vouchers|services|service-categories|stylists|shifts|time-off|holidays|working-hours|users|reviews)(\/|$)/;
+  /^\/(appointments|public\/(bookings|cancel)|customers|invoices|vouchers|services|service-categories|stylists|shifts|shift-requests|time-off|holidays|working-hours|users|reviews)(\/|$)/;
 
 const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
