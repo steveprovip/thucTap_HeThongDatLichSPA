@@ -13,7 +13,7 @@ import { Customer } from '../../database/entities/customer.entity';
 import { Stylist, StylistGender } from '../../database/entities/stylist.entity';
 import { EmailKind } from '../../database/entities/email-queue.entity';
 import { NotificationType } from '../../database/entities/notification.entity';
-import { MSG, REJECT_REASONS } from '../../common/constants/messages.constant';
+import { ERROR_CODES, MSG, REJECT_REASONS } from '../../common/constants/messages.constant';
 import { Role } from '../../common/constants/roles.constant';
 import { AuthUser } from '../../common/types/auth.types';
 import { PaginatedResult, paginate } from '../../common/dto/pagination.dto';
@@ -23,6 +23,8 @@ import {
 } from '../../common/utils/time.util';
 import { normalizeSearch } from '../../common/utils/text.util';
 import { AvailabilityService } from './availability.service';
+import { saveAppointmentGuarded } from './appointment-guard';
+import { SlotHoldService } from './slot-hold.service';
 import { BookingService } from './booking.service';
 import { StylistsService } from '../stylists/stylists.service';
 import { CustomersService } from '../customers/customers.service';
@@ -286,7 +288,7 @@ export class AppointmentsService {
     appt.status = AppointmentStatus.CONFIRMED;
     appt.confirmedAt = new Date();
     appt.confirmedBy = user.id;
-    await this.apptRepo.save(appt);
+    await saveAppointmentGuarded(this.dataSource, appt, [AppointmentStatus.PENDING]);
 
     await this.logChange(id, 'status', 'pending', 'confirmed', user);
     await this.booking.scheduleReminder(id);
@@ -312,7 +314,7 @@ export class AppointmentsService {
     appt.cancelledByLabel = user.fullName;
     appt.cancelReason = reason.slice(0, 255);
     appt.rejectedReason = reason.slice(0, 255);
-    await this.apptRepo.save(appt);
+    await saveAppointmentGuarded(this.dataSource, appt, [AppointmentStatus.PENDING]);
 
     await this.logChange(id, 'status', 'pending', 'cancelled', user);
     await this.mail.cancelPendingFor(id, [EmailKind.BOOKING_REMINDER]);
@@ -389,7 +391,7 @@ export class AppointmentsService {
       appt.isLate = true;
       appt.lateMinutes = delta;
     }
-    await this.apptRepo.save(appt);
+    await saveAppointmentGuarded(this.dataSource, appt, [AppointmentStatus.CONFIRMED]);
     await this.logChange(id, 'status', 'confirmed', 'arrived', user);
 
     const customer = await this.customerRepo.findOne({ where: { id: appt.customerId } });
@@ -453,7 +455,32 @@ export class AppointmentsService {
     appt.stylistId = newStylistId;
     appt.startAt = newStart;
     appt.endAt = newEnd;
-    await this.apptRepo.save(appt);
+    // Ghi trong giao dịch có khoá dòng thợ ĐÍCH (cùng khoá với luồng đặt lịch) + khoá dòng lịch hẹn: kiểm tra lại
+    // chồng lịch và chỗ đang được khách giữ ngay trong khoá, không dựa vào lần kiểm tra canBook ở ngoài giao dịch.
+    await this.dataSource.transaction(async (manager) => {
+      const locked: { id: string }[] = await manager.query('SELECT id FROM stylists WHERE id = $1 FOR UPDATE', [newStylistId]);
+      if (!locked.length) throw new NotFoundException(MSG.STYLIST_NOT_FOUND);
+      const cur: { status: AppointmentStatus }[] = await manager.query(
+        'SELECT status FROM appointments WHERE id = $1 FOR UPDATE', [id],
+      );
+      if (!cur.length) throw new NotFoundException(MSG.APPOINTMENT_NOT_FOUND);
+      if (!ACTIVE_STATUSES.includes(cur[0].status)) {
+        throw new ConflictException(MSG.APPOINTMENT_CHANGED_CONCURRENTLY(cur[0].status));
+      }
+      const clash: unknown[] = await manager.query(
+        `SELECT 1 FROM appointments
+          WHERE stylist_id = $1 AND id <> $4
+            AND status IN ('pending','confirmed','arrived','in_progress')
+            AND tstzrange(start_at, end_at, '[)') && tstzrange($2, $3, '[)')
+          LIMIT 1`,
+        [newStylistId, newStart.toISOString(), newEnd.toISOString(), id],
+      );
+      if (clash.length) throw new ConflictException(MSG.SLOT_TAKEN);
+      if (await SlotHoldService.heldByOthers(manager, newStylistId, newStart, newEnd)) {
+        throw new ConflictException({ message: MSG.SLOT_HELD, code: ERROR_CODES.SLOT_HELD });
+      }
+      await manager.save(Appointment, appt);
+    });
 
     const parts: string[] = [];
     if (oldStylistId !== newStylistId) {
@@ -514,7 +541,7 @@ export class AppointmentsService {
     appt.status = AppointmentStatus.NO_SHOW;
     appt.noShowAt = new Date();
     appt.noShowBy = user.id;
-    await this.apptRepo.save(appt);
+    await saveAppointmentGuarded(this.dataSource, appt, [prev]);
 
     await this.logChange(id, 'status', prev, 'no_show', user);
     await this.mail.cancelPendingFor(id, [EmailKind.BOOKING_REMINDER]);
@@ -538,7 +565,7 @@ export class AppointmentsService {
     appt.status = appt.confirmedAt ? AppointmentStatus.CONFIRMED : AppointmentStatus.PENDING;
     appt.noShowAt = null;
     appt.noShowBy = null;
-    await this.apptRepo.save(appt);
+    await saveAppointmentGuarded(this.dataSource, appt, [AppointmentStatus.NO_SHOW]);
 
     await this.logChange(id, 'status', 'no_show', appt.status, user);
     await this.customers.refreshCounters(appt.customerId);
@@ -560,7 +587,7 @@ export class AppointmentsService {
     appt.cancelledByUser = user.id;
     appt.cancelledByLabel = user.fullName;
     appt.cancelReason = (reason || 'Tiệm huỷ').slice(0, 255);
-    await this.apptRepo.save(appt);
+    await saveAppointmentGuarded(this.dataSource, appt, [prev]);
 
     await this.logChange(id, 'status', prev, 'cancelled', user);
     await this.mail.cancelPendingFor(id, [EmailKind.BOOKING_REMINDER]);
@@ -585,7 +612,7 @@ export class AppointmentsService {
 
     appt.status = AppointmentStatus.IN_PROGRESS;
     appt.startedAt = new Date();
-    await this.apptRepo.save(appt);
+    await saveAppointmentGuarded(this.dataSource, appt, [AppointmentStatus.ARRIVED]);
     await this.logChange(id, 'status', 'arrived', 'in_progress', user);
 
     const [view] = await this.decorate([appt], user.role);
@@ -603,7 +630,7 @@ export class AppointmentsService {
     appt.status = AppointmentStatus.COMPLETED;
     appt.completedAt = now;
     appt.actualDurationMinutes = appt.startedAt ? diffMinutes(now, appt.startedAt) : appt.totalDurationMinutes;
-    await this.apptRepo.save(appt);
+    await saveAppointmentGuarded(this.dataSource, appt, [AppointmentStatus.IN_PROGRESS]);
 
     await this.logChange(id, 'status', 'in_progress', 'completed', user);
     await this.customers.refreshCounters(appt.customerId);
@@ -675,6 +702,7 @@ export class AppointmentsService {
         for (const c of capable) {
           const av = await this.availability.getAvailability({
             date, serviceIds, stylistId: c.id, ignoreLeadTime: true, excludeAppointmentId: appt.id,
+            totalDurationOverride: appt.totalDurationMinutes,
           });
           for (const slot of av.slots.slice(0, 3)) {
             alternativeTimes.push({ stylistId: c.id, stylistName: c.fullName, time: slot.time });
@@ -705,6 +733,13 @@ export class AppointmentsService {
     for (const item of dto.items) {
       try {
         const appt = await this.getOrFail(item.appointmentId);
+        const sameStylist = !item.targetStylistId || item.targetStylistId === appt.stylistId;
+        const sameTime = !item.targetTime || item.targetTime === toTimeString(appt.startAt);
+        if (sameStylist && sameTime) {
+          // Không có thợ thay thế / giờ mới: KHÔNG tính là "đã chuyển" (trước đây bị đếm vào thành công dù không đổi gì)
+          failed.push({ appointmentId: item.appointmentId, reason: MSG.BULK_NO_TARGET });
+          continue;
+        }
         await this.reschedule(
           item.appointmentId,
           {
