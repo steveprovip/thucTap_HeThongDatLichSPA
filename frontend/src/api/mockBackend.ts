@@ -83,6 +83,7 @@ const addMinutes = (time: string, minutes: number) => {
 };
 const minute = (time: string) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3));
 const uid = () => Math.random().toString(36).slice(2, 10);
+const SALON_NAME_DEMO = 'Salon & Spa Hương Sen';
 interface DemoShiftRequest {
   id: string; stylistId: string; kind: 'shift' | 'time_off'; workDate: string; startTime: string | null; endTime: string | null;
   breakStart: string | null; breakEnd: string | null; note: string | null; status: 'pending' | 'approved' | 'rejected' | 'cancelled';
@@ -763,6 +764,15 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
         durationMinutes: s.durationMinutes, price: s.price })), totalDurationMinutes: a.totalDurationMinutes,
       estimatedTotal: a.estimatedTotal, status: a.status, nameConflict: false, emailQueued: false };
   }
+  if (path === '/public/salon-info') return {
+    name: SALON_NAME_DEMO, slogan: 'Chăm sóc tóc, da và tinh thần trong không gian tinh tế',
+    address: '128 Nguyễn Văn Cừ, Quận 5, TP. Hồ Chí Minh', hotline: '028 3838 6868', email: 'lienhe@huongsen.vn',
+    facebookUrl: 'https://www.facebook.com/', zaloUrl: 'https://zalo.me/0909686868', websiteUrl: null,
+    mapUrl: 'https://www.google.com/maps/search/?api=1&query=128%20Nguy%E1%BB%85n%20V%C4%83n%20C%E1%BB%AB%2C%20Qu%E1%BA%ADn%205',
+    openingHours: db.workingHours.map(h => ({ dayOfWeek: h.dayOfWeek, dayLabel: h.dayLabel, isClosed: h.isClosed, openTime: h.openTime, closeTime: h.closeTime })),
+    team: db.stylists.filter(st => st.isActive).map(st => ({ id: st.id, fullName: st.fullName, avatarUrl: st.avatarUrl, gender: st.gender,
+      specialty: st.serviceNames.slice(0, 2).join(' · ') || null, bio: st.bio, avgRating: null })),
+  };
   if (path === '/public/bookings/email') {
     const a = db.appointments.find(item => item.code.toUpperCase() === String(p.code ?? '').trim().toUpperCase());
     if (!a || a.customer.phone !== p.phone) bad(MSG.CODE_NOT_FOUND, undefined, 404);

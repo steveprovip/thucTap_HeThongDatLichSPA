@@ -1,5 +1,8 @@
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, Query } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { AvailabilityService } from './availability.service';
+import { StylistsService } from '../stylists/stylists.service';
+import { WorkingHoursService } from '../working-hours/working-hours.service';
 import { BookingService } from './booking.service';
 import { SlotHoldService } from './slot-hold.service';
 import { AppointmentSource } from '../../database/entities/appointment.entity';
@@ -21,7 +24,43 @@ export class PublicBookingController {
     private readonly availability: AvailabilityService,
     private readonly booking: BookingService,
     private readonly holds: SlotHoldService,
+    private readonly config: ConfigService,
+    private readonly stylistsService: StylistsService,
+    private readonly workingHours: WorkingHoursService,
   ) {}
+
+  /**
+   * Mentor S2 · mục 7: thông tin chân trang công khai — liên hệ, mạng xã hội, giờ mở cửa và ĐỘI NGŨ chuyên viên
+   * (lấy từ hồ sơ thợ đang làm việc, không còn danh sách cứng trong giao diện).
+   */
+  @Get('salon-info')
+  async salonInfo() {
+    const c = (k: string): string => this.config.get<string>(`app.${k}`) ?? '';
+    const [hours, team] = await Promise.all([
+      this.workingHours.list(),
+      this.stylistsService.list({ isActive: true }),
+    ]);
+    const zalo = c('salonZalo').trim();
+    return {
+      name: c('salonName'),
+      slogan: c('salonSlogan'),
+      address: c('salonAddress'),
+      hotline: c('salonHotline'),
+      email: c('salonEmail') || null,
+      facebookUrl: c('salonFacebookUrl') || null,
+      zaloUrl: zalo ? (/^https?:\/\//.test(zalo) ? zalo : `https://zalo.me/${zalo.replace(/\D/g, '')}`) : null,
+      websiteUrl: c('salonWebsiteUrl') || null,
+      mapUrl: c('salonMapUrl') || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c('salonAddress'))}`,
+      openingHours: hours.map((h) => ({
+        dayOfWeek: h.dayOfWeek, dayLabel: h.dayLabel, isClosed: h.isClosed, openTime: h.openTime, closeTime: h.closeTime,
+      })),
+      team: team.map((t) => ({
+        id: t.id, fullName: t.fullName, avatarUrl: t.avatarUrl, gender: t.gender,
+        specialty: t.serviceNames.slice(0, 2).join(' · ') || null,
+        bio: t.bio, avgRating: t.reviewCount >= (this.config.get<number>('business.minReviewsToShowAvg') ?? 5) ? t.avgRating : null,
+      })),
+    };
+  }
 
   /** S2-03: danh mục dịch vụ theo nhóm, có tìm kiếm không dấu. */
   @Get('catalog')

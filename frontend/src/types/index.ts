@@ -290,6 +290,21 @@ export interface Quote {
   note: string;
 }
 
+/** Mentor S2 · mục 7: thông tin chân trang công khai. */
+export interface SalonInfo {
+  name: string;
+  slogan: string;
+  address: string;
+  hotline: string;
+  email: string | null;
+  facebookUrl: string | null;
+  zaloUrl: string | null;
+  websiteUrl: string | null;
+  mapUrl: string;
+  openingHours: { dayOfWeek: number; dayLabel: string; isClosed: boolean; openTime: string; closeTime: string }[];
+  team: { id: string; fullName: string; avatarUrl: string | null; gender: StylistGender | null; specialty: string | null; bio: string | null; avgRating: number | null }[];
+}
+
 /** Mentor S2 · mục 4: Trợ lý AI xếp lịch cho nhân viên. */
 export interface SmartSlot {
   date: string;
