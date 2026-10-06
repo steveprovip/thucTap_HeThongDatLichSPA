@@ -51,7 +51,7 @@ MEMBERS = [
      "output": "docs/report/ (Chương 1, 2)",
      "areas": {"be": "", "fe": "", "test": "", "doc": "C", "demo": "H", "ops": ""}},
     {"name": "Phương Đình Khoa Nam", "mssv": "", "role": "Thiết kế sơ đồ",
-     "task": "Vẽ sơ đồ Use Case, sơ đồ CSDL 24 bảng, luồng nghiệp vụ trên Draw.io / StarUML và xuất ảnh chèn báo cáo",
+     "task": "Vẽ sơ đồ Use Case, sơ đồ CSDL 26 bảng, luồng nghiệp vụ trên Draw.io / StarUML và xuất ảnh chèn báo cáo",
      "output": "docs/diagrams/ (.drawio, .png)",
      "areas": {"be": "", "fe": "", "test": "", "doc": "C", "demo": "", "ops": ""}},
     {"name": "Nguyễn Hoàng Long", "mssv": "", "role": "Slide & hình ảnh",
@@ -137,12 +137,13 @@ SPRINTS = [
      "Phiếu tính tiền, mã giảm giá, lịch sử khách, đánh giá, email nhắc lịch, thông báo, doanh thu, rà soát phân quyền", 10, "41"),
 ]
 
-# ---------------------------------------------------------------- Snapshot kiểm định 06/10/2026, fix/ac-audit-0610
+# ---------------------------------------------------------------- Snapshot kiểm định 06/10/2026, v1.4.0 (develop)
 QUALITY_DATE = "06/10/2026"
-UNIT_TESTS = 139
-E2E_TESTS = 83
-E2E_SUITES = 12
+UNIT_TESTS = 168
+E2E_TESTS = 95
+E2E_SUITES = 13
 DEMO_TESTS = 4
+LAUNCHER_TESTS = 4
 ARCHITECTURE = [
     ("1. Trình bày", "React 18 + Vite", "Trang công khai và quản lý; nhận SSE để làm mới dữ liệu"),
     ("2. Giao tiếp API", "NestJS 10 Controller, DTO, Guard", "REST/JSON; xác thực JWT; kiểm tra dữ liệu và phân quyền"),
@@ -153,9 +154,9 @@ STATS = [
     ("Sprint / User Story / Story Point", "4 / 39 / 165"),
     ("Kiến trúc ứng dụng", "4 tầng: giao diện, API, nghiệp vụ, lưu trữ"),
     ("Phân quyền nhân sự", "4 vai trò; khách đặt lịch công khai"),
-    ("Hạ tầng", "SSE · TypeORM Migration · 1-Click Update"),
-    ("Bảng PostgreSQL / Entity TypeORM", "24 / 24"),
-    ("Kiểm thử đơn vị / E2E / Demo", f"{UNIT_TESTS} / {E2E_TESTS} ({E2E_SUITES} bộ) / {DEMO_TESTS}"),
+    ("Hạ tầng", "SSE · TypeORM Migration · HoYoSalon Launcher (BẮT ĐẦU / CẬP NHẬT)"),
+    ("Bảng PostgreSQL / Entity TypeORM", "26 / 26"),
+    ("Kiểm thử đơn vị / E2E / Demo + Launcher", f"{UNIT_TESTS} / {E2E_TESTS} ({E2E_SUITES} bộ) / {DEMO_TESTS} + {LAUNCHER_TESTS}"),
 ]
 
 DEMO_ACCOUNTS = [
@@ -172,4 +173,24 @@ RELEASES = [
     ("28/09/2026", "v1.2.1", "Rà soát tích hợp máy chủ thật: phân trang TypeORM, giới hạn 200 dòng, múi giờ Việt Nam"),
     ("28/09/2026", "v1.2.2 – v1.2.3", "Launcher chạy trên mọi máy: healthcheck TCP, seed idempotent, /health trả 503 khi mất CSDL"),
     ("28/09/2026", "v1.2.5", "Supervisor tự phục hồi: tự khởi động lại khi Vite/Nest sập (mã 3221226505), dừng sạch cây tiến trình"),
+    ("02/10/2026", "v1.3.0", "Khắc phục 23 lỗi QA Sprint 2, lá chắn đặt trùng, VietQR động, bộ hồi quy"),
+    ("04/10/2026", "v1.3.1 – v1.3.5", "Gia cố DTO, giới hạn huỷ lịch, giới tính thợ, launcher 1-click, QA vòng 3–4"),
+    ("05/10/2026", "v1.3.6", "Thống nhất số liệu khách, chặn tạo/dời lịch vào ngày nghỉ lễ"),
+    ("06/10/2026", "v1.4.0", "HoYoSalon Launcher; tái cấu trúc monorepo; 11 góp ý Mentor Sprint 2 (giữ chỗ 10 phút, AI xếp lịch, AI ngày lễ, thợ tự đăng ký ca…)"),
+]
+
+# ---------------------------------------------------------------- Góp ý Mentor Sprint 2 (06/10/2026) -> v1.4.0
+# Nguồn: docs/feedback/2026-10-06-mentor-sprint2/TEXT NOTE SPRINT 2.docx, chi tiết RESOLUTION.md cùng thư mục.
+MENTOR_ITEMS = [
+    ("1", "Phân chia lại nhánh GitHub", "main (Production) · develop (Staging) · feature/… · fix/… · docs/…; nhánh cũ lưu thành thẻ archive/…", "docs/git-branching-model"),
+    ("2", "Bảng ca làm rối mắt", "Lưới thợ × ngày, ca tô màu theo buổi, nút ẩn tới khi rê chuột, đếm thợ trực", "feature/shift-board-24h-picker"),
+    ("3", "Chọn giờ 24 giờ", "TimeSelect24: 00:00 → 23:45, bước 15 phút, không phụ thuộc SA/CH", "feature/shift-board-24h-picker"),
+    ("4", "AI phân tích khung giờ đặt lịch", "Trợ lý xếp lịch chấm điểm sớm · vừa khít · cân bằng thợ, có lý do, 1 cú nhấp điền sẵn", "feature/ai-slot-assistant"),
+    ("5", "AI sinh ngày lễ cả năm", "Âm lịch thiên văn + Bộ luật Lao động; không chèn lên lịch khách", "feature/ai-holiday-generator"),
+    ("6", "Thợ tự đăng ký lịch, quản lý duyệt", "Đăng ký cả tuần; duyệt / sửa giờ / từ chối / duyệt tất cả", "feature/shift-registration-approval"),
+    ("7", "Chân trang đủ thông tin", "Nền tối; Facebook, Zalo, chỉ đường, hotline, email, giờ mở cửa, đội ngũ chuyên viên", "feature/public-footer-density"),
+    ("8", "Hiển thị dày hơn", "Lưới 4 cột liền mạch, 2 hàng + Xem thêm, khung rộng 7xl", "feature/public-footer-density"),
+    ("9", "Khung giờ nào cũng có thợ", "Cảnh báo khoảng trống + gợi ý thợ ít giờ làm, xếp 1 cú nhấp", "feature/shift-coverage-balance"),
+    ("10", "Email đặt lịch thành công", "Email đầy đủ, gửi ngay; gửi bổ sung từ màn hình thành công", "feature/booking-confirmation-email"),
+    ("11", "Giữ chỗ 10–15 phút", "Khoá khung giờ khi khách điền form; đếm ngược; 10 khách tranh 1 khung → 1", "feature/booking-slot-hold"),
 ]
