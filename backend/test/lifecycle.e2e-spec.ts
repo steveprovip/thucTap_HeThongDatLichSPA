@@ -34,7 +34,7 @@ describe('Luồng end-to-end từ đặt lịch tới đánh giá', () => {
     const catalog = await request(server).get('/api/public/catalog').expect(200);
     const service = catalog.body.data
       .flatMap((g: { services: { id: string; durationMinutes: number }[] }) => g.services)
-      .find((s: { durationMinutes: number }) => s.durationMinutes <= 60);
+      .find((s: { id: string }) => s.id === '55555555-5555-4555-8555-000000000001');
     expect(service).toBeDefined();
 
     // 2. Tìm ca mẫu khả dụng, không phụ thuộc giờ chạy test hoặc ngày nghỉ tuần.

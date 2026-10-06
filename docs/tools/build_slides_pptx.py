@@ -286,7 +286,14 @@ def s03_solution(prs):
     s = new_slide(prs)
     header(s, 3, "Giải pháp", "4 tầng: React Vite ⇄ API ⇄ Nghiệp vụ ⇄ TypeORM / PostgreSQL")
     round_rect(s, M, Inches(1.7), Inches(7.9), Inches(5.1))
-    picture_contain(s, DIAG("arch.png"), M + Inches(0.15), Inches(1.85), Inches(7.6), Inches(4.8))
+    for i, (layer, technology, responsibility) in enumerate(D.ARCHITECTURE):
+        y = Inches(1.92 + i * 1.13)
+        round_rect(s, M + Inches(0.25), y, Inches(7.25), Inches(1.0), fill=TEAL_BG, shadow=False)
+        text(s, M + Inches(0.45), y + Inches(0.1), Inches(2.3), Inches(0.35), layer, size=16, bold=True)
+        text(s, M + Inches(2.8), y + Inches(0.08), Inches(4.3), Inches(0.35), technology, size=14, bold=True)
+        text(s, M + Inches(0.45), y + Inches(0.48), Inches(6.8), Inches(0.4), responsibility, size=13, color=MUTED)
+    text(s, M + Inches(0.45), Inches(6.6), Inches(7), Inches(0.3),
+         "SSE sau commit · Migration có phiên bản · cập nhật một chạm", size=13, color=TEAL_DARK)
     x = Inches(8.85)
     items = [
         ("layers", "Controller – Service – Repository", "API và nghiệp vụ NestJS 10; TypeORM Migration; Swagger /api/docs"),

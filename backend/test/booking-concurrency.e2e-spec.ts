@@ -21,7 +21,8 @@ describe('Chống đặt trùng khi nhiều khách chốt cùng lúc (S2-08)', (
     const catalog = await request(server).get('/api/public/catalog').expect(200);
     const service = catalog.body.data
       .flatMap((g: { services: { id: string; durationMinutes: number }[] }) => g.services)
-      .find((s: { durationMinutes: number }) => s.durationMinutes <= 60);
+      // Fixture seed cố định; không chọn dịch vụ QA không có ca do suite khác tạo.
+      .find((s: { id: string }) => s.id === '55555555-5555-4555-8555-000000000001');
     expect(service).toBeDefined();
 
     // Ca mẫu có ngày nghỉ theo tuần; không giả định ngày +6 luôn còn thợ rảnh.
