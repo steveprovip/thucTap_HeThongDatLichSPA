@@ -1,5 +1,5 @@
 import { api, unwrap } from './client';
-import type { Shift, Stylist, TimeOff } from '@/types';
+import type { CoverageReport, Shift, Stylist, TimeOff } from '@/types';
 
 export interface ShiftPayload {
   workDate: string;
@@ -49,6 +49,11 @@ export const stylistsApi = {
     sourceWeekStart: string; targetWeekStart: string; stylistId?: string; overwrite?: boolean;
   }): Promise<{ created: number; skipped: number; overwritten: number }> {
     return unwrap(await api.post('/shifts/copy-week', payload));
+  },
+
+  /** Mentor S2 · mục 9: khung giờ mở cửa chưa có thợ + gợi ý thợ nên xếp. */
+  async coverage(params: { from: string; to: string; minStaff?: number }): Promise<CoverageReport> {
+    return unwrap<CoverageReport>(await api.get('/shifts/coverage', { params }));
   },
 
   // ---- Ngày nghỉ riêng

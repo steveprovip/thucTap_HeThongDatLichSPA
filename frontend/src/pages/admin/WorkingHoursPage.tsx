@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarOff, Copy, Plus, RotateCcw, Save, Trash2 } from 'lucide-react';
+import { CalendarOff, Copy, Plus, RotateCcw, Save, Sparkles, Trash2 } from 'lucide-react';
+import { HolidayAssistantModal } from './HolidayAssistantModal';
 import { getErrorMessage, workingHoursApi } from '@/api';
 import type { Holiday, WorkingHour } from '@/types';
 import {
-  Button, Card, ConfirmDialog, Field, Input, Modal, Notice, SectionTitle, Spinner, Toggle,
+  Button, Card, ConfirmDialog, Field, Input, Modal, Notice, SectionTitle, Spinner, TimeSelect24, Toggle,
 } from '@/components';
 import { addDaysISO, formatDate, formatDuration, timeToMinutes, todayISO } from '@/utils/format';
 import { DOW_LABELS, DOW_ORDER } from '@/utils/constants';
@@ -51,6 +52,7 @@ export function WorkingHoursPage() {
   const [hWarning, setHWarning] = useState<HolidayWarning | null>(null);
   const [hSaving, setHSaving] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<Holiday | null>(null);
+  const [assistantOpen, setAssistantOpen] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -209,16 +211,15 @@ export function WorkingHoursPage() {
                       </div>
                     </td>
                     <td>
-                      <input type="time" step={900} className="field-input min-h-[38px] w-32" value={r.openTime}
-                             disabled={!canEdit || r.isClosed} aria-label={`Giờ mở ${DOW_LABELS[r.dayOfWeek]}`}
-                             onChange={(e) => patch(r.dayOfWeek, { openTime: e.target.value })} />
+                      <TimeSelect24 className="min-h-[38px] w-32" value={r.openTime}
+                                    disabled={!canEdit || r.isClosed} aria-label={`Giờ mở ${DOW_LABELS[r.dayOfWeek]}`}
+                                    onChange={(v) => patch(r.dayOfWeek, { openTime: v })} />
                     </td>
                     <td>
-                      <input type="time" step={900}
-                             className={`field-input min-h-[38px] w-32 ${err ? 'border-red-400' : ''}`}
-                             value={r.closeTime} disabled={!canEdit || r.isClosed}
-                             aria-label={`Giờ đóng ${DOW_LABELS[r.dayOfWeek]}`} aria-invalid={!!err}
-                             onChange={(e) => patch(r.dayOfWeek, { closeTime: e.target.value })} />
+                      <TimeSelect24 className="min-h-[38px] w-32" invalid={!!err}
+                                    value={r.closeTime} disabled={!canEdit || r.isClosed}
+                                    aria-label={`Giờ đóng ${DOW_LABELS[r.dayOfWeek]}`}
+                                    onChange={(v) => patch(r.dayOfWeek, { closeTime: v })} />
                       {err && <p className="field-error text-red-600">{err}</p>}
                     </td>
                     <td className="whitespace-nowrap text-xs text-ink-soft">
@@ -236,9 +237,15 @@ export function WorkingHoursPage() {
         title="Ngày nghỉ của tiệm"
         description="Trong ngày nghỉ, mọi khung giờ trống trên trang đặt lịch đều bị ẩn."
         action={canEdit && (
-          <Button size="sm" variant="outline" icon={<Plus size={15} />} onClick={openHoliday}>Khai báo ngày nghỉ</Button>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" icon={<Sparkles size={15} />} onClick={() => setAssistantOpen(true)}>
+              AI sinh ngày lễ cả năm
+            </Button>
+            <Button size="sm" variant="outline" icon={<Plus size={15} />} onClick={openHoliday}>Khai báo ngày nghỉ</Button>
+          </div>
         )}
       />
+      <HolidayAssistantModal open={assistantOpen} onClose={() => setAssistantOpen(false)} onApplied={() => void load()} />
 
       {holidays.length === 0 ? (
         <Card className="p-6 text-center text-sm text-ink-muted">

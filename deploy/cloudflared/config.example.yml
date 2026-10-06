@@ -1,5 +1,5 @@
 # =============================================================================
-#  MẪU cấu hình Cloudflare Tunnel CÓ TÊN (địa chỉ cố định) cho máy bàn Windows chạy start_server.bat.
+#  MẪU cấu hình Cloudflare Tunnel CÓ TÊN (địa chỉ cố định) cho máy bàn Windows chạy scripts\windows\start_server.bat.
 #  Cần: một tên miền đã thêm vào Cloudflare (tên miền thường phải mua -> cách này không còn miễn phí 100%).
 #  Không muốn quản lý tệp này? Dùng token: cloudflared.exe service install <TOKEN>  (xem docs/TRIEN-KHAI.md mục 4.3).
 #
@@ -22,13 +22,13 @@
 #       C:\Cloudflared\bin\cloudflared.exe --config=C:\Windows\System32\config\systemprofile\.cloudflared\config.yml tunnel run
 #  6. sc start cloudflared      (sau mỗi lần sửa tệp: sc stop cloudflared rồi sc start cloudflared)
 #  7. cloudflared tunnel route dns salon-spa salon.tenmien.vn     (gắn tên miền phụ vào tunnel)
-#  8. Đặt FRONTEND_URL=https://salon.tenmien.vn trong backend\.env rồi chạy lại start_server.bat.
+#  8. Đặt FRONTEND_URL=https://salon.tenmien.vn trong backend\.env rồi chạy lại scripts\windows\start_server.bat.
 # =============================================================================
 tunnel: <TUNNEL-ID>
 credentials-file: C:\Windows\System32\config\systemprofile\.cloudflared\<TUNNEL-ID>.json
 
 ingress:
-  # start_server.bat phục vụ cả giao diện lẫn API ở MỘT cổng (mặc định 3000, đổi bằng PORT trong backend\.env)
+  # scripts\windows\start_server.bat phục vụ cả giao diện lẫn API ở MỘT cổng (mặc định 3000, đổi bằng PORT trong backend\.env)
   - hostname: salon.tenmien.vn
     service: http://localhost:3000
   # Quy tắc cuối bắt buộc: mọi tên miền khác trả 404

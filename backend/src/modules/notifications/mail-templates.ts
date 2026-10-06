@@ -10,6 +10,10 @@ export interface SalonInfo {
 
 export interface AppointmentMailData {
   code: string;
+  /** 'pending' | 'confirmed'… — email xác nhận nói rõ tiệm đã chốt hay còn chờ xác nhận. */
+  status?: string;
+  /** Khách được tự huỷ / đổi khi còn ít nhất bao nhiêu phút trước giờ hẹn. */
+  cancelCutoffMinutes?: number;
   customerName: string;
   stylistName: string;
   startAt: Date;
@@ -81,6 +85,31 @@ const appointmentBlock = (data: AppointmentMailData): string => `
     Giá trên là tạm tính, số tiền cuối cùng do tiệm chốt khi thanh toán.
   </p>`;
 
+/** yyyyMMddTHHmmssZ cho liên kết Google Calendar. */
+const gcalStamp = (d: Date): string => d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+
+/** Mentor S2 · mục 10: thông tin "việc cần làm tiếp" trong email xác nhận đặt lịch. */
+const nextSteps = (salon: SalonInfo, data: AppointmentMailData): string => {
+  const calendar = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(`${salon.name} - lịch hẹn ${data.code}`)}`
+    + `&dates=${gcalStamp(data.startAt)}/${gcalStamp(data.endAt)}`
+    + `&details=${encodeURIComponent(`Mã tra cứu ${data.code} · ${data.services.map((s) => s.name).join(', ')} · Thợ ${data.stylistName}`)}`
+    + `&location=${encodeURIComponent(salon.address)}`;
+  const map = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(salon.address)}`;
+  const tel = salon.hotline.replace(/[^\d+]/g, '');
+  const status = data.status === 'pending'
+    ? '<p style="font-size:14px;margin:0 0 12px;padding:10px 12px;background:#fff7e6;border-radius:8px;color:#8a5a00">Trạng thái: <strong>Chờ tiệm xác nhận</strong>. Tiệm sẽ xác nhận sớm và gửi email nhắc trước giờ hẹn 24 giờ.</p>'
+    : data.status === 'confirmed'
+      ? '<p style="font-size:14px;margin:0 0 12px;padding:10px 12px;background:#eaf7ef;border-radius:8px;color:#1f6b3a">Trạng thái: <strong>Đã xác nhận</strong>. Hẹn gặp bạn tại tiệm!</p>'
+      : '';
+  return `${status}
+  <ul style="font-size:13px;color:#4a3f38;padding-left:18px;margin:0 0 12px">
+    <li style="margin-bottom:4px">Vui lòng đến trước 5–10 phút; nhớ mang theo <strong>mã tra cứu ${data.code}</strong>.</li>
+    ${data.cancelCutoffMinutes ? `<li style="margin-bottom:4px">Bạn tự huỷ được trên trang tra cứu khi còn ít nhất <strong>${Math.round(data.cancelCutoffMinutes / 60 * 10) / 10} giờ</strong> trước giờ hẹn; sát giờ hơn vui lòng gọi tiệm.</li>` : ''}
+    <li style="margin-bottom:4px">Địa chỉ: <a href="${map}" style="color:#8c5a3c">${esc(salon.address)}</a> · Hotline: <a href="tel:${tel}" style="color:#8c5a3c">${esc(salon.hotline)}</a></li>
+  </ul>
+  <p style="font-size:13px;margin:0 0 4px"><a href="${calendar}" style="color:#8c5a3c;font-weight:600">+ Thêm vào Google Calendar</a></p>`;
+};
+
 const button = (url: string, label: string): string =>
   `<p style="margin:20px 0"><a href="${url}"
      style="display:inline-block;background:#8c5a3c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:600">${label}</a></p>`;
@@ -94,6 +123,7 @@ export const MailTemplates = {
         'Tiệm đã nhận lịch hẹn của bạn',
         `<p style="font-size:14px">Chào <strong>${esc(data.customerName)}</strong>, cảm ơn bạn đã đặt lịch.</p>
          ${appointmentBlock(data)}
+         ${nextSteps(salon, data)}
          ${button(`${salon.frontendUrl}/tra-cuu?code=${data.code}`, 'Xem hoặc huỷ lịch hẹn')}`,
       ),
     };

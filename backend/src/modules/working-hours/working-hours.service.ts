@@ -5,8 +5,29 @@ import { SalonWorkingHour } from '../../database/entities/salon-working-hour.ent
 import { SalonHoliday } from '../../database/entities/salon-holiday.entity';
 import { Appointment, ACTIVE_STATUSES } from '../../database/entities/appointment.entity';
 import { MSG } from '../../common/constants/messages.constant';
-import { DOW_LABELS, endOfDay, startOfDay, timeToMinutes, trimSeconds } from '../../common/utils/time.util';
-import { CreateHolidayDto, UpdateWorkingHoursDto } from './dto/working-hours.dto';
+import { DOW_LABELS, endOfDay, startOfDay, timeToMinutes, todaySalon, trimSeconds } from '../../common/utils/time.util';
+import { CreateHolidayDto, GenerateHolidaysDto, UpdateWorkingHoursDto } from './dto/working-hours.dto';
+import { generateVietnamHolidays, HolidaySuggestion, isSupportedHolidayYear } from './vn-holidays';
+
+/** Một ngày lễ đề xuất kèm kết quả đối chiếu với dữ liệu thật của tiệm. */
+export interface HolidaySuggestionView extends HolidaySuggestion {
+  /**
+   *  - ready    : có thể áp dụng ngay (không trùng ngày nghỉ đã có, không chèn lên lịch hẹn của khách)
+   *  - exists   : đã có ngày nghỉ của tiệm phủ lên khoảng này -> bỏ qua để không trùng lặp
+   *  - conflict : đang có lịch hẹn chưa hoàn tất -> KHÔNG tự áp dụng, chủ tiệm phải xử lý lịch trước hoặc xác nhận ghi đè
+   *  - past     : đã qua -> không cần khai báo
+   */
+  status: 'ready' | 'exists' | 'conflict' | 'past';
+  existingReason: string | null;
+  affectedAppointments: number;
+  affectedCodes: string[];
+}
+
+export interface GenerateHolidaysResult {
+  year: number;
+  created: { key: string; id: string; name: string; startDate: string; endDate: string }[];
+  skipped: { key: string; name: string; reason: string }[];
+}
 
 export interface WorkingHourView {
   id: string;
@@ -129,6 +150,62 @@ export class WorkingHoursService {
     if (!found) throw new NotFoundException(MSG.HOLIDAY_NOT_FOUND);
     await this.holidayRepo.delete(id);
     return { success: true };
+  }
+
+  // -------------------------------------------------- TRỢ LÝ SINH NGÀY LỄ (Mentor S2 · mục 5)
+  /**
+   * Đề xuất toàn bộ ngày lễ quốc gia của một năm và đối chiếu từng ngày với:
+   *  1. ngày nghỉ đã khai báo (tránh trùng lặp);
+   *  2. lịch hẹn đang giữ chỗ của khách (tránh "ngày nghỉ của tiệm chèn lên ngày đặt dịch vụ của khách").
+   */
+  async suggestHolidays(year: number, today: string = todaySalon()): Promise<HolidaySuggestionView[]> {
+    if (!isSupportedHolidayYear(year)) throw new BadRequestException('Năm phải trong khoảng 2000–2100');
+    const out: HolidaySuggestionView[] = [];
+    for (const h of generateVietnamHolidays(year)) {
+      const existing = await this.listHolidays(h.startDate, h.endDate);
+      const impact = await this.previewHolidayImpact(h.startDate, h.endDate);
+      const status: HolidaySuggestionView['status'] = h.endDate < today ? 'past'
+        : existing.length ? 'exists'
+          : impact.affected > 0 ? 'conflict' : 'ready';
+      out.push({
+        ...h,
+        status,
+        existingReason: existing[0]?.reason ?? null,
+        affectedAppointments: impact.affected,
+        affectedCodes: impact.codes.slice(0, 20),
+      });
+    }
+    return out;
+  }
+
+  /**
+   * Áp dụng 1-click. Mặc định chỉ tạo các ngày ở trạng thái "ready"; ngày "conflict" chỉ được tạo khi
+   * truyền force=true (chủ tiệm đã xem danh sách lịch bị ảnh hưởng). Ngày "exists"/"past" luôn bỏ qua.
+   */
+  async generateHolidays(dto: GenerateHolidaysDto): Promise<GenerateHolidaysResult> {
+    const suggestions = await this.suggestHolidays(dto.year);
+    const wanted = dto.keys?.length ? new Set(dto.keys) : null;
+    const result: GenerateHolidaysResult = { year: dto.year, created: [], skipped: [] };
+    for (const s of suggestions) {
+      if (wanted && !wanted.has(s.key)) continue;
+      if (s.status === 'past') { result.skipped.push({ key: s.key, name: s.name, reason: 'Ngày lễ đã qua' }); continue; }
+      if (s.status === 'exists') {
+        result.skipped.push({ key: s.key, name: s.name, reason: `Đã có ngày nghỉ "${s.existingReason ?? ''}"` });
+        continue;
+      }
+      if (s.status === 'conflict' && !dto.force) {
+        result.skipped.push({
+          key: s.key, name: s.name,
+          reason: `Đang có ${s.affectedAppointments} lịch hẹn của khách (${s.affectedCodes.slice(0, 5).join(', ')})`,
+        });
+        continue;
+      }
+      const saved = await this.holidayRepo.save(
+        this.holidayRepo.create({ startDate: s.startDate, endDate: s.endDate, reason: s.name }),
+      );
+      result.created.push({ key: s.key, id: saved.id, name: s.name, startDate: s.startDate, endDate: s.endDate });
+    }
+    return result;
   }
 
   /** Ngày này tiệm có nghỉ không. */

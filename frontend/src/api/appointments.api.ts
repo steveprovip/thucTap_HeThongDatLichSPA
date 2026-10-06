@@ -1,5 +1,7 @@
 import { api, unwrap } from './client';
-import type { Appointment, Availability, DayTimeline, Paginated, AppointmentStatus, VisitHistoryItem } from '@/types';
+import type {
+  Appointment, AppointmentStatus, Availability, DayTimeline, Paginated, SmartSlotsResult, VisitHistoryItem,
+} from '@/types';
 
 export interface WalkInPayload {
   serviceIds: string[];
@@ -57,6 +59,12 @@ export const appointmentsApi = {
   },
   async customerHistory(id: string): Promise<{ customerId: string; isNewCustomer: boolean; history: VisitHistoryItem[] }> {
     return unwrap(await api.get(`/appointments/${id}/customer-history`));
+  },
+  /** Mentor S2 · mục 4: gợi ý khung giờ tốt nhất kèm lý do + khoảng rảnh từng thợ. */
+  async smartSlots(params: { date: string; serviceIds: string[]; days?: number; stylistId?: string; limit?: number }): Promise<SmartSlotsResult> {
+    return unwrap<SmartSlotsResult>(await api.get('/appointments/smart-slots', {
+      params: { ...params, serviceIds: params.serviceIds.join(',') },
+    }));
   },
   async availability(params: {
     date: string; serviceIds: string[]; stylistId?: string; excludeAppointmentId?: string;

@@ -175,6 +175,92 @@ export interface Holiday {
   reason: string;
 }
 
+/** Mentor S2 · mục 9: độ phủ ca làm theo ngày. */
+export interface CoverageGap {
+  startTime: string;
+  endTime: string;
+  minutes: number;
+  minCount: number;
+  hint?: string | null;
+  candidates: { stylistId: string; fullName: string; weekMinutes: number }[];
+}
+export interface CoverageDay {
+  date: string;
+  dayText: string;
+  closedReason: string | null;
+  openTime: string | null;
+  closeTime: string | null;
+  staffCount: number;
+  openMinutes: number;
+  coveredMinutes: number;
+  coveragePercent: number;
+  peakCount: number;
+  hourly: { hour: number; count: number }[];
+  gaps: CoverageGap[];
+}
+export interface CoverageReport {
+  from: string;
+  to: string;
+  minStaff: number;
+  totalGapMinutes: number;
+  understaffedDays: number;
+  workload: { stylistId: string; fullName: string; minutes: number }[];
+  days: CoverageDay[];
+}
+
+/** Mentor S2 · mục 6: thợ tự đăng ký ca làm / nghỉ, quản lý duyệt. */
+export type ShiftRequestKind = 'shift' | 'time_off';
+export type ShiftRequestStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
+export interface ShiftRequest {
+  id: string;
+  stylistId: string;
+  stylistName: string;
+  kind: ShiftRequestKind;
+  workDate: string;
+  dayText: string;
+  startTime: string | null;
+  endTime: string | null;
+  breakStart: string | null;
+  breakEnd: string | null;
+  note: string | null;
+  status: ShiftRequestStatus;
+  reviewNote: string | null;
+  reviewedAt: string | null;
+  reviewerName: string | null;
+  createdAt: string;
+}
+export interface ShiftRequestItem {
+  kind: ShiftRequestKind;
+  workDate: string;
+  startTime?: string | null;
+  endTime?: string | null;
+  breakStart?: string | null;
+  breakEnd?: string | null;
+  note?: string;
+}
+
+/** Mentor S2 · mục 5: ngày lễ quốc gia do trợ lý đề xuất, đã đối chiếu dữ liệu tiệm. */
+export interface HolidaySuggestion {
+  key: string;
+  name: string;
+  startDate: string;
+  endDate: string;
+  days: number;
+  calendar: 'solar' | 'lunar';
+  rule: string;
+  note: string | null;
+  status: 'ready' | 'exists' | 'conflict' | 'past';
+  existingReason: string | null;
+  affectedAppointments: number;
+  affectedCodes: string[];
+}
+
+export interface GenerateHolidaysResult {
+  year: number;
+  created: { key: string; id: string; name: string; startDate: string; endDate: string }[];
+  skipped: { key: string; name: string; reason: string }[];
+}
+
 // ----------------------------------------------------------- Đặt lịch
 export interface Slot {
   time: string;
@@ -203,6 +289,55 @@ export interface Quote {
   exceedsLongestShift?: boolean;
   warningCode?: 'EXCEEDS_LONGEST_SHIFT' | null;
   note: string;
+}
+
+/** Mentor S2 · mục 7: thông tin chân trang công khai. */
+export interface SalonInfo {
+  name: string;
+  slogan: string;
+  address: string;
+  hotline: string;
+  email: string | null;
+  facebookUrl: string | null;
+  zaloUrl: string | null;
+  websiteUrl: string | null;
+  mapUrl: string;
+  openingHours: { dayOfWeek: number; dayLabel: string; isClosed: boolean; openTime: string; closeTime: string }[];
+  team: { id: string; fullName: string; avatarUrl: string | null; gender: StylistGender | null; specialty: string | null; bio: string | null; avgRating: number | null }[];
+}
+
+/** Mentor S2 · mục 4: Trợ lý AI xếp lịch cho nhân viên. */
+export interface SmartSlot {
+  date: string;
+  time: string;
+  endTime: string;
+  stylistId: string;
+  stylistName: string;
+  score: number;
+  reasons: string[];
+}
+export interface SmartSlotsResult {
+  fromDate: string;
+  days: number;
+  totalDurationMinutes: number;
+  suggestions: SmartSlot[];
+  windows: {
+    date: string;
+    closedReason: string | null;
+    stylists: { stylistId: string; stylistName: string; loadMinutes: number; free: { start: string; end: string }[] }[];
+  }[];
+}
+
+/** Mentor S2 · mục 11: chỗ đang tạm giữ trong lúc khách điền thông tin. */
+export interface SlotHold {
+  holdToken: string;
+  stylistId: string;
+  stylistName: string;
+  date: string;
+  time: string;
+  endTime: string;
+  expiresAt: string;
+  holdMinutes: number;
 }
 
 export interface BookingResult {

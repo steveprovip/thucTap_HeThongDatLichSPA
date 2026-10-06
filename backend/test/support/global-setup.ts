@@ -46,7 +46,7 @@ export default async function globalSetup(): Promise<void> {
     throw new Error(
       `Không dựng được CSDL kiểm thử "${conn.database}" tại ${conn.host}:${conn.port}: ${err.message}` +
         (hint ? `\nGợi ý: ${hint}` : '') +
-        '\n(Kiểm thử cần PostgreSQL chạy sẵn: docker compose up -d postgres)',
+        '\n(Kiểm thử cần PostgreSQL chạy sẵn: npm run db:up ở gốc dự án)',
     );
   }
   console.log(`\n[e2e] CSDL kiểm thử "${conn.database}" tại ${conn.host}:${conn.port} đã tạo mới — CSDL thật không bị chạm tới.`);

@@ -5,7 +5,7 @@ Sinh slide thuyết trình (.pptx) cho dự án Hệ thống Đặt lịch Salon
     pip install python-pptx pillow
     python docs/tools/build_slides_pptx.py
 
-Kết quả: docs/Slide_Bao_Cao_He_Thong_Dat_Lich_Salon_Spa.pptx (13 slide, 16:9)
+Kết quả: docs/presentations/Slide_Bao_Cao_He_Thong_Dat_Lich_Salon_Spa.pptx (15 slide, 16:9)
 Tông màu Fresha Light Luxury: Teal #0D9488 · Slate #0F172A · nền #F8FAFC, thẻ bo góc.
 Mỗi slide có ghi chú thuyết trình (Speaker Notes).
 """
@@ -32,7 +32,7 @@ A = os.path.join(DOCS, "assets")
 SCREEN = lambda n: os.path.join(A, "screens", n)  # noqa: E731
 DIAG = lambda n: os.path.join(A, "diagrams", n)  # noqa: E731
 ICON = lambda n, c="w": os.path.join(A, "icons", f"{n}_{c}.png")  # noqa: E731
-OUT = os.path.join(DOCS, "Slide_Bao_Cao_He_Thong_Dat_Lich_Salon_Spa.pptx")
+OUT = os.path.join(DOCS, "presentations", "Slide_Bao_Cao_He_Thong_Dat_Lich_Salon_Spa.pptx")
 
 TEAL = "0D9488"
 TEAL_DARK = "0F766E"
@@ -606,23 +606,62 @@ def s10_infra(prs):
         text(s, x + Inches(0.3), Inches(4.25), Inches(3.4), Inches(0.6), [[(v, {"bold": True})]], size=30, color=TEAL)
         text(s, x + Inches(0.3), Inches(4.9), Inches(3.4), Inches(0.6), l, size=12.5, color=MUTED)
     bullets(s, M, Inches(5.8), W - 2 * M, Inches(1.2), [
-        [("Máy vận hành: ", {"bold": True}), ("start_server.bat / update_project.bat; bootstrap, giữ dữ liệu khách, không nạp seed mẫu.", {})],
+        [("Máy vận hành: ", {"bold": True}), ("HoYoSalon.bat → chế độ Máy chủ cửa hàng → BẮT ĐẦU / CẬP NHẬT; giữ dữ liệu khách, không nạp seed mẫu.", {})],
         [("/health = 200 ", {"bold": True}), ("chỉ khi API truy vấn được CSDL (503 nếu chưa) — trình duyệt không bao giờ mở trước khi hệ thống sẵn sàng.", {})],
     ], size=13.5, gap=5)
     footer(s, 10)
     s.notes_slide.notes_text_frame.text = (
-        "Mục tiêu: sao chép dự án sang bất kỳ máy nào, bật Docker Desktop, nhấp đúp run_project.bat. Launcher kiểm "
+        "Mục tiêu: sao chép dự án sang bất kỳ máy nào, bật Docker Desktop, nhấp đúp HoYoSalon.bat và bấm BẮT ĐẦU. Launcher kiểm "
         "tra Node, dựng Docker, tạo .env, cài gói khi lockfile đổi, nạp dữ liệu an toàn, rồi bộ giám sát chạy API và "
         "giao diện. Bản v1.2.5 xử lý lỗi Windows 3221226505: dịch vụ sập được tự khởi động lại, Ctrl+C dừng sạch cả "
         "cây tiến trình. SSE phát sau commit; TypeORM migration có phiên bản và rollback bước lỗi. "
-        "update_project.bat build bản mới, sao lưu trước migration, healthcheck; lỗi bật lại bản build cũ, "
+        "Nút CẬP NHẬT build bản mới, sao lưu trước migration, healthcheck; lỗi bật lại bản build cũ, "
         "giữ migration đã hoàn tất tương thích. Máy vận hành không seed dữ liệu mẫu.")
 
 
+
+def s11_launcher(prs):
+    s = new_slide(prs)
+    header(s, 11, "Vận hành 1 cú nhấp (v1.4.0)", "HoYoSalon Launcher: BẮT ĐẦU · CẬP NHẬT · Chẩn đoán")
+    picture_fit(s, os.path.join(A, "screens", "22_launcher.jpg"), M, Inches(1.6), Inches(7.6), Inches(4.5))
+    bullets(s, M + Inches(7.9), Inches(1.65), W - 2 * M - Inches(7.9), Inches(4.6), [
+        [("BẮT ĐẦU: ", {"bold": True}), ("Docker → CSDL → gói npm → API + giao diện, thanh % theo từng bước, tự mở ứng dụng.", {})],
+        [("CẬP NHẬT vX.Y.Z: ", {"bold": True}), ("thấy thẻ mới trên GitHub là đổi nút; sao lưu CSDL trước migration, lỗi tự quay về bản cũ.", {})],
+        [("Chẩn đoán: ", {"bold": True}), ("log Client / Server / CSDL trực tiếp, xuất system_logs.zip (đã ẩn mật khẩu), sao chép thông tin thiết bị.", {})],
+        [("An toàn: ", {"bold": True}), ("chỉ nghe 127.0.0.1, mã phiên ngẫu nhiên; đóng Launcher không tắt hệ thống.", {})],
+        [("Monorepo gọn: ", {"bold": True}), ("deploy/, docs/{reports,presentations,…}, scripts/{hoyo,lib,windows,unix}.", {})],
+    ], size=13.5, gap=7)
+    footer(s, 11)
+    s.notes_slide.notes_text_frame.text = (
+        "Từ v1.4.0 mọi thao tác vận hành gom về một cửa sổ. Người không biết lập trình chỉ cần nhấp đúp HoYoSalon.bat "
+        "và bấm BẮT ĐẦU. Khi có phiên bản mới trên GitHub, nút đổi thành CẬP NHẬT. Bảng Thông tin & Chẩn đoán giúp "
+        "xem log, xuất gói nhật ký và sao chép cấu hình máy để gửi hỗ trợ kỹ thuật.")
+
+
+def s12_mentor(prs):
+    s = new_slide(prs)
+    header(s, 12, "Phản hồi Mentor Sprint 2 · 06/10", "11 góp ý → 11 nhánh → v1.4.0, có kiểm thử từng mục")
+    cols = 3
+    cw = (W - 2 * M - Inches(0.24) * (cols - 1)) / cols
+    ch = Inches(1.15)
+    for i, (n, title, how, _branch) in enumerate(D.MENTOR_ITEMS):
+        r, c = divmod(i, cols)
+        x = M + int((cw + Inches(0.24)) * c)
+        y = Inches(1.55) + int((ch + Inches(0.12)) * r)
+        round_rect(s, x, y, int(cw), ch, fill=WHITE)
+        text(s, x + Inches(0.18), y + Inches(0.1), Inches(0.5), Inches(0.45), [[(n, {"bold": True})]], size=20, color=TEAL)
+        text(s, x + Inches(0.68), y + Inches(0.12), int(cw) - Inches(0.85), Inches(0.35), [[(title, {"bold": True})]], size=13)
+        text(s, x + Inches(0.68), y + Inches(0.46), int(cw) - Inches(0.85), Inches(0.65), how, size=10.5, color=MUTED)
+    footer(s, 12)
+    s.notes_slide.notes_text_frame.text = (
+        "Mỗi góp ý của Mentor được làm trên một nhánh feature/fix/docs riêng, có kiểm thử tự động và hợp nhất vào develop. "
+        "Điểm nhấn: giữ chỗ 10 phút (10 khách tranh một khung chỉ 1 người giữ được), thợ tự đăng ký ca và quản lý duyệt, "
+        "cảnh báo khung giờ thiếu thợ, trợ lý xếp lịch và trợ lý sinh ngày lễ bằng âm lịch thiên văn.")
+
 def s11_quality(prs):
     s = new_slide(prs)
-    header(s, 11, "Đảm bảo chất lượng", "100% kiểm thử đạt · 0 cảnh báo lint · đồng bộ Backlog")
-    tiles = [(f"{D.UNIT_TESTS}/{D.UNIT_TESTS}", "Unit test đạt", "8 bộ kiểm thử nghiệp vụ"),
+    header(s, 13, "Đảm bảo chất lượng", "100% kiểm thử đạt · 0 cảnh báo lint · đồng bộ Backlog")
+    tiles = [(f"{D.UNIT_TESTS}/{D.UNIT_TESTS}", "Unit test đạt", "11 bộ + Launcher 4/4"),
              (f"{D.E2E_TESTS}/{D.E2E_TESTS}", "E2E test đạt", f"{D.E2E_SUITES} bộ PostgreSQL · Demo {D.DEMO_TESTS}/{D.DEMO_TESTS}"),
              ("0", "Lỗi build · cảnh báo lint", "tsc -b · ESLint --max-warnings 0"),
              ("39 / 39", "User story đối chiếu", "4 Sprint · 165 Story Point")]
@@ -636,7 +675,8 @@ def s11_quality(prs):
     # Release timeline
     text(s, M, Inches(3.95), Inches(8), Inches(0.35), "Vòng phản hồi PO → phát hành có tag (Git Flow)", size=16, bold=True)
     rel = [("25/09", "v1.1.0", "Giao diện Fresha"), ("27/09", "v1.2.0", "15 + 8 lỗi Sprint 1"),
-           ("28/09", "v1.2.1", "6 lỗi tích hợp"), ("28/09", "v1.2.3", "Launcher mọi máy"), ("28/09", "v1.2.5", "Supervisor")]
+           ("28/09", "v1.2.5", "Supervisor"), ("02/10", "v1.3.0", "23 lỗi QA Sprint 2"), ("05/10", "v1.3.6", "Số liệu khách"),
+           ("06/10", "v1.4.0", "11 góp ý Mentor")]
     y = Inches(4.95)
     ln = s.shapes.add_connector(1, M + Inches(0.6), y, W - M - Inches(0.6), y)
     ln.line.color.rgb = rgb("99F6E4")
@@ -666,7 +706,7 @@ def s11_quality(prs):
 
 def s12_demo(prs):
     s = new_slide(prs)
-    header(s, 12, "Demo trực tiếp", "Kịch bản 6 bước — mỗi bước một vai trò")
+    header(s, 14, "Demo trực tiếp", "Kịch bản 6 bước — mỗi bước một vai trò")
     steps = [
         ("phone", "Khách đặt lịch", "Cửa sổ ẩn danh · /dat-lich", "Cắt tóc nam + Nhuộm → khung giờ 150 phút → mã 8 ký tự, email ở Maildev"),
         ("lock", "Chống đặt trùng", "Terminal", "npm run test:e2e -- booking-concurrency → 1 thành công / 19 nhận 409"),
@@ -686,7 +726,7 @@ def s12_demo(prs):
         text(s, x + Inches(0.28), y + Inches(1.0), cw - Inches(0.5), Inches(0.35), t, size=17, bold=True)
         text(s, x + Inches(0.28), y + Inches(1.36), cw - Inches(0.5), Inches(0.3), acc, size=12, bold=True, color=TEAL_DARK)
         text(s, x + Inches(0.28), y + Inches(1.68), cw - Inches(0.5), Inches(0.7), d, size=12.5, color=MUTED)
-    footer(s, 12)
+    footer(s, 14)
     s.notes_slide.notes_text_frame.text = (
         "Chuẩn bị: chạy run_project.bat, mở sẵn giao diện 5173, Maildev 1080, Swagger và một cửa sổ ẩn danh. "
         "Bước 1 bạn đóng vai khách đặt lịch. Bước 2 chạy kiểm thử đồng thời. Bước 3 lễ tân xác nhận, vãng lai, "
@@ -740,7 +780,7 @@ def main():
     prs = Presentation()
     prs.slide_width, prs.slide_height = W, H
     for fn in (s01_title, s02_problem, s03_solution, s04_scrum, s05_booking, s06_concurrency, s07_reception,
-               s08_stylist, s09_owner, s10_infra, s11_quality, s12_demo, s13_end):
+               s08_stylist, s09_owner, s10_infra, s11_launcher, s12_mentor, s11_quality, s12_demo, s13_end):
         fn(prs)
     prs.core_properties.title = D.TITLE_SHORT
     prs.core_properties.author = f"{D.TEAM} – {D.CLASS_CODE}"

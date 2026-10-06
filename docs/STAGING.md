@@ -3,8 +3,8 @@
 ## Dựng môi trường
 
 ```bat
-run_project.bat          :: Windows
-./run_project.sh         # macOS / Linux
+scripts\windows\run_project.bat          :: Windows
+./scripts/unix/run_project.sh         # macOS / Linux
 ```
 
 Một lệnh duy nhất dựng đủ ba thành phần: cơ sở dữ liệu, backend, frontend.

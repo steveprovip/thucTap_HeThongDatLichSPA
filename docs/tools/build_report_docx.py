@@ -5,7 +5,7 @@ Sinh báo cáo thực tập (.docx) cho dự án Hệ thống Đặt lịch Salo
     pip install python-docx
     python docs/tools/build_report_docx.py
 
-Kết quả: docs/Bao_Cao_Thuc_Tap_He_Thong_Dat_Lich_Salon_Spa.docx
+Kết quả: docs/reports/Bao_Cao_Thuc_Tap_He_Thong_Dat_Lich_Salon_Spa.docx
 Định dạng: A4, lề trên 2 cm – dưới 2 cm – trái 3 cm – phải 1.5 cm, Times New Roman 13, giãn dòng 1.3.
 Mở bằng Word -> chọn "Yes" khi được hỏi cập nhật trường để Mục lục có số trang.
 """
@@ -27,7 +27,7 @@ import report_data as D  # noqa: E402
 
 SCREENS = os.path.join(DOCS, "assets", "screens")
 DIAGRAMS = os.path.join(DOCS, "assets", "diagrams")
-OUT = os.path.join(DOCS, "Bao_Cao_Thuc_Tap_He_Thong_Dat_Lich_Salon_Spa.docx")
+OUT = os.path.join(DOCS, "reports", "Bao_Cao_Thuc_Tap_He_Thong_Dat_Lich_Salon_Spa.docx")
 
 FONT = "Times New Roman"
 BODY_PT = 13
@@ -730,13 +730,14 @@ def chapter3(R: Report):
            "chuyển `/api`, `/uploads`, `/health` sang NestJS nên trình duyệt chỉ làm việc với một địa chỉ duy nhất.")
     R.code([
         "du_an/",
-        "├── backend/            NestJS – API, service, repository, events SSE",
+        "├── HoYoSalon.bat       Điểm vào 1-Click duy nhất (Launcher)",
+        "├── backend/            NestJS – API, service, repository, SSE",
+        "│   └── database/       schema.sql (migration gốc), seed.sql",
         "├── frontend/           React 18 + Vite – pages, api, contexts",
-        "├── database/           schema.sql (24 bảng), seed.sql",
-        "├── docs/               API, BACKLOG-MAPPING, DEMO-SCRIPT, …",
-        "├── scripts/            launcher.mjs – bộ giám sát khởi động",
-        "├── docker-compose.yml  PostgreSQL 15, PgAdmin, Maildev",
-        "└── run_project.bat / run_project.sh",
+        "├── deploy/             docker/ (Compose), cloudflared/",
+        "├── docs/               reports/, presentations/, requirements/, …",
+        "├── scripts/            launcher.mjs, update.mjs, backup.mjs, hoyo/",
+        "└── tests/              kịch bản AI e2e, kết quả kiểm thử AI",
     ])
 
     R.h3("Backend phân tầng Controller – Service – Repository")
@@ -768,19 +769,19 @@ def chapter3(R: Report):
         ("Xác thực", "JWT: access token 30 phút, refresh token 7 ngày (lưu dạng băm trong `refresh_tokens`); mật khẩu băm bcrypt"),
         ("Chống dò mật khẩu", "Khoá tài khoản 15 phút sau 5 lần đăng nhập sai liên tiếp"),
         ("Thu hồi phiên", "`sessions_valid_from`: ngưng hoạt động hoặc đổi mật khẩu làm mọi phiên cũ mất hiệu lực ngay"),
-        ("Phân quyền RBAC", "4 vai trò nhân sự: Thợ, Lễ tân, Chủ tiệm, Quản trị; Khách hàng dùng trang công khai; ma trận quyền F / W / R / – cho 8 nhóm chức năng"),
+        ("Phân quyền RBAC", "4 vai trò nhân sự: Thợ, Lễ tân, Chủ tiệm, Quản trị; Khách hàng dùng trang công khai; ma trận quyền F / W / R / – cho 9 nhóm chức năng"),
         ("Giới hạn tần suất", "Đặt lịch 5 lần/IP/giờ; tra cứu chặn 30 phút sau 10 lần sai; email khôi phục 3 lần/giờ"),
         ("Bảo vệ dữ liệu khách", "Thợ chỉ thấy SĐT đã che (`098***1234`); ghi chú kỹ thuật chỉ nhân sự nội bộ xem"),
     ], [4.0, 12.0], caption="Các cơ chế bảo mật")
 
     R.h2("Thiết kế cơ sở dữ liệu PostgreSQL")
-    R.para("Lược đồ gồm **24 bảng** chia thành sáu nhóm nghiệp vụ, với 38 khoá ngoại, 10 kiểu ENUM, 22 ràng buộc CHECK "
+    R.para("Lược đồ gồm **26 bảng** (24 bảng nghiệp vụ gốc + `shift_requests`, `slot_holds` từ v1.4.0) chia thành sáu nhóm nghiệp vụ, với 38 khoá ngoại, 10 kiểu ENUM, 22 ràng buộc CHECK "
            "và 3 ràng buộc EXCLUDE. Nguyên tắc thiết kế: **mọi quy tắc toàn vẹn quan trọng đều được cài ở tầng CSDL**, "
            "không chỉ ở tầng ứng dụng, vì vậy dữ liệu vẫn đúng ngay cả khi có công cụ khác ghi thẳng vào bảng. Do đó "
            "TypeORM để `synchronize: false`; lược đồ được quản lý bằng migration có phiên bản trong "
            "`backend/src/database/migrations`. `schema.sql` là nguồn cho migration nền, không chạy lại trực tiếp "
            "mỗi lần khởi động. Migration dùng khoá để tránh hai tiến trình nâng cấp cùng lúc; bước lỗi được rollback.")
-    R.figure(os.path.join(DIAGRAMS, "erd.png"), "Sơ đồ CSDL rút gọn theo nhóm nghiệp vụ (24 bảng)")
+    R.figure(os.path.join(DIAGRAMS, "erd.png"), "Sơ đồ CSDL rút gọn theo nhóm nghiệp vụ (24 bảng gốc)")
     R.table(["Nhóm", "Bảng", "Vai trò"], [
         ("Tài khoản & bảo mật", "users, refresh_tokens, password_reset_tokens, audit_logs, rate_limits", "Đăng nhập, phiên, khôi phục mật khẩu, nhật ký chỉ đọc, chống spam"),
         ("Danh mục dịch vụ", "service_categories, services", "Nhóm dịch vụ, thời lượng, giá"),
@@ -944,11 +945,11 @@ def chapter4(R: Report):
 
     R.h2("Hạ tầng tự động một chạm")
     R.para("Mục tiêu: sao chép dự án sang **bất kỳ máy Windows, macOS hay Linux** nào, chỉ cần bật Docker Desktop và nhấp "
-           "đúp `run_project.bat` (hoặc chạy `./run_project.sh`) là toàn bộ hệ thống hoạt động, không cần cấu hình tay.")
+           "đúp `HoYoSalon.bat` rồi bấm **BẮT ĐẦU** (hoặc `npm run launcher`) là toàn bộ hệ thống hoạt động, không cần cấu hình tay.")
     R.figure(os.path.join(DIAGRAMS, "launcher.png"), "Luồng khởi động một chạm và bộ giám sát tự phục hồi")
     R.h3("Docker Compose và dữ liệu mẫu an toàn")
     R.bullets([
-        "`docker compose up -d` dựng PostgreSQL 15, PgAdmin và Maildev. Healthcheck kiểm tra qua **TCP** (`pg_isready -h 127.0.0.1`) chứ không qua Unix socket, tránh báo “sẵn sàng” quá sớm khi container còn chạy script khởi tạo.",
+        "`deploy/docker/docker-compose.yml` dựng PostgreSQL 15, PgAdmin và Maildev (chạy với `--project-directory` gốc dự án để giữ nguyên tên volume dữ liệu). Healthcheck kiểm tra qua **TCP** (`pg_isready -h 127.0.0.1`) chứ không qua Unix socket, tránh báo “sẵn sàng” quá sớm khi container còn chạy script khởi tạo.",
         "`run-seed.ts` áp dụng migration còn thiếu rồi nạp `seed.sql` cho môi trường phát triển / QA; không dùng seed cho máy vận hành thật.",
         "`seed.sql` chạy lại an toàn (**idempotent**): `ON CONFLICT DO NOTHING` cho mọi khoá duy nhất; bỏ qua khung giờ mẫu đã trùng lịch thật; đưa 8 tài khoản mẫu về đúng mật khẩu và mở khoá mỗi lần chạy.",
         "Endpoint `/health` trả **200** khi API truy vấn được CSDL và **503** khi chưa, làm căn cứ để launcher quyết định mở trình duyệt.",
@@ -957,8 +958,8 @@ def chapter4(R: Report):
     R.para("Backend phát sự kiện Server-Sent Events (SSE) sau khi giao dịch ghi dữ liệu thành công. "
            "Frontend nhận sự kiện để tải lại lịch và dữ liệu liên quan; kiểm tra quyền vẫn thực hiện ở API. "
            "Kết nối có cơ chế nối lại và làm mới dữ liệu để đồng bộ khi chuyển mạng.")
-    R.para("Máy vận hành dùng `start_server.bat` để chạy migration và bootstrap, không nạp dữ liệu mẫu. "
-           "`update_project.bat` cập nhật một chạm: lấy mã bằng fast-forward, cài gói, build bản mới, dừng bản cũ, "
+    R.para("Máy vận hành chọn chế độ *Máy chủ cửa hàng* trong Launcher để chạy migration và bootstrap, không nạp dữ liệu mẫu. "
+           "Nút **CẬP NHẬT** (lõi `scripts/launcher.mjs update`) cập nhật một chạm: lấy mã bằng fast-forward, cài gói, build bản mới, dừng bản cũ, "
            "sao lưu trước migration, khởi động lại và kiểm tra sức khoẻ. Nếu cập nhật lỗi, launcher bật lại bản build cũ; "
            "migration đang lỗi được rollback, migration đã hoàn tất vẫn phải tương thích với bản cũ. "
            "GitHub Actions đã có cổng kiểm tra; triển khai vẫn do người vận hành chủ động khởi chạy.")
@@ -972,6 +973,23 @@ def chapter4(R: Report):
         "Dịch vụ sập được giải mã lỗi và **tự khởi động lại** sau 2, 4, 6… giây (tối đa 5 lần trong 10 phút).",
         "Ctrl+C hoặc đóng cửa sổ dừng **cả cây tiến trình** (`taskkill /T` trên Windows, nhóm tiến trình trên macOS/Linux), giải phóng cổng 3000 và 5173.",
     ])
+    R.h3("HoYoSalon Launcher (v1.4.0)")
+    R.para("Từ v1.4.0, mọi thao tác vận hành gom về **một cửa sổ Launcher** theo phong cách game launcher (nền tối kính mờ): "
+           "nút lớn **BẮT ĐẦU** chạy toàn bộ hệ thống và tự mở ứng dụng khi `/health` = 200; khi GitHub có thẻ phiên bản "
+           "mới, nút đổi thành **CẬP NHẬT vX.Y.Z** với thanh tiến trình theo từng bước. Giao diện chỉ là lớp vỏ: máy chủ "
+           "cục bộ `scripts/hoyo/launcher-ui.mjs` (chỉ nghe 127.0.0.1, mã phiên ngẫu nhiên chống CSRF) gọi đúng lõi "
+           "`scripts/launcher.mjs` nên mọi cơ chế an toàn cũ (sao lưu trước migration, tự quay về bản cũ) được giữ nguyên.")
+    R.figure(os.path.join(SCREENS, "22_launcher.jpg"), "Màn hình chính HoYoSalon Launcher – hệ thống đang chạy", width_cm=14.5)
+    R.bullets([
+        "**Thông tin phiên bản**: mã phiên bản, commit, nhánh, trạng thái kết nối kho mã, nút *Kiểm tra phiên bản mới nhất*.",
+        "**Nhật ký cập nhật**: đọc `CHANGELOG.md` theo từng phiên bản.",
+        "**Log Client / Server / CSDL**: xem trực tiếp nhật ký giao diện Vite, API NestJS, PostgreSQL, tiến trình cập nhật.",
+        "**Xuất `system_logs.zip`**: gói nhật ký, cấu hình `.env` đã ẩn mật khẩu/khoá, thông tin Git và Docker để gửi hỗ trợ.",
+        "**Sao chép thông tin thiết bị**: hệ điều hành, CPU/RAM, Node.js, npm, Git, Docker, trạng thái 5 cổng dịch vụ.",
+    ])
+    R.side_by_side([(os.path.join(SCREENS, "23_launcher_logs.jpg"), 7.6), (os.path.join(SCREENS, "24_launcher_device.jpg"), 7.6)])
+    R.caption("Hình", "Bảng Thông tin & Chẩn đoán: log Client/Server và chẩn đoán thiết bị")
+
     R.table(["Ngày", "Phiên bản", "Nội dung chính"], D.RELEASES, [2.6, 2.8, 10.6],
             caption="Lịch sử phát hành trên nhánh main",
             align=[WD_ALIGN_PARAGRAPH.CENTER, WD_ALIGN_PARAGRAPH.CENTER, WD_ALIGN_PARAGRAPH.LEFT])
@@ -983,13 +1001,47 @@ def chapter4(R: Report):
            "nhập và chuyển thẳng tới trang đích của vai trò đó (Quản trị → Tài khoản nhân sự; Chủ tiệm → Tổng quan; "
            "Lễ tân → Lịch ngày; Thợ → Lịch của tôi).")
 
+    R.h2("Cải tiến theo góp ý Mentor Sprint 2 (v1.4.0)")
+    R.para("Buổi review Sprint 2 ngày 06/10/2026, Mentor đưa ra 11 góp ý. Mỗi góp ý được làm trên một nhánh riêng theo mô hình "
+           "nhánh mới, có kiểm thử tự động và hợp nhất `--no-ff` vào `develop` trước khi phát hành v1.4.0 lên `main`.", keep_next=True)
+    R.table(["#", "Góp ý", "Cách xử lý", "Nhánh"], D.MENTOR_ITEMS, [0.8, 3.6, 7.6, 4.0],
+            caption="Tổng hợp xử lý 11 góp ý của Mentor",
+            align=[WD_ALIGN_PARAGRAPH.CENTER, WD_ALIGN_PARAGRAPH.LEFT, WD_ALIGN_PARAGRAPH.LEFT, WD_ALIGN_PARAGRAPH.LEFT])
+    R.h3("Thợ tự đăng ký ca, quản lý duyệt và cảnh báo khung giờ thiếu thợ")
+    R.para("Thợ đăng ký lịch rảnh cả tuần (ca làm theo giờ 24 giờ hoặc xin nghỉ); yêu cầu hiện thành viên viền đứt trên Bảng ca. "
+           "Quản lý duyệt (có thể chỉnh giờ), từ chối kèm lý do hoặc duyệt tất cả. Việc duyệt *giữ chỗ* yêu cầu bằng một câu "
+           "UPDATE có điều kiện nên hai quản lý bấm cùng lúc chỉ một người thắng, sau đó tạo ca qua đúng các luật cũ của bảng ca. "
+           "Hộp **Độ phủ ca** đếm số thợ có mặt ở từng ô 15 phút giờ mở cửa (trừ nghỉ giữa ca, nghỉ phép), tô đỏ khoảng trống "
+           "và gợi ý thợ rảnh có ít giờ làm nhất tuần để cân bằng phân bổ; khoảng trống do mọi thợ nghỉ trưa cùng lúc được "
+           "gợi ý so le giờ nghỉ.")
+    R.figure(os.path.join(SCREENS, "25_shift_board.jpg"), "Bảng ca mới: yêu cầu chờ duyệt, độ phủ ca và lưới thợ × ngày", width_cm=15.5)
+    R.figure(os.path.join(SCREENS, "26_shift_registration.jpg"), "Thợ tự đăng ký lịch làm cả tuần", width_cm=14.5)
+    R.h3("Trợ lý AI xếp lịch và AI sinh ngày lễ")
+    R.para("Trợ lý xếp lịch nằm ngay trong màn hình tạo lịch của lễ tân: duyệt mọi khung giờ hợp lệ của mọi thợ trong 1/3/7 ngày "
+           "(qua bộ tính khung giờ nên tôn trọng ca, nghỉ, ngày lễ, lịch hẹn và chỗ đang giữ), chấm điểm theo ba tiêu chí "
+           "*sớm*, *vừa khít* (không để khoảng lẻ dưới 30 phút) và *cân bằng thợ*, kèm lý do bằng tiếng Việt. Trợ lý ngày lễ "
+           "tính Tết Nguyên Đán và Giỗ Tổ Hùng Vương bằng thuật toán âm lịch thiên văn múi giờ +7 (đã kiểm thử Tết 1985–2028), "
+           "cộng các ngày lễ dương lịch theo Bộ luật Lao động và Ngày Văn hoá Việt Nam 24/11; ngày đang có lịch hẹn của khách "
+           "được bỏ chọn sẵn. Cả hai là trợ lý dựa trên thuật toán: kết quả tất định, giải thích được, chạy ngoại tuyến.")
+    R.side_by_side([(os.path.join(SCREENS, "27_ai_slot_assistant.jpg"), 7.6), (os.path.join(SCREENS, "28_ai_holidays.jpg"), 7.6)])
+    R.caption("Hình", "Trợ lý AI xếp lịch tại quầy và trợ lý sinh ngày lễ cả năm")
+    R.h3("Giữ chỗ 10 phút, email xác nhận và trang công khai")
+    R.para("Khi khách tới bước Xác nhận, hệ thống giữ khung giờ 10 phút (cấu hình 5–15) trong giao dịch có khoá dòng thợ; khung "
+           "đang giữ biến mất với khách khác và bị chặn ở mọi luồng đặt lịch, tạo lịch tại quầy và dời lịch. Kiểm thử 10 khách "
+           "giữ cùng một khung trong một lúc cho đúng 1 người thành công. Email xác nhận gửi ngay sau khi đặt, có trạng thái, chỉ "
+           "đường, hotline và liên kết thêm vào Google Calendar; khách chưa nhập email vẫn gửi được từ màn hình thành công. "
+           "Trang chủ dùng lưới 4 cột liền mạch hiển thị 2 hàng, chân trang nền tối đủ Facebook, Zalo, địa chỉ, giờ mở cửa và "
+           "đội ngũ chuyên viên.")
+    R.side_by_side([(os.path.join(SCREENS, "29_slot_hold.jpg"), 7.6), (os.path.join(SCREENS, "30_home_footer.jpg"), 7.6)])
+    R.caption("Hình", "Đồng hồ giữ chỗ ở bước Xác nhận và trang chủ với chân trang mới")
+
 
 def chapter5(R: Report):
     R.h1("Kiểm thử, đánh giá và kết luận")
     R.h2("Chiến lược kiểm thử")
     R.table(["Mức kiểm thử", "Công cụ", "Phạm vi"], [
         ("Kiểm tra tĩnh", "TypeScript (tsc), ESLint `--max-warnings 0`", "Toàn bộ backend và frontend; build thất bại nếu có lỗi kiểu hoặc cảnh báo lint"),
-        ("Đơn vị", "Jest", "Bộ tính khung giờ trống: tiện ích thời gian, khoảng rảnh, dịch vụ 30 / 60 / 120 phút, gói nhiều dịch vụ, tình huống hỗn hợp"),
+        ("Đơn vị", "Jest, node:test", "Bộ tính khung giờ, âm lịch & ngày lễ, độ phủ ca, trợ lý xếp lịch, DTO; thư viện Launcher (semver, CHANGELOG, ZIP, ẩn bí mật)"),
         ("Tích hợp / E2E", "Jest + Supertest trên PostgreSQL thật", "Phân quyền 17 endpoint × 4 vai trò, khoá 15 phút; 20 yêu cầu đồng thời; vòng đời lịch hẹn đầy đủ"),
         ("Giao diện tự động", "Playwright (Chromium)", "Đăng nhập nhanh 4 vai trò → đúng trang đích; chụp ảnh các màn hình chính"),
         ("Nghiệm thu thủ công", "docs/DEMO-SCRIPT.md", "5 phần A–E theo Sprint, mỗi bước ghi rõ tài khoản và điều cần chỉ ra"),
@@ -997,9 +1049,10 @@ def chapter5(R: Report):
 
     R.h2("Kết quả kiểm thử")
     R.table(["Hạng mục", "Kết quả", "Ghi chú"], [
-        ("Kiểm thử đơn vị", f"**{D.UNIT_TESTS} / {D.UNIT_TESTS} đạt**", "8 bộ: khung giờ, ngày nghỉ, sự kiện, kết nối và bảo mật"),
+        ("Kiểm thử đơn vị", f"**{D.UNIT_TESTS} / {D.UNIT_TESTS} đạt**", "11 bộ: khung giờ, âm lịch & ngày lễ, độ phủ ca, trợ lý xếp lịch, sự kiện, bảo mật"),
         ("Kiểm thử E2E", f"**{D.E2E_TESTS} / {D.E2E_TESTS} đạt**", f"{D.E2E_SUITES} bộ trên PostgreSQL; RBAC, đồng thời, migration, SSE và hồi quy QA"),
-        ("Kiểm thử Demo", f"**{D.DEMO_TESTS} / {D.DEMO_TESTS} đạt**", "node --test frontend/test/holidays.test.mjs"),
+        ("Kiểm thử Demo + Launcher", f"**{D.DEMO_TESTS + D.LAUNCHER_TESTS} / {D.DEMO_TESTS + D.LAUNCHER_TESTS} đạt**", "frontend/test, scripts/lib/test (node --test)"),
+        ("Giữ chỗ đồng thời", "1 thành công / 9 nhận 409", "10 khách giữ cùng một khung giờ, cùng thợ trong một lúc"),
         ("Chống đặt trùng", "1 thành công / 19 nhận 409", "20 yêu cầu đồng thời vào cùng khung giờ, cùng thợ"),
         ("Build frontend / typecheck backend", "0 lỗi", "`tsc -b && vite build`; `tsc --noEmit`"),
         ("npm run lint (backend, frontend)", "0 cảnh báo", "`--max-warnings 0`"),
@@ -1023,6 +1076,7 @@ def chapter5(R: Report):
            "Đối chiếu mã nguồn và test tự động không thay thế biên bản nghiệm thu thủ công của PO. "
            "Các mốc khắc phục lỗi đã ghi nhận:", keep_next=True)
     R.bullets([
+        "Sprint 2 Review với Mentor (06/10): **11 góp ý** về quy trình nhánh, bảng ca, giờ 24h, trợ lý AI, đăng ký ca, giữ chỗ, email, chân trang và mật độ hiển thị → **v1.4.0**.",
         "Sprint 1 Review: **15 lỗi** kiểm thử về xác thực, đồng bộ hồ sơ thợ và logic hệ thống (26/09) và **8 lỗi** vòng hai – ảnh giao diện, tài khoản mẫu không khớp, mật khẩu tạm cho nhân sự mới, khách vãng lai, chặn xoá dịch vụ đã có lịch, nút Quay lại (27/09) → **v1.2.0**.",
         "Rà soát với máy chủ thật: 6 lỗi tích hợp (phân trang TypeORM, giới hạn 200 dòng, lệch múi giờ…) → **v1.2.1**.",
         "Gia cố khởi động trên nhiều máy và bộ giám sát tự phục hồi → **v1.2.3 – v1.2.5**.",
@@ -1035,7 +1089,8 @@ def chapter5(R: Report):
         "Tính đúng đắn dữ liệu được bảo vệ ở tầng CSDL (EXCLUDE, CHECK, trigger chỉ đọc), không phụ thuộc hoàn toàn vào ứng dụng.",
         "Chống đặt trùng đã được chứng minh bằng kiểm thử đồng thời tự động.",
         "Giao diện hiện đại, nhất quán, dùng tốt trên điện thoại 360 px; thông điệp lỗi tiếng Việt rõ ràng.",
-        "Triển khai một chạm, tự phục hồi, chạy được trên Windows, macOS và Linux.",
+        "Triển khai một chạm qua HoYoSalon Launcher: khởi động, cập nhật có sao lưu và tự quay về bản cũ, chẩn đoán tại chỗ.",
+        "Xử lý trọn 11 góp ý Mentor Sprint 2 với kiểm thử tự động cho từng mục.",
     ])
     R.h3("Hạn chế")
     R.bullets([
@@ -1043,6 +1098,7 @@ def chapter5(R: Report):
         "Chỉ phục vụ một chi nhánh; chưa quản lý kho mỹ phẩm và hoa hồng thợ tự động.",
         "Kiểm thử E2E cần PostgreSQL đang chạy và tài khoản có quyền tạo CSDL kiểm thử riêng.",
         "Chưa có quy trình CI/CD tự động triển khai lên máy chủ thật.",
+        "Trợ lý AI dùng thuật toán chấm điểm, chưa dùng mô hình ngôn ngữ để trò chuyện / giải thích tự do.",
     ])
 
     R.h2("Hướng phát triển")

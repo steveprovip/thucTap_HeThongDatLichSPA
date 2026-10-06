@@ -20,3 +20,7 @@ dist-prev/
 .salon-run.json
 .salon-build.json
 logs/
+# Kết quả chạy kiểm thử AI e2e (sinh lại mỗi lần chạy)
+.e2e/
+# Trạng thái và nhật ký của HoYoSalon Launcher
+.salon-launcher.json

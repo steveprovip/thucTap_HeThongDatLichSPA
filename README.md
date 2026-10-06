@@ -9,25 +9,30 @@ xem bảng đối chiếu tại [`docs/BACKLOG-MAPPING.md`](docs/BACKLOG-MAPPING
 
 ---
 
-## Chạy dự án bằng MỘT lệnh
+## Chạy dự án bằng MỘT cú nhấp — HoYoSalon Launcher
 
-**Windows**
+**Windows:** nhấp đúp **`HoYoSalon.bat`** ở thư mục gốc. **macOS / Linux:** `npm run launcher`.
 
-```bat
-run_project.bat
-```
+Cửa sổ Launcher (nền tối kính mờ, phong cách game launcher) mở ra:
 
-**macOS / Linux**
+| Nút / mục | Việc làm |
+|---|---|
+| **BẮT ĐẦU** | Chạy toàn bộ: Docker → PostgreSQL → gói npm → migration (+ dữ liệu mẫu ở chế độ phát triển) → API + giao diện, thanh tiến trình theo từng bước, tự mở ứng dụng khi `/health` = 200 |
+| **CẬP NHẬT vX.Y.Z** | Hiện khi GitHub có thẻ phiên bản mới (hoặc `main` có commit mới): tải mã → cài gói → build → **sao lưu CSDL** → migration → chạy lại; lỗi ở bước nào tự quay về bản cũ |
+| **MỞ ỨNG DỤNG** | Hệ thống đang chạy: mở trang |
+| ⚙ **Thông tin & Chẩn đoán** | Phiên bản + trạng thái kết nối kho mã, **Kiểm tra phiên bản mới nhất**, **Nhật ký cập nhật** (CHANGELOG), **Log Client / Server / CSDL** trực tiếp, **Xuất `system_logs.zip`** (đã ẩn mật khẩu), **Sao chép thông tin thiết bị** (OS, Node, Docker, cổng) |
+| Cài đặt | Chế độ *Phát triển · dữ liệu mẫu* hoặc *Máy chủ cửa hàng* (production, một cổng 3000, không nạp dữ liệu mẫu) |
 
-```bash
-./run_project.sh
-```
+Launcher chỉ lắng nghe `127.0.0.1`, mọi API của nó cần mã phiên ngẫu nhiên; đóng cửa sổ Launcher **không** tắt hệ thống Salon.
+Các lệnh cũ vẫn dùng được: `scripts\windows\run_project.bat` · `scripts/unix/run_project.sh` (chi tiết bên dưới).
 
-Máy mới clone chỉ cần **bật Docker Desktop** rồi nhấp đúp `run_project.bat` (hoặc chạy `./run_project.sh`), không phải làm gì thêm. Hai tệp này chỉ kiểm tra Node.js ≥ 20 rồi giao cho `scripts/launcher.mjs start` (dùng chung mọi hệ điều hành), lần lượt:
+### Lệnh dòng lệnh (không dùng Launcher)
+
+Máy mới clone chỉ cần **bật Docker Desktop** rồi nhấp đúp `scripts\windows\run_project.bat` (hoặc chạy `./scripts/unix/run_project.sh`), không phải làm gì thêm. Hai tệp này chỉ kiểm tra Node.js ≥ 20 rồi giao cho `scripts/launcher.mjs start` (dùng chung mọi hệ điều hành), lần lượt:
 
 1. Kiểm tra Node.js ≥ 20.
 2. Tạo các tệp `.env` còn thiếu (gốc, `backend`, `frontend`), sinh khoá JWT ngẫu nhiên thay giá trị mẫu và **ghi `VITE_DEMO_MODE=false`**: launcher luôn chạy với **API thật**, không bao giờ rơi vào chế độ Demo.
-3. Chờ Docker sẵn sàng (tối đa 2 phút; Windows/macOS tự thử mở Docker Desktop), `docker compose up -d` — PostgreSQL (healthcheck qua TCP) + PgAdmin + Maildev — rồi chờ PostgreSQL báo `healthy`. Chưa cài Docker thì in hướng dẫn tiếng Việt: cài Docker Desktop, hoặc dùng PostgreSQL riêng với `SALON_SKIP_DOCKER=1`.
+3. Chờ Docker sẵn sàng (tối đa 2 phút; Windows/macOS tự thử mở Docker Desktop), `docker compose --project-directory . -f deploy/docker/docker-compose.yml up -d` — PostgreSQL (healthcheck qua TCP) + PgAdmin + Maildev — rồi chờ PostgreSQL báo `healthy`. Chưa cài Docker thì in hướng dẫn tiếng Việt: cài Docker Desktop, hoặc dùng PostgreSQL riêng với `SALON_SKIP_DOCKER=1`.
 4. **Cài gói khi chưa có `node_modules` hoặc khi `package.json`/`package-lock.json` đổi** (vd. sau `git pull`). Kiểm tra cổng 3000/5173 còn trống: đang bận thì nêu rõ cổng nào và lệnh tìm chương trình đang chiếm; nếu hệ thống đang chạy ở cửa sổ khác thì chỉ mở trình duyệt.
 5. Áp dụng migration (cấu trúc CSDL; `schema.sql` là migration gốc) rồi nạp dữ liệu mẫu `seed.sql` (chạy lại bao nhiêu lần cũng an toàn). **Chỉ máy phát triển làm bước nạp mẫu này.**
 6. Chạy API + giao diện dưới **một tiến trình giám sát** (`node scripts/launcher.mjs run`, không qua
@@ -49,7 +54,7 @@ Máy đã cài sẵn PostgreSQL chiếm cổng 5432? Đặt `POSTGRES_PORT=5433`
 
 ### Tài khoản mẫu
 
-Dùng **giống hệt nhau** ở cả hai chế độ: Full-Stack (NestJS + PostgreSQL, `database/seed.sql`) và
+Dùng **giống hệt nhau** ở cả hai chế độ: Full-Stack (NestJS + PostgreSQL, `backend/database/seed.sql`) và
 Demo không cần máy chủ (`npm run dev:demo`, dữ liệu trong trình duyệt — `frontend/src/api/mockBackend.ts`).
 
 | Vai trò | Họ tên | Email | Mật khẩu |
@@ -74,9 +79,9 @@ Demo không cần máy chủ (`npm run dev:demo`, dữ liệu trong trình duy�
   hoạt động tương tự.
 - Chế độ **Demo** (dữ liệu giả trong trình duyệt, không gọi backend) **chỉ bật khi `VITE_DEMO_MODE=true`**, tức
   `npm --prefix frontend run dev:demo`. Mặc định — kể cả máy mới clone chưa có `frontend/.env` (tệp bị gitignore) — giao diện
-  gọi **API thật**, và `run_project.bat` / `run_project.sh` luôn ép `VITE_DEMO_MODE=false`. Bản Demo có ô
+  gọi **API thật**, và `scripts\windows\run_project.bat` / `scripts/unix/run_project.sh` luôn ép `VITE_DEMO_MODE=false`. Bản Demo có ô
   *"Chế độ demo · Xem vai trò"* ở góc dưới bên phải.
-  Quy trình test lại lỗi QA: [`docs/RUNBOOK-TEST-LAI-QA-04102027.md`](docs/RUNBOOK-TEST-LAI-QA-04102027.md).
+  Quy trình test lại lỗi QA: [`docs/testing/RUNBOOK-TEST-LAI-QA-04102027.md`](docs/testing/RUNBOOK-TEST-LAI-QA-04102027.md).
 - Bản demo lưu dữ liệu trong `localStorage` (khoá `salon.demo.v6`). Muốn về dữ liệu mẫu ban đầu: xoá khoá đó
   trong DevTools → Application → Local Storage rồi tải lại trang.
 
@@ -88,42 +93,62 @@ Khách hàng **không cần tài khoản** — đặt lịch và tra cứu bằn
 
 ```
 du_an/
-├── docker-compose.yml          PostgreSQL 15 · PgAdmin · Maildev (SMTP thử nghiệm)
-├── run_project.bat / .sh       Khởi chạy một lệnh
-├── database/
-│   ├── schema.sql              DDL đầy đủ: ràng buộc EXCLUDE, CHECK, index, view, trigger
-│   └── seed.sql                5 thợ · 12 dịch vụ · 4 vai trò nội bộ · ~400 lịch hẹn mẫu
+├── HoYoSalon.bat               ĐIỂM VÀO 1-CLICK DUY NHẤT: Launcher (BẮT ĐẦU / CẬP NHẬT / Chẩn đoán)
+├── package.json                Lệnh gốc điều phối backend + frontend (db:*, build, test, lint, launcher…)
+├── README.md · CHANGELOG.md · AGENTS.md
+├── render.yaml                 Blueprint Render (Render chỉ đọc tệp này ở gốc kho mã)
 ├── backend/                    NestJS 10 + TypeORM + PostgreSQL
+│   ├── database/
+│   │   ├── schema.sql          Migration gốc: ràng buộc EXCLUDE, CHECK, index, view, trigger
+│   │   └── seed.sql            5 thợ · 12 dịch vụ · 4 vai trò nội bộ · ~400 lịch hẹn mẫu
+│   ├── src/
+│   │   ├── common/             Guard (JWT, RBAC), decorator, filter, interceptor ghi nhật ký, tiện ích
+│   │   ├── config/             Cấu hình ứng dụng, CSDL, JWT, SMTP
+│   │   ├── database/           Entity, migration, sao lưu, nạp dữ liệu mẫu
+│   │   └── modules/
+│   │       ├── auth/           Đăng nhập, JWT 30m/7d, khoá 15 phút sau 5 lần sai, quên mật khẩu
+│   │       ├── users/          Quản trị tài khoản nhân sự, 5 vai trò
+│   │       ├── services/       Nhóm dịch vụ, dịch vụ (15–240 phút, ≤ 20.000.000 đ)
+│   │       ├── stylists/       Hồ sơ thợ, kỹ năng, ca làm theo tuần, ngày nghỉ riêng
+│   │       ├── working-hours/  Giờ mở cửa theo thứ, ngày nghỉ của tiệm
+│   │       ├── booking-engine/ Bộ tính khung giờ trống + lá chắn chống đặt trùng
+│   │       ├── customers/      Hồ sơ khách gộp theo SĐT, lịch sử dịch vụ
+│   │       ├── invoices/       Phiếu tính tiền, mã giảm giá, phiếu điều chỉnh
+│   │       ├── reviews/        Đánh giá 1–5 sao bằng liên kết dùng một lần
+│   │       ├── notifications/  Hàng đợi email (3 lần thử) + thông báo trong ứng dụng
+│   │       ├── analytics/      Doanh thu theo thợ/dịch vụ, mật độ khung giờ, xuất CSV
+│   │       └── audit/          Nhật ký hoạt động chỉ đọc
+│   └── test/                   E2E Supertest trên CSDL tạm salon_booking_test
+├── frontend/                   React 18 + TypeScript + Vite + TailwindCSS + Lucide + Recharts
 │   └── src/
-│       ├── common/             Guard (JWT, RBAC), decorator, filter, interceptor ghi nhật ký, tiện ích
-│       ├── config/             Cấu hình ứng dụng, CSDL, JWT, SMTP
-│       ├── database/entities/  24 entity ánh xạ đúng lược đồ SQL
-│       └── modules/
-│           ├── auth/           Đăng nhập, JWT 30m/7d, khoá 15 phút sau 5 lần sai, quên mật khẩu
-│           ├── users/          Quản trị tài khoản nhân sự, 5 vai trò
-│           ├── services/       Nhóm dịch vụ, dịch vụ (15–240 phút, ≤ 20.000.000 đ)
-│           ├── stylists/       Hồ sơ thợ, kỹ năng, ca làm theo tuần, ngày nghỉ riêng
-│           ├── working-hours/  Giờ mở cửa theo thứ, ngày nghỉ của tiệm
-│           ├── booking-engine/ Bộ tính khung giờ trống + lá chắn chống đặt trùng
-│           ├── customers/      Hồ sơ khách gộp theo SĐT, lịch sử dịch vụ
-│           ├── invoices/       Phiếu tính tiền, mã giảm giá, phiếu điều chỉnh
-│           ├── reviews/        Đánh giá 1–5 sao bằng liên kết dùng một lần
-│           ├── notifications/  Hàng đợi email (3 lần thử) + thông báo trong ứng dụng
-│           ├── analytics/      Doanh thu theo thợ/dịch vụ, mật độ khung giờ, xuất CSV
-│           └── audit/          Nhật ký hoạt động chỉ đọc
-└── frontend/                   React 18 + TypeScript + Vite + TailwindCSS + Lucide + Recharts
-    └── src/
-        ├── api/                Axios client tự làm mới access token
-        ├── components/         Modal, Toast, Badge, StarRating, DateNav, chuông thông báo…
-        ├── contexts/           AuthContext, ToastContext, BookingContext
-        ├── layouts/            PublicLayout (mobile-first), AdminLayout (sidebar theo quyền)
-        └── pages/
-            ├── public/         Trang dịch vụ, Booking Wizard 4 bước, tra cứu, đánh giá
-            ├── auth/           Đăng nhập, quên / đặt lại / đổi mật khẩu
-            ├── reception/      Lịch ngày dạng cột, chờ xác nhận, khách vãng lai, phiếu tính tiền
-            ├── stylist/        Lịch cá nhân, bắt đầu/hoàn tất, ghi chú kỹ thuật
-            ├── owner/          Tổng quan hôm nay, doanh thu, mật độ khung giờ
-            └── admin/          Tài khoản, nhật ký, dịch vụ, thợ, ca làm, giờ mở cửa, mã giảm giá
+│       ├── api/                Axios client tự làm mới access token (+ mockBackend cho chế độ Demo)
+│       ├── components/         Modal, Toast, Badge, StarRating, DateNav, chuông thông báo…
+│       ├── contexts/           AuthContext, ToastContext, BookingContext
+│       ├── layouts/            PublicLayout (mobile-first), AdminLayout (sidebar theo quyền)
+│       └── pages/              public · auth · reception · stylist · owner · admin
+├── deploy/                     Cấu hình hạ tầng
+│   ├── docker/                 docker-compose.yml: PostgreSQL 15 · PgAdmin · Maildev
+│   └── cloudflared/            Mẫu Cloudflare Tunnel có tên miền cố định
+├── docs/
+│   ├── reports/                Báo cáo thực tập .docx (NĐ 30/2020), báo cáo kiểm thử, nghiệm thu
+│   ├── presentations/          Slide thuyết trình .pptx
+│   ├── requirements/           Đề tài gốc (4 Sprint · 39 User Story · 165 SP)
+│   ├── feedback/               Góp ý của Mentor theo từng đợt
+│   ├── testing/                Test case, danh sách lỗi QA, runbook kiểm thử lại
+│   ├── guides/                 Hướng dẫn Git Flow, Vibe Testing
+│   ├── prompts/                Prompt kiểm định dùng cho trợ lý AI
+│   ├── tools/                  build_report_docx.py · build_slides_pptx.py · report_data.py
+│   ├── assets/                 Sơ đồ, biểu tượng, ảnh chụp màn hình
+│   └── *.md                    API, triển khai, staging, múi giờ, kịch bản demo, đối chiếu backlog
+├── scripts/
+│   ├── launcher.mjs            Lõi điều phối: Docker → CSDL → gói npm → chạy & giám sát tiến trình
+│   ├── update.mjs              Cập nhật 1 chạm (git pull → build → sao lưu + migration → chạy lại)
+│   ├── backup.mjs              Sao lưu CSDL ngay
+│   ├── hoyo/                   HoYoSalon Launcher: máy chủ cục bộ + giao diện Dark Glassmorphism
+│   ├── lib/                    Mô-đun dùng chung (so sánh phiên bản, chẩn đoán)
+│   ├── windows/ · unix/        Lệnh cũ cho người quen dùng (run_project, start_server, update_project…)
+│   └── ai/                     AI explorer + sinh báo cáo kiểm thử AI
+└── tests/                      Kịch bản AI e2e (*.e2e.ts) + kết quả tests/ai-bug-reports/
 ```
 
 ---
@@ -157,17 +182,18 @@ Tiền hiển thị dạng `250.000 đ`, giờ dạng `14:30`. Chi tiết: [`doc
 
 ## Chạy cho tiệm thật và cập nhật 1 chạm
 
-`run_project.bat` là chế độ **phát triển** (có dữ liệu mẫu, nạp lại mỗi lần chạy). Máy dùng thật (máy bàn của tiệm) chạy chế độ **máy chủ**:
+`scripts\windows\run_project.bat` là chế độ **phát triển** (có dữ liệu mẫu, nạp lại mỗi lần chạy). Máy dùng thật (máy bàn của tiệm) chạy chế độ **máy chủ**:
 bản production, NestJS phục vụ cả giao diện lẫn API ở **một cổng**, chạy migration nhưng **không nạp dữ liệu mẫu**, không đụng tới dữ liệu khách.
 
 | Việc | Windows | macOS / Linux |
 |---|---|---|
-| Chạy chế độ máy chủ | `start_server.bat` | `./start_server.sh` |
-| **Cập nhật phiên bản mới (1 chạm)** | `update_project.bat` | `./update_project.sh` |
-| Mở đường hầm HTTPS ra Internet (Cloudflare Quick Tunnel, miễn phí) | `start_tunnel.bat` | `./start_tunnel.sh` |
+| **Launcher (khuyên dùng)** | `HoYoSalon.bat` → Cài đặt: *Máy chủ cửa hàng* → **BẮT ĐẦU** / **CẬP NHẬT** | `npm run launcher` |
+| Chạy chế độ máy chủ | `scripts\windows\start_server.bat` | `./scripts/unix/start_server.sh` |
+| **Cập nhật phiên bản mới (1 chạm)** | `scripts\windows\update_project.bat` | `./scripts/unix/update_project.sh` |
+| Mở đường hầm HTTPS ra Internet (Cloudflare Quick Tunnel, miễn phí) | `scripts\windows\start_tunnel.bat` | `./scripts/unix/start_tunnel.sh` |
 | Sao lưu CSDL ngay | `npm run db:backup` | `npm run db:backup` |
 
-`update_project.bat` thực hiện: `git pull --ff-only` → cài gói nếu `package.json` đổi → build bản mới ở thư mục tạm → dừng → **sao lưu CSDL + migration** → chạy lại → kiểm tra `/health`.
+`scripts\windows\update_project.bat` thực hiện: `git pull --ff-only` → cài gói nếu `package.json` đổi → build bản mới ở thư mục tạm → dừng → **sao lưu CSDL + migration** → chạy lại → kiểm tra `/health`.
 Lỗi ở bước nào thì giữ hoặc **tự quay về bản cũ**; dữ liệu khách và phiên đăng nhập không mất.
 Laptop / điện thoại chỉ cần mở địa chỉ của máy chủ (cùng Wi-Fi, hoặc qua đường hầm): thay đổi trên máy này **hiện ngay** trên máy kia nhờ luồng đồng bộ thời gian thực (SSE), và dải
 "Hệ thống vừa có phiên bản mới" báo khi cần bấm Tải lại.
@@ -189,6 +215,10 @@ npm run migration:generate -- TenThayDoi   # sinh migration từ khác biệt en
 npm run db:seed          # nạp dữ liệu mẫu (chỉ máy phát triển; chạy lại nhiều lần vẫn an toàn)
 npm run start:all        # chạy song song API + giao diện
 npm run start:launch     # tiến trình giám sát: API + giao diện, tự khởi động lại khi sập, mở trình duyệt khi /health = 200
+npm run launcher         # HoYoSalon Launcher (giao diện BẮT ĐẦU / CẬP NHẬT / Chẩn đoán)
+npm run update           # cập nhật 1 chạm (node scripts/update.mjs --check: chỉ kiểm tra phiên bản)
+npm run backup           # sao lưu CSDL ngay vào backups/
+npm run test:scripts     # kiểm thử thư viện Launcher (semver, changelog, zip, ẩn bí mật)
 npm run build            # build backend và frontend cho môi trường thật
 npm test                 # 35 kiểm thử đơn vị bộ tính khung giờ
 npm run test:e2e         # kiểm thử end-to-end trên CSDL TẠM salon_booking_test (tự tạo, tự xoá; cần PostgreSQL đang chạy)
@@ -201,7 +231,9 @@ npm run lint             # ESLint cho cả hai phía
 
 | Bộ | Lệnh | Nội dung |
 |---|---|---|
-| Đơn vị | `npm test` | 35 ca cho bộ tính khung giờ trống |
+| Đơn vị backend | `npm test` | 168 ca: bộ tính khung giờ, âm lịch & ngày lễ, độ phủ ca, trợ lý xếp lịch, DTO, quy tắc ca… |
+| Đơn vị frontend + Launcher | `npm run test:frontend` · `npm run test:scripts` | Luật bản Demo; semver, CHANGELOG, ZIP, ẩn bí mật |
+| Góp ý Mentor Sprint 2 | `npm run test:e2e` | Đăng ký ca → duyệt, giữ chỗ 10 phút (10 khách tranh 1 khung), email xác nhận, AI ngày lễ, độ phủ ca, trợ lý xếp lịch, chân trang |
 | Phân quyền | `npm run test:e2e` | Đối chiếu 17 endpoint × 4 vai trò, khoá 15 phút sau 5 lần sai |
 | Chống đặt trùng | `npm run test:e2e` | 20 yêu cầu đồng thời → đúng 1 thành công |
 | End-to-end | `npm run test:e2e` | Đặt → xác nhận → check-in → hoàn tất → tính tiền → đánh giá → báo cáo |
@@ -214,7 +246,7 @@ npm run lint             # ESLint cho cả hai phía
 |---|---|---|
 | 1 | Ảnh dịch vụ lỗi / trống trên giao diện khách | `SmartImage` (`components/Media.tsx`) tự chuyển sang nền gradient theo chủ đề (kéo — Tóc, giọt nước — Gội, lấp lánh — Da, bàn tay — Massage, viên ngọc — Combo) khi ảnh lỗi, mất mạng hoặc tải quá 8 giây. Không còn khung ảnh vỡ. |
 | 2 | Đăng nhập đúng email + mật khẩu nhưng bị từ chối | Dữ liệu demo dùng `@lumi.vn` / `demo1234` → đổi sang đúng bộ tài khoản ở bảng trên; khoá dữ liệu demo nâng lên `salon.demo.v5` để trình duyệt tự nạp lại dữ liệu mới. |
-| 3 | Email trong README và trên web không khớp | Một nguồn duy nhất `DEMO_ACCOUNTS` / `DEMO_PASSWORDS` (`frontend/src/utils/constants.ts`) dùng chung cho mockBackend và nút đăng nhập nhanh, khớp `database/seed.sql` và README. |
+| 3 | Email trong README và trên web không khớp | Một nguồn duy nhất `DEMO_ACCOUNTS` / `DEMO_PASSWORDS` (`frontend/src/utils/constants.ts`) dùng chung cho mockBackend và nút đăng nhập nhanh, khớp `backend/database/seed.sql` và README. |
 | 4 | Tạo nhân sự mới không biết mật khẩu | API `POST /users`, `POST /users/:id/reset-password`, `POST /stylists` trả thêm `tempPassword`; giao diện hiện hộp thoại có nút *Sao chép mật khẩu*. |
 | 5 | Khách vãng lai mới tạo đã “đi 3 lần” | Bỏ số liệu gán cứng; lượt đến / không đến tính từ lịch sử thật theo **đúng số điện thoại**. SĐT mới luôn 0 lượt, lịch sử rỗng. |
 | 6 | Lịch vãng lai vừa tạo không hiện trong danh mục | Trang *Khách vãng lai* hiển thị cả lịch hẹn ngày khác (tab *Sắp tới*); mọi thao tác ghi phát sự kiện đồng bộ nên *Lịch ngày*, *Danh sách lịch hẹn*, *Chờ xác nhận*… tự làm mới ngay (kể cả tab khác). *Lịch ngày* có nút tạo khách vãng lai. |
@@ -238,7 +270,7 @@ Chạy NestJS + PostgreSQL với `seed.sql`, đăng nhập từng vai trò và m
 
 | Lỗi | Nguyên nhân | Khắc phục |
 |---|---|---|
-| `./run_project.sh` in chữ rồi thoát, không chạy gì | Heredoc `cat <<'INFO'` thiếu dòng kết thúc `INFO` → phần mở trình duyệt và `npm run start:all` bị in ra như văn bản | Viết lại script, dùng `scripts/launcher.mjs` chung cho cả hai hệ điều hành |
+| `./scripts/unix/run_project.sh` in chữ rồi thoát, không chạy gì | Heredoc `cat <<'INFO'` thiếu dòng kết thúc `INFO` → phần mở trình duyệt và `npm run start:all` bị in ra như văn bản | Viết lại script, dùng `scripts/launcher.mjs` chung cho cả hai hệ điều hành |
 | Lần đầu dựng volume: nạp dữ liệu báo `ECONNREFUSED` | `pg_isready` qua Unix socket báo sẵn sàng khi entrypoint còn chạy init script trên máy chủ tạm (chưa mở TCP) | Healthcheck qua TCP `-h 127.0.0.1`; `run-seed.ts` tự thử lại kết nối tới 120 giây |
 | Launcher hỏng từ ngày thứ hai trở đi | `seed.sql` sinh lịch hẹn mẫu cho ngày mới có thể trùng giờ lịch thật → vi phạm `appointments_no_overlap` | Bỏ qua khung giờ đã có lịch; `ON CONFLICT DO NOTHING` cho mọi khoá duy nhất; ngày nghỉ mẫu không chèn khi trùng kỳ nghỉ khác |
 | Tài khoản mẫu không đăng nhập được sau khi đổi mật khẩu / bị khoá | Seed chỉ `DO NOTHING` | Seed đưa 8 tài khoản mẫu về đúng mật khẩu, mở khoá |
@@ -248,7 +280,27 @@ Chạy NestJS + PostgreSQL với `seed.sql`, đăng nhập từng vai trò và m
 | `node_modules` cũ sau `git pull` gây lỗi build | Chỉ cài gói khi chưa có thư mục `node_modules` | Cài lại khi hash `package.json` + `package-lock.json` đổi |
 | `[WEB] npm run dev:frontend exited with code 3221226505`, trang web chết dù API vẫn chạy | 3221226505 = `0xC0000409`: Node.js trên Windows abort ở tầng native (assertion libuv khi đóng handle, nodejs/node#56645) — không bắt được bằng JavaScript. concurrently chỉ báo mã thoát rồi bỏ mặc. Bản vá v1.2.4 (`await new Promise(() => {})`) không có tác dụng: Promise treo không giữ được event loop, tiến trình OPEN vẫn thoát ngay | Tiến trình giám sát `launcher.mjs run`: chạy thẳng `node vite.js` / `node nest.js` (bỏ 4 tầng cmd/npm), stdin giữ mở, mở trình duyệt ngay trong tiến trình (không còn tiến trình phụ thoát giữa chừng), giải mã mã thoát, tự khởi động lại, dừng cả cây bằng `taskkill /T` / nhóm tiến trình |
 | Vòng lặp liên kết `node_modules/salon-spa-booking → ..` | Phụ thuộc thừa `"salon-spa-booking": "file:.."` trong backend/frontend | Gỡ bỏ |
-| Máy mới clone, chạy `npm run dev` vào chế độ Demo: dữ liệu giả, bỏ qua mọi luật của backend | `frontend/.env` bị gitignore nên thiếu `VITE_DEMO_MODE`, và thiếu biến thì `DEMO_MODE` mặc định bật khi chạy dev | `DEMO_MODE` chỉ bật khi `VITE_DEMO_MODE=true`. `launcher.mjs start` tự tạo `.env`, ghi `VITE_DEMO_MODE=false`, chờ Docker và PostgreSQL, nạp dữ liệu rồi mới chạy; `run_project.bat` / `.sh` rút gọn còn lớp vỏ gọi launcher |
+| Máy mới clone, chạy `npm run dev` vào chế độ Demo: dữ liệu giả, bỏ qua mọi luật của backend | `frontend/.env` bị gitignore nên thiếu `VITE_DEMO_MODE`, và thiếu biến thì `DEMO_MODE` mặc định bật khi chạy dev | `DEMO_MODE` chỉ bật khi `VITE_DEMO_MODE=true`. `launcher.mjs start` tự tạo `.env`, ghi `VITE_DEMO_MODE=false`, chờ Docker và PostgreSQL, nạp dữ liệu rồi mới chạy; `scripts\windows\run_project.bat` / `.sh` rút gọn còn lớp vỏ gọi launcher |
+
+---
+
+## Góp ý Mentor Sprint 2 (06/10/2026) — v1.4.0
+
+| # | Góp ý | Đã làm | Vị trí |
+|---|---|---|---|
+| 1 | Phân chia lại nhánh GitHub | `main` (Production) · `develop` (Staging) · `feature/*` · `fix/*` · `docs/*`; nhánh cũ lưu thành thẻ `archive/*` | `docs/guides/git/GIT-BRANCHING.md`, `scripts/git/branch-cleanup.mjs` |
+| 2 | Bảng ca làm rối mắt | Lưới thợ × ngày, ca tô màu theo buổi, nút ẩn tới khi rê chuột, đếm thợ trực | `pages/admin/shifts/ShiftBoard.tsx` |
+| 3 | Chọn giờ 24 giờ | `TimeSelect24` 00:00 → 23:45, bước 15 phút | `components/TimeSelect24.tsx` |
+| 4 | AI phân tích khung giờ | Trợ lý xếp lịch: sớm · vừa khít · cân bằng thợ, có lý do | `GET /appointments/smart-slots`, `SmartSlotAssistant.tsx` |
+| 5 | AI sinh ngày lễ | Âm lịch thiên văn + Bộ luật Lao động, không chèn lên lịch khách | `GET /holidays/suggestions`, `POST /holidays/generate` |
+| 6 | Thợ tự đăng ký lịch, quản lý duyệt | Đăng ký cả tuần, duyệt / sửa giờ / từ chối / duyệt tất cả | `/shift-requests`, trang “Đăng ký lịch làm” |
+| 7 | Chân trang | Nền tối, Facebook, Zalo, địa chỉ + chỉ đường, hotline, email, giờ mở cửa, đội ngũ chuyên viên | `GET /public/salon-info`, `layouts/SiteFooter.tsx` |
+| 8 | Hiển thị dày hơn | Lưới 4 cột liền mạch, 2 hàng + “Xem thêm”, khung 7xl | `pages/public/HomePage.tsx` |
+| 9 | Khung giờ nào cũng có thợ | Cảnh báo khoảng trống + gợi ý thợ ít giờ làm, xếp 1 cú nhấp | `GET /shifts/coverage`, `CoveragePanel.tsx` |
+| 10 | Email đặt lịch thành công | Email đầy đủ (trạng thái, chỉ đường, Google Calendar), gửi ngay; gửi bổ sung từ màn hình thành công | `POST /public/bookings/email` |
+| 11 | Giữ chỗ 10–15 phút | Khoá khung giờ khi khách điền form, đếm ngược, giữ thêm | `POST/DELETE /public/holds`, `SLOT_HOLD_MINUTES` |
+
+Chi tiết từng mục: [`docs/feedback/2026-10-06-mentor-sprint2/RESOLUTION.md`](docs/feedback/2026-10-06-mentor-sprint2/RESOLUTION.md) · lịch sử phiên bản: [`CHANGELOG.md`](CHANGELOG.md).
 
 ---
 
@@ -259,3 +311,5 @@ Chạy NestJS + PostgreSQL với `seed.sql`, đăng nhập từng vai trò và m
 - [`docs/TIMEZONE.md`](docs/TIMEZONE.md) — quy ước múi giờ và định dạng
 - [`docs/BACKLOG-MAPPING.md`](docs/BACKLOG-MAPPING.md) — 39 user story ↔ mã nguồn
 - [`docs/API.md`](docs/API.md) — danh mục endpoint theo module
+- [`docs/guides/git/GIT-BRANCHING.md`](docs/guides/git/GIT-BRANCHING.md) — quy trình nhánh Git
+- [`docs/reports/`](docs/reports/) · [`docs/presentations/`](docs/presentations/) — báo cáo thực tập (NĐ 30/2020) và slide

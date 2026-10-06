@@ -21,7 +21,7 @@ const KEY = 'salon.demo.v6';
 export const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === 'true';
 /** Phiên demo lưu MÃ tài khoản (không phải vai trò) để mọi kiểm tra quyền dựa trên đúng người đăng nhập. */
 const SESSION_KEY = 'salon.demoUserId';
-/** Mật khẩu mẫu theo vai trò — trùng khớp seed của máy chủ thật (database/seed.sql) và README. */
+/** Mật khẩu mẫu theo vai trò — trùng khớp seed của máy chủ thật (backend/database/seed.sql) và README. */
 const passwordForRole = (role: string): string =>
   (DEMO_PASSWORDS as Record<string, string>)[role] ?? DEMO_PASSWORDS.stylist;
 /** Mật khẩu tạm cho tài khoản mới / cấp lại: luôn có chữ hoa, chữ thường, số và ký tự đặc biệt (giống backend). */
@@ -83,6 +83,13 @@ const addMinutes = (time: string, minutes: number) => {
 };
 const minute = (time: string) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3));
 const uid = () => Math.random().toString(36).slice(2, 10);
+const SALON_NAME_DEMO = 'Salon & Spa Hương Sen';
+interface DemoShiftRequest {
+  id: string; stylistId: string; kind: 'shift' | 'time_off'; workDate: string; startTime: string | null; endTime: string | null;
+  breakStart: string | null; breakEnd: string | null; note: string | null; status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  reviewNote: string | null; reviewedAt: string | null; reviewerName: string | null; createdAt: string;
+}
+const demoShiftRequests: DemoShiftRequest[] = [];
 const labels: Record<AppointmentStatus, string> = {
   pending: 'Chờ xác nhận', confirmed: 'Đã xác nhận', arrived: 'Đã đến',
   in_progress: 'Đang phục vụ', completed: 'Hoàn tất', cancelled: 'Đã huỷ', no_show: 'Vắng mặt',
@@ -112,9 +119,9 @@ const serviceSeed: ServiceItem[] = [
   priceText: money(Number(price)), description: String(description), isActive: true,
   stylistIds: ['st1', 'st2', 'st3', 'st4', 'st5'], stylistCount: 5, hasNoStylist: false,
 }));
-/** Giới tính 5 thợ mẫu — khớp UPDATE gender trong database/seed.sql (st1, st3, st5 là nữ). */
+/** Giới tính 5 thợ mẫu — khớp UPDATE gender trong backend/database/seed.sql (st1, st3, st5 là nữ). */
 const SEED_GENDERS: StylistGender[] = ['female', 'male', 'female', 'male', 'female'];
-/** 5 thợ mẫu — cùng tên/SĐT/email với database/seed.sql (stylist1…5@salon.vn). */
+/** 5 thợ mẫu — cùng tên/SĐT/email với backend/database/seed.sql (stylist1…5@salon.vn). */
 const stylistSeed: Stylist[] = [
   ['st1', 'Nguyễn Thu Hà', '0902000001', 4.9, 87],
   ['st2', 'Trần Minh Tuấn', '0902000002', 4.8, 64],
@@ -130,7 +137,7 @@ const stylistSeed: Stylist[] = [
   serviceIds: serviceSeed.map(s => s.id), serviceNames: serviceSeed.map(s => s.name),
   avgRating: Number(avgRating), reviewCount: Number(reviewCount),
 }));
-/** Tài khoản mẫu — trùng khớp tuyệt đối với README.md và database/seed.sql. */
+/** Tài khoản mẫu — trùng khớp tuyệt đối với README.md và backend/database/seed.sql. */
 const usersSeed: UserRow[] = [
   { id: 'u-admin', fullName: 'Quản trị hệ thống', email: 'admin@salon.vn', phone: '0901000001', role: 'admin', stylistId: null },
   { id: 'u-owner', fullName: 'Nguyễn Hoàng Anh', email: 'owner@salon.vn', phone: '0901000002', role: 'owner', stylistId: null },
@@ -690,6 +697,7 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
       'Tài khoản và phân quyền': { customer: '-', stylist: '-', receptionist: '-', owner: 'R', admin: 'F' },
       'Danh mục dịch vụ và giá': { customer: 'R', stylist: 'R', receptionist: 'R', owner: 'F', admin: 'R' },
       'Hồ sơ thợ và ca làm việc': { customer: 'R', stylist: 'R', receptionist: 'W', owner: 'F', admin: 'R' },
+      'Đăng ký ca làm và duyệt yêu cầu': { customer: '-', stylist: 'W', receptionist: 'R', owner: 'F', admin: 'R' },
       'Đặt lịch trên trang công khai': { customer: 'W', stylist: '-', receptionist: 'F', owner: 'F', admin: 'R' },
       'Lịch hẹn hằng ngày và check-in': { customer: 'R', stylist: 'W', receptionist: 'F', owner: 'F', admin: 'R' },
       'Phiếu tính tiền': { customer: 'R', stylist: 'R', receptionist: 'F', owner: 'F', admin: 'R' },
@@ -719,6 +727,33 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
   if (path === '/public/stylists') return db.stylists.filter(s => s.isActive &&
     String(q.serviceIds ?? '').split(',').filter(Boolean).every(id => s.serviceIds.includes(id)))
     .map(({ id, fullName, avatarUrl, gender, bio, avgRating }) => ({ id, fullName, avatarUrl, gender, bio, avgRating }));
+  if (path === '/appointments/smart-slots') {
+    // Chế độ Demo: lấy khung trống của bộ tính khung giờ demo, ưu tiên sớm + thợ ít lịch (máy chủ thật chấm điểm đầy đủ)
+    const ids = String(q.serviceIds ?? '').split(',');
+    const days = Math.min(7, Math.max(1, Number(q.days ?? 3)));
+    const duration = db.services.filter(sv => ids.includes(sv.id)).reduce((n, sv) => n + sv.durationMinutes, 0);
+    const hm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+    const suggestions: { date: string; time: string; endTime: string; stylistId: string; stylistName: string; score: number; reasons: string[] }[] = [];
+    const windows: { date: string; closedReason: string | null; stylists: never[] }[] = [];
+    for (let i = 0; i < days; i++) {
+      const date = iso(new Date(new Date(`${String(q.date)}T12:00:00`).getTime() + i * 86400000));
+      const av = availability(date, ids) as { slots: { time: string; stylistIds: string[] }[] };
+      windows.push({ date, closedReason: null, stylists: [] });
+      const used = new Map<string, number>();
+      for (const slot of av.slots) {
+        for (const sid of slot.stylistIds) {
+          if ((used.get(sid) ?? 0) >= 1) continue;
+          used.set(sid, 1);
+          const load = db.appointments.filter(a => a.date === date && a.stylist.id === sid && ACTIVE_STATUSES.includes(a.status)).length;
+          suggestions.push({ date, time: slot.time, endTime: hm(minute(slot.time) + duration), stylistId: sid,
+            stylistName: db.stylists.find(st => st.id === sid)?.fullName ?? '', score: Math.round(100 - i * 12 - load * 3),
+            reasons: [i === 0 ? 'Khung sớm nhất trong ngày' : 'Ngày gần nhất còn chỗ', load ? `Thợ đang có ${load} lịch` : 'Thợ chưa có lịch nào trong ngày'] });
+        }
+      }
+    }
+    return { fromDate: q.date, days, totalDurationMinutes: duration, windows,
+      suggestions: suggestions.sort((a, b) => b.score - a.score).slice(0, Number(q.limit ?? 6)) };
+  }
   if (path === '/public/availability' || path === '/appointments/availability')
     return availability(String(q.date), String(q.serviceIds ?? '').split(','), q.stylistId ? String(q.stylistId) : undefined,
       q.excludeAppointmentId ? String(q.excludeAppointmentId) : undefined);
@@ -729,6 +764,31 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
         durationMinutes: s.durationMinutes, price: s.price })), totalDurationMinutes: a.totalDurationMinutes,
       estimatedTotal: a.estimatedTotal, status: a.status, nameConflict: false, emailQueued: false };
   }
+  if (path === '/public/salon-info') return {
+    name: SALON_NAME_DEMO, slogan: 'Chăm sóc tóc, da và tinh thần trong không gian tinh tế',
+    address: '128 Nguyễn Văn Cừ, Quận 5, TP. Hồ Chí Minh', hotline: '028 3838 6868', email: 'lienhe@huongsen.vn',
+    facebookUrl: 'https://www.facebook.com/', zaloUrl: 'https://zalo.me/0909686868', websiteUrl: null,
+    mapUrl: 'https://www.google.com/maps/search/?api=1&query=128%20Nguy%E1%BB%85n%20V%C4%83n%20C%E1%BB%AB%2C%20Qu%E1%BA%ADn%205',
+    openingHours: db.workingHours.map(h => ({ dayOfWeek: h.dayOfWeek, dayLabel: h.dayLabel, isClosed: h.isClosed, openTime: h.openTime, closeTime: h.closeTime })),
+    team: db.stylists.filter(st => st.isActive).map(st => ({ id: st.id, fullName: st.fullName, avatarUrl: st.avatarUrl, gender: st.gender,
+      specialty: st.serviceNames.slice(0, 2).join(' · ') || null, bio: st.bio, avgRating: null })),
+  };
+  if (path === '/public/bookings/email') {
+    const a = db.appointments.find(item => item.code.toUpperCase() === String(p.code ?? '').trim().toUpperCase());
+    if (!a || a.customer.phone !== p.phone) bad(MSG.CODE_NOT_FOUND, undefined, 404);
+    const [user, domain] = String(p.email).trim().toLowerCase().split('@');
+    return { emailQueued: true, toEmail: `${user.slice(0, 2)}***@${domain}` };
+  }
+  if (path === '/public/holds' && method === 'post') {
+    // Chế độ Demo: chỉ một trình duyệt nên giữ chỗ là hình thức (máy chủ thật khoá khung giờ với mọi khách khác)
+    const duration = db.services.filter(sv => (p.serviceIds as string[]).includes(sv.id)).reduce((n, sv) => n + sv.durationMinutes, 0);
+    const stylist = db.stylists.find(st => st.id === p.stylistId) ?? db.stylists.find(st => st.isActive);
+    const end = minute(String(p.time)) + duration;
+    return { holdToken: uid(), stylistId: stylist?.id ?? '', stylistName: stylist?.fullName ?? '', date: p.date, time: p.time,
+      endTime: `${String(Math.floor(end / 60)).padStart(2, '0')}:${String(end % 60).padStart(2, '0')}`,
+      expiresAt: new Date(Date.now() + 10 * 60000).toISOString(), holdMinutes: 10 };
+  }
+  if (path.startsWith('/public/holds/') && method === 'delete') return { released: true };
   if (path === '/public/lookup') {
     if (!p.code && !p.phone) bad('Vui lòng nhập mã tra cứu hoặc số điện thoại');
     if (String(p.code ?? '').length > 8) bad(MSG.CODE_LENGTH, 'code');
@@ -937,6 +997,43 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
     }
     return withEmail(stylist);
   }
+  // Mentor S2 · mục 6 (chế độ Demo): yêu cầu đăng ký ca giữ trong bộ nhớ của tab
+  if (path.startsWith('/shift-requests')) {
+    const me = getUser() ?? bad(MSG.UNAUTHORIZED, undefined, 401);
+    const view = (r: DemoShiftRequest) => ({ ...r, stylistName: db.stylists.find(s => s.id === r.stylistId)?.fullName ?? '',
+      dayText: new Intl.DateTimeFormat('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(`${r.workDate}T00:00:00`)) });
+    const match = path.match(/^\/shift-requests\/([^/]+)(?:\/(approve|reject))?$/);
+    if (path === '/shift-requests/mine') return demoShiftRequests.filter(r => r.stylistId === me.stylistId).map(view);
+    if (path === '/shift-requests' && method === 'get') return demoShiftRequests
+      .filter(r => (!q.status || r.status === q.status) && (!q.from || r.workDate >= String(q.from)) && (!q.to || r.workDate <= String(q.to)))
+      .map(view);
+    if (path === '/shift-requests' && method === 'post') {
+      if (!me.stylistId) bad('Tài khoản chưa gắn với hồ sơ thợ nên không đăng ký ca được', undefined, 403);
+      const created = (p.items as DemoShiftRequest[]).map(i => ({ id: uid(), stylistId: me.stylistId as string, kind: i.kind, workDate: i.workDate,
+        startTime: i.startTime ?? null, endTime: i.endTime ?? null, breakStart: null, breakEnd: null, note: i.note ?? null,
+        status: 'pending' as const, reviewNote: null, reviewedAt: null, reviewerName: null, createdAt: new Date().toISOString() }));
+      demoShiftRequests.push(...created); return created.map(view);
+    }
+    if (path === '/shift-requests/approve-batch') {
+      const approved: string[] = [];
+      for (const id of p.ids as string[]) { const r = demoShiftRequests.find(x => x.id === id && x.status === 'pending'); if (r) { handle('post', `/shift-requests/${id}/approve`, {}, {}); approved.push(id); } }
+      return { approved, failed: [] };
+    }
+    if (match) {
+      const r = demoShiftRequests.find(x => x.id === match[1]) ?? bad('Không tìm thấy yêu cầu đăng ký', undefined, 404);
+      if (r.status !== 'pending') bad('Yêu cầu này đã được xử lý', undefined, 409);
+      if (method === 'delete') { r.status = 'cancelled'; return { success: true }; }
+      if (match[2] === 'reject') { Object.assign(r, { status: 'rejected', reviewNote: p.note ?? null, reviewedAt: new Date().toISOString(), reviewerName: me.fullName }); return view(r); }
+      if (r.kind === 'shift') handle('post', `/stylists/${r.stylistId}/shifts`, { shifts: [{ workDate: r.workDate,
+        startTime: p.startTime ?? r.startTime, endTime: p.endTime ?? r.endTime, breakStart: null, breakEnd: null }] }, {});
+      else {
+        const res = handle('post', `/stylists/${r.stylistId}/time-off`, { offDate: r.workDate, startTime: r.startTime, endTime: r.endTime, reason: r.note, force: p.force }, {});
+        if (res && typeof res === 'object' && 'warning' in res) return { ...(res as object), requiresForce: true };
+      }
+      Object.assign(r, { status: 'approved', reviewedAt: new Date().toISOString(), reviewerName: me.fullName, reviewNote: p.note ?? null });
+      return view(r);
+    }
+  }
   if (path === '/shifts' && method === 'get') return db.shifts.filter(s =>
     (!q.from || s.workDate >= String(q.from)) && (!q.to || s.workDate <= String(q.to)) &&
     (!q.stylistId || s.stylistId === q.stylistId));
@@ -954,6 +1051,48 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
       if (existing) { db.shifts = db.shifts.filter(s => s.id !== existing.id); overwritten++; }
       db.shifts.push({ ...shift, id: uid(), workDate: date }); created++;
     }); save(); return { created, skipped, overwritten };
+  }
+  if (path === '/shifts/coverage') {
+    // Chế độ Demo: cùng thuật toán với máy chủ (backend/src/modules/stylists/coverage.ts), rút gọn
+    const minStaff = Math.max(1, Number(q.minStaff ?? 1));
+    const from = String(q.from); const to = String(q.to);
+    const hhmm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+    const active = db.stylists.filter(st => st.isActive);
+    const inRange = db.shifts.filter(sh => sh.workDate >= from && sh.workDate <= to && active.some(st => st.id === sh.stylistId));
+    const work = (sh: Shift) => minute(sh.endTime) - minute(sh.startTime) - (sh.breakStart && sh.breakEnd ? minute(sh.breakEnd) - minute(sh.breakStart) : 0);
+    const load = new Map<string, number>(); inRange.forEach(sh => load.set(sh.stylistId, (load.get(sh.stylistId) ?? 0) + work(sh)));
+    const days = [];
+    for (let d = from; d <= to; d = iso(new Date(new Date(`${d}T12:00:00`).getTime() + 86400000))) {
+      const wh = db.workingHours.find(h => h.dayOfWeek === new Date(`${d}T12:00:00`).getDay());
+      const holiday = db.holidays.find(h => h.startDate <= d && h.endDate >= d);
+      const dayShifts = inRange.filter(sh => sh.workDate === d);
+      const offs = db.timeOff.filter(t => t.offDate === d);
+      const base = { date: d, dayText: d, staffCount: new Set(dayShifts.map(sh => sh.stylistId)).size };
+      if (holiday || !wh || wh.isClosed) { days.push({ ...base, closedReason: holiday?.reason ?? 'Tiệm nghỉ theo lịch hằng tuần', openTime: null, closeTime: null,
+        openMinutes: 0, coveredMinutes: 0, coveragePercent: 100, peakCount: 0, hourly: [], gaps: [] }); continue; }
+      const open = minute(wh.openTime); const close = minute(wh.closeTime);
+      const gaps: { start: number; end: number; minCount: number }[] = []; let covered = 0;
+      for (let m = open; m < close; m += 15) {
+        const n = new Set(dayShifts.filter(sh => m >= minute(sh.startTime) && m < minute(sh.endTime) &&
+          !(sh.breakStart && sh.breakEnd && m >= minute(sh.breakStart) && m < minute(sh.breakEnd)) &&
+          !offs.some(o => o.stylistId === sh.stylistId && (!o.startTime || !o.endTime || (m >= minute(o.startTime) && m < minute(o.endTime)))))
+          .map(sh => sh.stylistId)).size;
+        if (n >= minStaff) { covered += 15; continue; }
+        const last = gaps[gaps.length - 1];
+        if (last && last.end === m) { last.end = m + 15; last.minCount = Math.min(last.minCount, n); } else gaps.push({ start: m, end: m + 15, minCount: n });
+      }
+      days.push({ ...base, closedReason: null, openTime: wh.openTime, closeTime: wh.closeTime, openMinutes: close - open, coveredMinutes: covered,
+        coveragePercent: Math.round(covered * 100 / Math.max(1, close - open)), peakCount: 0, hourly: [],
+        gaps: gaps.map(g => ({ startTime: hhmm(g.start), endTime: hhmm(g.end), minutes: g.end - g.start, minCount: g.minCount,
+          candidates: active.filter(st => !dayShifts.some(sh => sh.stylistId === st.id && minute(sh.startTime) < g.end && g.start < minute(sh.endTime)))
+            .filter(st => !offs.some(o => o.stylistId === st.id))
+            .map(st => ({ stylistId: st.id, fullName: st.fullName, weekMinutes: load.get(st.id) ?? 0 }))
+            .sort((a, b) => a.weekMinutes - b.weekMinutes).slice(0, 3) })) });
+    }
+    return { from, to, minStaff, totalGapMinutes: days.reduce((n, d) => n + d.gaps.reduce((a, g) => a + g.minutes, 0), 0),
+      understaffedDays: days.filter(d => d.gaps.length).length,
+      workload: active.map(st => ({ stylistId: st.id, fullName: st.fullName, minutes: load.get(st.id) ?? 0 })).sort((a, b) => b.minutes - a.minutes),
+      days };
   }
   const shiftMatch = path.match(/^\/shifts\/([^/]+)$/);
   if (shiftMatch) {
@@ -1069,6 +1208,48 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
     db.holidays.push(holiday); save();
     record('create', 'salon_holiday', 'Khai báo ngày nghỉ của tiệm', holiday.id, { ...p });
     return holiday;
+  }
+  if (path === '/holidays/suggestions' || path === '/holidays/generate') {
+    // Chế độ Demo: bảng âm lịch tính sẵn (máy chủ thật tính bằng thuật toán thiên văn, mọi năm 2000–2100)
+    const year = Number(path.endsWith('generate') ? p.year : q.year);
+    const LUNAR: Record<number, [string, string]> = {
+      2025: ['2025-01-29', '2025-04-07'], 2026: ['2026-02-17', '2026-04-26'], 2027: ['2027-02-06', '2027-04-16'],
+      2028: ['2028-01-26', '2028-04-04'], 2029: ['2029-02-13', '2029-04-23'], 2030: ['2030-02-02', '2030-04-12'],
+    };
+    if (!LUNAR[year]) bad('Chế độ Demo chỉ hỗ trợ năm 2025–2030');
+    const shift = (d: string, n: number) => { const x = new Date(`${d}T00:00:00Z`); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
+    const [tet, hung] = LUNAR[year];
+    const base = [
+      ['tet-duong-lich', 'Tết Dương lịch', `${year}-01-01`, `${year}-01-01`, 'solar', '01/01 dương lịch'],
+      ['tet-nguyen-dan', `Tết Nguyên Đán ${year}`, shift(tet, -1), shift(tet, 3), 'lunar', 'Ngày cuối năm âm lịch đến mùng 4 Tết'],
+      ['gio-to-hung-vuong', 'Giỗ Tổ Hùng Vương', hung, hung, 'lunar', '10/3 âm lịch'],
+      ['giai-phong-mien-nam', 'Ngày Giải phóng miền Nam, thống nhất đất nước', `${year}-04-30`, `${year}-04-30`, 'solar', '30/04 dương lịch'],
+      ['quoc-te-lao-dong', 'Ngày Quốc tế Lao động', `${year}-05-01`, `${year}-05-01`, 'solar', '01/05 dương lịch'],
+      ['quoc-khanh', 'Quốc khánh', `${year}-09-01`, `${year}-09-02`, 'solar', '02/09 và 01 ngày liền kề'],
+      ...(year >= 2026 ? [['van-hoa-viet-nam', 'Ngày Văn hoá Việt Nam', `${year}-11-24`, `${year}-11-24`, 'solar', '24/11 dương lịch']] : []),
+    ];
+    const today = new Date().toLocaleDateString('en-CA');
+    const list = base.map(([k, name, startDate, endDate, calendar, rule]) => {
+      const existing = db.holidays.find(h => h.startDate <= endDate && h.endDate >= startDate);
+      const affected = db.appointments.filter(a => a.date >= startDate && a.date <= endDate && ACTIVE_STATUSES.includes(a.status));
+      return { key: `${year}-${k}`, name, startDate, endDate, calendar, rule, note: null,
+        days: Math.round((Date.parse(endDate) - Date.parse(startDate)) / 86400000) + 1,
+        status: endDate < today ? 'past' : existing ? 'exists' : affected.length ? 'conflict' : 'ready',
+        existingReason: existing?.reason ?? null, affectedAppointments: affected.length, affectedCodes: affected.map(a => a.code) };
+    });
+    if (path.endsWith('suggestions')) return list;
+    const keys = Array.isArray(p.keys) && p.keys.length ? new Set(p.keys as string[]) : null;
+    const created: { key: string; id: string; name: string; startDate: string; endDate: string }[] = [];
+    const skipped: { key: string; name: string; reason: string }[] = [];
+    for (const h of list) {
+      if (keys && !keys.has(h.key)) continue;
+      if (h.status === 'past' || h.status === 'exists' || (h.status === 'conflict' && !p.force)) {
+        skipped.push({ key: h.key, name: h.name, reason: h.status }); continue;
+      }
+      const holiday: Holiday = { id: uid(), startDate: h.startDate, endDate: h.endDate, reason: h.name };
+      db.holidays.push(holiday); created.push({ key: h.key, id: holiday.id, name: h.name, startDate: h.startDate, endDate: h.endDate });
+    }
+    save(); return { year, created, skipped };
   }
   if (path.startsWith('/holidays/') && method === 'delete') {
     db.holidays = db.holidays.filter(h => h.id !== path.split('/')[2]); save(); return {};

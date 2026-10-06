@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CalendarPlus, Copy, Plus, Trash2, X } from 'lucide-react';
-import { getErrorCode, getErrorDetails, getErrorMessage, stylistsApi } from '@/api';
-import type { Shift, ShiftConflictAppointment, Stylist, TimeOff } from '@/types';
+import { CalendarPlus, ChevronLeft, ChevronRight, Copy, Plus, Search } from 'lucide-react';
+import { getErrorCode, getErrorDetails, getErrorMessage, shiftRequestsApi, stylistsApi, workingHoursApi } from '@/api';
+import type { CoverageReport, Holiday, Shift, ShiftConflictAppointment, ShiftRequest, Stylist, TimeOff, WorkingHour } from '@/types';
 import {
-  Button, ConfirmDialog, Field, Input, Modal, SectionTitle, Select, Spinner,
+  Button, ConfirmDialog, Field, Input, Modal, SectionTitle, Select, Spinner, TimeSelect24,
 } from '@/components';
-import { addDaysISO, formatDate, startOfWeekISO, todayISO } from '@/utils/format';
-import { DOW_LABELS } from '@/utils/constants';
+import { addDaysISO, formatDate, formatDuration, startOfWeekISO, timeToMinutes, todayISO } from '@/utils/format';
+import { DayInfo, ShiftBoard } from './shifts/ShiftBoard';
+import { ShiftRequestsPanel } from './shifts/ShiftRequestsPanel';
+import { CoveragePanel } from './shifts/CoveragePanel';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 
@@ -23,7 +25,17 @@ export function ShiftsPage() {
   const [stylists, setStylists] = useState<Stylist[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [timeOff, setTimeOff] = useState<TimeOff[]>([]);
+  const [holidays, setHolidays] = useState<Holiday[]>([]);
+  const [hours, setHours] = useState<WorkingHour[]>([]);
+  /** Mentor S2 · mục 6: lịch rảnh thợ tự đăng ký, chờ duyệt. */
+  const [requests, setRequests] = useState<ShiftRequest[]>([]);
+  const canSeeRequests = user?.role === 'owner' || user?.role === 'receptionist' || user?.role === 'admin';
+  /** Mentor S2 · mục 9: cảnh báo khung giờ chưa có thợ. */
+  const [coverage, setCoverage] = useState<CoverageReport | null>(null);
+  const [minStaff, setMinStaff] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState('');
+  const [onlyScheduled, setOnlyScheduled] = useState(false);
 
   const [addOpen, setAddOpen] = useState(false);
   const [addStylist, setAddStylist] = useState('');
@@ -53,17 +65,55 @@ export function ShiftsPage() {
   const [blocked, setBlocked] = useState<{ shift: Shift; appointments: ShiftConflictAppointment[] } | null>(null);
 
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDaysISO(weekStart, i)), [weekStart]);
+  /** Lý do tiệm nghỉ từng ngày: ngày lễ / nghỉ đột xuất, hoặc thứ đóng cửa cố định. */
+  const dayInfos = useMemo<DayInfo[]>(() => days.map((date) => {
+    const holiday = holidays.find((h) => h.startDate <= date && h.endDate >= date);
+    const dow = new Date(`${date}T12:00:00Z`).getUTCDay();
+    const wh = hours.find((h) => h.dayOfWeek === dow);
+    return { date, closedReason: holiday ? holiday.reason : wh?.isClosed ? 'Đóng cửa cố định' : null };
+  }), [days, holidays, hours]);
+  const visibleStylists = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return stylists
+      .filter((s) => !q || s.fullName.toLowerCase().includes(q))
+      .filter((s) => !onlyScheduled || shifts.some((x) => x.stylistId === s.id));
+  }, [stylists, shifts, query, onlyScheduled]);
+  const addHours = useMemo(() => {
+    const dow = new Date(`${addDate}T12:00:00Z`).getUTCDay();
+    return hours.find((h) => h.dayOfWeek === dow);
+  }, [hours, addDate]);
+  const addDuration = timeToMinutes(addEnd) - timeToMinutes(addStart)
+    - (hasBreak ? Math.max(0, timeToMinutes(addBreakEnd) - timeToMinutes(addBreakStart)) : 0);
+  const addError = timeToMinutes(addEnd) <= timeToMinutes(addStart) ? 'Giờ kết thúc phải sau giờ bắt đầu'
+    : hasBreak && (timeToMinutes(addBreakStart) < timeToMinutes(addStart) || timeToMinutes(addBreakEnd) > timeToMinutes(addEnd)
+      || timeToMinutes(addBreakEnd) <= timeToMinutes(addBreakStart)) ? 'Giờ nghỉ phải nằm trong ca và kết thúc sau khi bắt đầu'
+      : null;
+
+  const openAdd = (stylistId?: string, date?: string) => {
+    if (stylistId) setAddStylist(stylistId);
+    if (date) setAddDate(date);
+    setAddOpen(true);
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const to = addDaysISO(weekStart, 6);
-      const [sty, sh, off] = await Promise.all([
+      const [sty, sh, off, hol, wh] = await Promise.all([
         stylistsApi.list({ isActive: true }),
         stylistsApi.shifts({ from: weekStart, to }),
         stylistsApi.timeOff({ from: weekStart, to }),
+        workingHoursApi.holidays({ from: weekStart, to }),
+        workingHoursApi.list(),
       ]);
-      setStylists(sty); setShifts(sh); setTimeOff(off);
+      setStylists(sty); setShifts(sh); setTimeOff(off); setHolidays(hol); setHours(wh);
+      // Hộp yêu cầu là phần phụ: lỗi tải (vd. máy chủ cũ chưa có API) không được làm hỏng bảng ca
+      setRequests(canSeeRequests
+        ? await shiftRequestsApi.list({ status: 'pending', from: weekStart, to }).catch(() => [] as ShiftRequest[])
+        : []);
+      setCoverage(canSeeRequests
+        ? await stylistsApi.coverage({ from: weekStart, to, minStaff }).catch(() => null)
+        : null);
       if (!addStylist && sty.length) { setAddStylist(sty[0].id); setOffStylist(sty[0].id); }
     } catch (e) {
       toast.error(getErrorMessage(e));
@@ -71,7 +121,7 @@ export function ShiftsPage() {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [weekStart, toast]);
+  }, [weekStart, minStaff, toast]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -126,7 +176,7 @@ export function ShiftsPage() {
             <Button size="sm" variant="outline" icon={<CalendarPlus size={15} />} onClick={() => setOffOpen(true)}>
               Khai báo nghỉ
             </Button>
-            <Button size="sm" icon={<Plus size={15} />} onClick={() => setAddOpen(true)}>Thêm ca</Button>
+            <Button size="sm" icon={<Plus size={15} />} onClick={() => openAdd()}>Thêm ca</Button>
           </div>
         ) : canManageOff && (
           // Lễ tân không xếp ca nhưng vẫn được khai báo / huỷ nghỉ cho thợ
@@ -137,86 +187,61 @@ export function ShiftsPage() {
       />
 
       <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" variant="outline" onClick={() => setWeekStart(addDaysISO(weekStart, -7))}>Tuần trước</Button>
-        <input type="date" className="field-input min-h-[36px] w-auto" value={weekStart}
+        <div className="inline-flex items-center rounded-xl border border-slate-200 bg-white p-0.5 shadow-sm">
+          <Button size="sm" variant="ghost" aria-label="Tuần trước" onClick={() => setWeekStart(addDaysISO(weekStart, -7))}>
+            <ChevronLeft size={16} />
+          </Button>
+          <span className="px-2 text-sm font-semibold tabular-nums">
+            {formatDate(`${weekStart}T00:00:00+07:00`)} – {formatDate(`${addDaysISO(weekStart, 6)}T00:00:00+07:00`)}
+          </span>
+          <Button size="sm" variant="ghost" aria-label="Tuần sau" onClick={() => setWeekStart(addDaysISO(weekStart, 7))}>
+            <ChevronRight size={16} />
+          </Button>
+        </div>
+        <Button size="sm" variant="outline" onClick={() => setWeekStart(startOfWeekISO(todayISO()))}>Tuần này</Button>
+        <input type="date" aria-label="Chọn tuần" className="field-input min-h-[36px] w-auto" value={weekStart}
                onChange={(e) => e.target.value && setWeekStart(startOfWeekISO(e.target.value))} />
-        <Button size="sm" variant="outline" onClick={() => setWeekStart(addDaysISO(weekStart, 7))}>Tuần sau</Button>
-        <span className="text-sm font-semibold">
-          {formatDate(`${weekStart}T00:00:00+07:00`)} – {formatDate(`${addDaysISO(weekStart, 6)}T00:00:00+07:00`)}
-        </span>
+        <div className="relative ml-auto w-full sm:w-56">
+          <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted" />
+          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Tìm thợ" aria-label="Tìm thợ"
+                 className="min-h-[36px] pl-9" />
+        </div>
+        <label className="flex items-center gap-2 text-xs text-ink-soft">
+          <input type="checkbox" className="h-4 w-4 rounded border-slate-300" checked={onlyScheduled}
+                 onChange={(e) => setOnlyScheduled(e.target.checked)} />
+          Chỉ thợ có ca tuần này
+        </label>
       </div>
 
+      {!loading && (
+        <ShiftRequestsPanel requests={requests} canApprove={canEdit} onChanged={() => void load()} />
+      )}
+
+      {!loading && (
+        <CoveragePanel report={coverage} minStaff={minStaff} onMinStaff={setMinStaff} canEdit={canEdit} onChanged={() => void load()} />
+      )}
+
       {loading ? <Spinner /> : (
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th className="sticky left-0 z-10 bg-brand-50">Thợ</th>
-                {days.map((d) => (
-                  <th key={d} className="min-w-[150px]">
-                    {DOW_LABELS[new Date(`${d}T12:00:00Z`).getUTCDay()]}
-                    <span className="block font-normal normal-case text-ink-muted">{d.slice(8)}/{d.slice(5, 7)}</span>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {stylists.map((s) => (
-                <tr key={s.id}>
-                  <td className="sticky left-0 z-10 bg-white font-medium">{s.fullName}</td>
-                  {days.map((d) => {
-                    const cellShifts = shifts.filter((x) => x.stylistId === s.id && x.workDate === d);
-                    const offs = timeOff.filter((x) => x.stylistId === s.id && x.offDate === d);
-                    return (
-                      <td key={d} className="align-top">
-                        {offs.map((o) => (
-                          <span key={o.id} className="mb-1 flex items-center justify-between gap-1 rounded-lg bg-red-50 px-2 py-1 text-[11px] text-red-700">
-                            <span>
-                              Nghỉ {o.startTime ? `${o.startTime.slice(0, 5)}–${o.endTime?.slice(0, 5)}` : 'cả ngày'}
-                              {o.reason ? ` · ${o.reason}` : ''}
-                            </span>
-                            {canManageOff && (
-                              <button type="button" onClick={() => setRemoveOffTarget(o)} title="Huỷ khai báo nghỉ"
-                                      aria-label={`Huỷ khai báo nghỉ ngày ${o.offDate} của ${s.fullName}`}
-                                      className="-my-1 -mr-1.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-red-600 hover:bg-red-100">
-                                <X size={14} />
-                              </button>
-                            )}
-                          </span>
-                        ))}
-                        {cellShifts.length === 0 && offs.length === 0 && (
-                          <span className="text-xs text-ink-muted">—</span>
-                        )}
-                        {cellShifts.map((sh) => (
-                          <span key={sh.id}
-                                className="mb-1 flex items-center justify-between gap-1 rounded-lg bg-brand-50 px-2 py-1 text-[11px]">
-                            <span>
-                              {sh.startTime}–{sh.endTime}
-                              {sh.breakStart && <em className="block text-ink-muted">nghỉ {sh.breakStart}–{sh.breakEnd}</em>}
-                            </span>
-                            {canEdit && (
-                              <button type="button" onClick={() => setRemoveTarget(sh)} title="Xoá ca"
-                                      aria-label={`Xoá ca ${sh.startTime}–${sh.endTime} ngày ${sh.workDate} của ${s.fullName}`}
-                                      className="-my-1 -mr-1.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-red-600 hover:bg-red-100">
-                                <Trash2 size={14} />
-                              </button>
-                            )}
-                          </span>
-                        ))}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <ShiftBoard
+          days={dayInfos}
+          stylists={visibleStylists}
+          shifts={shifts}
+          timeOff={timeOff}
+          pendingRequests={requests}
+          understaffedDates={new Set(coverage?.days.filter((d) => d.gaps.length).map((d) => d.date) ?? [])}
+          today={todayISO()}
+          canEdit={canEdit}
+          canManageOff={canManageOff}
+          onAdd={(stylistId, date) => openAdd(stylistId, date)}
+          onRemoveShift={setRemoveTarget}
+          onRemoveOff={setRemoveOffTarget}
+        />
       )}
 
       <Modal open={addOpen} title="Thêm ca làm" onClose={() => setAddOpen(false)} size="sm"
              footer={<div className="flex justify-end gap-2">
                <Button variant="ghost" onClick={() => setAddOpen(false)}>Đóng</Button>
-               <Button onClick={addShift}>Thêm ca</Button>
+               <Button onClick={addShift} disabled={!!addError}>Thêm ca</Button>
              </div>}>
         <div className="space-y-3">
           <Field label="Thợ" required>
@@ -224,15 +249,24 @@ export function ShiftsPage() {
               {stylists.map((s) => <option key={s.id} value={s.id}>{s.fullName}</option>)}
             </Select>
           </Field>
-          <Field label="Ngày" required>
+          <Field label="Ngày" required
+                 hint={addHours ? (addHours.isClosed ? 'Tiệm đóng cửa ngày này' : `Giờ mở cửa: ${addHours.openTime}–${addHours.closeTime}`) : undefined}>
             <input type="date" className="field-input" value={addDate} onChange={(e) => setAddDate(e.target.value)} />
           </Field>
+          <div className="flex flex-wrap gap-1.5" aria-label="Mẫu ca nhanh">
+            {[['Ca sáng', '08:00', '12:00'], ['Ca chiều', '13:00', '17:00'], ['Ca tối', '17:00', '21:00'], ['Cả ngày', '09:00', '18:00']].map(([label, a, b]) => (
+              <button key={label} type="button" onClick={() => { setAddStart(a); setAddEnd(b); setHasBreak(label === 'Cả ngày'); }}
+                      className="rounded-full border border-slate-200 px-2.5 py-1 text-xs text-ink-soft hover:border-teal-500 hover:text-teal-700">
+                {label} {a}–{b}
+              </button>
+            ))}
+          </div>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Giờ bắt đầu" required>
-              <input type="time" className="field-input" value={addStart} onChange={(e) => setAddStart(e.target.value)} />
+            <Field label="Giờ bắt đầu (24h)" required>
+              <TimeSelect24 value={addStart} onChange={setAddStart} aria-label="Giờ bắt đầu ca" />
             </Field>
-            <Field label="Giờ kết thúc" required>
-              <input type="time" className="field-input" value={addEnd} onChange={(e) => setAddEnd(e.target.value)} />
+            <Field label="Giờ kết thúc (24h)" required error={addError ?? undefined}>
+              <TimeSelect24 value={addEnd} onChange={setAddEnd} invalid={!!addError} aria-label="Giờ kết thúc ca" />
             </Field>
           </div>
           <label className="flex items-center gap-2 text-sm">
@@ -243,14 +277,15 @@ export function ShiftsPage() {
           {hasBreak && (
             <div className="grid grid-cols-2 gap-3">
               <Field label="Nghỉ từ">
-                <input type="time" className="field-input" value={addBreakStart}
-                       onChange={(e) => setAddBreakStart(e.target.value)} />
+                <TimeSelect24 value={addBreakStart} onChange={setAddBreakStart} min={addStart} max={addEnd} aria-label="Nghỉ giữa ca từ" />
               </Field>
               <Field label="Nghỉ đến">
-                <input type="time" className="field-input" value={addBreakEnd}
-                       onChange={(e) => setAddBreakEnd(e.target.value)} />
+                <TimeSelect24 value={addBreakEnd} onChange={setAddBreakEnd} min={addStart} max={addEnd} aria-label="Nghỉ giữa ca đến" />
               </Field>
             </div>
+          )}
+          {!addError && (
+            <p className="text-xs text-ink-muted">Thời gian làm thực tế: <strong>{formatDuration(Math.max(0, addDuration))}</strong></p>
           )}
         </div>
       </Modal>
@@ -300,11 +335,11 @@ export function ShiftsPage() {
           </label>
           {!offAllDay && (
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Từ giờ">
-                <input type="time" className="field-input" value={offStart} onChange={(e) => setOffStart(e.target.value)} />
+              <Field label="Từ giờ (24h)">
+                <TimeSelect24 value={offStart} onChange={setOffStart} aria-label="Nghỉ từ giờ" />
               </Field>
-              <Field label="Đến giờ">
-                <input type="time" className="field-input" value={offEnd} onChange={(e) => setOffEnd(e.target.value)} />
+              <Field label="Đến giờ (24h)">
+                <TimeSelect24 value={offEnd} onChange={setOffEnd} aria-label="Nghỉ đến giờ" />
               </Field>
             </div>
           )}

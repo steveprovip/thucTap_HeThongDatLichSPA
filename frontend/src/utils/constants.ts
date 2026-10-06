@@ -79,7 +79,7 @@ export const ROLE_LANDING: Record<string, string> = {
 
 /**
  * Tài khoản mẫu — NGUỒN DUY NHẤT cho giao diện. Phải trùng khớp tuyệt đối với
- * database/seed.sql, backend/src/database/run-seed.ts, mockBackend.ts và README.md.
+ * backend/database/seed.sql, backend/src/database/run-seed.ts, mockBackend.ts và README.md.
  */
 export const DEMO_PASSWORDS = {
   admin: 'Admin@123',

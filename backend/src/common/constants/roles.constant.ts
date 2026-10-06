@@ -35,6 +35,10 @@ export const PERMISSION_MATRIX: Record<string, Record<Role, PermissionLevel>> = 
   'Hồ sơ thợ và ca làm việc': {
     [Role.CUSTOMER]: 'R', [Role.STYLIST]: 'R', [Role.RECEPTIONIST]: 'W', [Role.OWNER]: 'F', [Role.ADMIN]: 'R',
   },
+  /** Mentor S2 · mục 6: thợ tự đăng ký ca / nghỉ, Chủ tiệm duyệt; Lễ tân & Admin chỉ xem. */
+  'Đăng ký ca làm và duyệt yêu cầu': {
+    [Role.CUSTOMER]: '-', [Role.STYLIST]: 'W', [Role.RECEPTIONIST]: 'R', [Role.OWNER]: 'F', [Role.ADMIN]: 'R',
+  },
   'Đặt lịch trên trang công khai': {
     [Role.CUSTOMER]: 'W', [Role.STYLIST]: '-', [Role.RECEPTIONIST]: 'F', [Role.OWNER]: 'F', [Role.ADMIN]: 'R',
   },

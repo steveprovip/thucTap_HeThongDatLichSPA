@@ -16,6 +16,7 @@ import { UsersModule } from './modules/users/users.module';
 import { ServicesModule } from './modules/services/services.module';
 import { WorkingHoursModule } from './modules/working-hours/working-hours.module';
 import { StylistsModule } from './modules/stylists/stylists.module';
+import { ShiftRequestsModule } from './modules/shift-requests/shift-requests.module';
 import { CustomersModule } from './modules/customers/customers.module';
 import { BookingEngineModule } from './modules/booking-engine/booking-engine.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
@@ -53,6 +54,7 @@ import { RealtimeInterceptor } from './modules/events/realtime.interceptor';
     ServicesModule,
     WorkingHoursModule,
     StylistsModule,
+    ShiftRequestsModule,
     CustomersModule,
     BookingEngineModule,
     ReviewsModule,

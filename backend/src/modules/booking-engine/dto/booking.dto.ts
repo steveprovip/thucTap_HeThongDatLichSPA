@@ -30,6 +30,33 @@ export class AvailabilityQueryDto {
 
   @IsOptional() @IsUUID('4', { message: 'Thợ không hợp lệ' })
   stylistId?: string;
+
+  /** Giữ chỗ của chính khách đang xem — khung giờ đó không bị ẩn với họ. */
+  @IsOptional() @IsString() @MaxLength(64)
+  holdToken?: string;
+}
+
+/** GET /appointments/smart-slots — Trợ lý AI xếp lịch (Mentor S2 · mục 4). */
+export class SmartSlotsQueryDto {
+  @Transform(toIdList)
+  @IsArray()
+  @ArrayMinSize(1, { message: 'Vui lòng chọn ít nhất một dịch vụ' })
+  @ArrayMaxSize(5, { message: 'Mỗi lượt đặt chỉ được chọn tối đa 5 dịch vụ' })
+  @ArrayUnique({ message: 'Mỗi dịch vụ chỉ được chọn một lần' })
+  @IsUUID('4', { each: true, message: 'Mã dịch vụ không hợp lệ' })
+  serviceIds!: string[];
+
+  @Matches(DATE_RE, { message: 'Ngày phải theo định dạng yyyy-MM-dd' })
+  date!: string;
+
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(7)
+  days?: number;
+
+  @IsOptional() @IsUUID('4', { message: 'Thợ không hợp lệ' })
+  stylistId?: string;
+
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(12)
+  limit?: number;
 }
 
 /** Dùng cho màn hình nội bộ: thêm tuỳ chọn bỏ qua chính lịch hẹn đang sửa. */
@@ -87,6 +114,46 @@ export class CreateBookingDto {
 
   @IsOptional() @IsString() @MaxLength(300, { message: 'Ghi chú cho thợ tối đa 300 ký tự' })
   note?: string;
+
+  /** Mã giữ chỗ nhận ở bước Xác nhận (Mentor S2 · mục 11): đổi chỗ đang giữ thành lịch hẹn. */
+  @IsOptional() @IsString() @MaxLength(64)
+  holdToken?: string;
+}
+
+/** POST /public/holds — giữ chỗ khung giờ trong lúc khách điền thông tin. */
+export class CreateSlotHoldDto {
+  @IsArray()
+  @ArrayMinSize(1, { message: 'Vui lòng chọn ít nhất một dịch vụ' })
+  @ArrayMaxSize(5, { message: 'Mỗi lượt đặt chỉ được chọn tối đa 5 dịch vụ' })
+  @ArrayUnique({ message: 'Mỗi dịch vụ chỉ được chọn một lần' })
+  @IsUUID('4', { each: true, message: 'Mã dịch vụ không hợp lệ' })
+  serviceIds!: string[];
+
+  @Matches(DATE_RE, { message: 'Ngày hẹn phải theo định dạng yyyy-MM-dd' })
+  @IsCalendarDate({ message: 'Ngày hẹn không hợp lệ' })
+  date!: string;
+
+  @Matches(TIME_RE, { message: 'Giờ hẹn phải theo định dạng HH:mm' })
+  time!: string;
+
+  @IsOptional() @IsUUID('4', { message: 'Thợ không hợp lệ' })
+  stylistId?: string;
+
+  /** Chỗ đang giữ trước đó của chính khách (đổi giờ) — được trả lại trước khi giữ chỗ mới. */
+  @IsOptional() @IsString() @MaxLength(64)
+  previousToken?: string;
+}
+
+/** POST /public/bookings/email — gửi (lại) email xác nhận đặt lịch (Mentor S2 · mục 10). */
+export class SendConfirmationEmailDto {
+  @IsString() @MaxLength(8, { message: CODE_LENGTH_MESSAGE }) @IsNotEmpty({ message: CODE_LENGTH_MESSAGE })
+  code!: string;
+
+  @Matches(VN_PHONE_REGEX, { message: VN_PHONE_MESSAGE })
+  phone!: string;
+
+  @IsEmail({}, { message: 'Email không đúng định dạng' }) @IsAsciiEmail() @MaxLength(160)
+  email!: string;
 }
 
 export class WalkInBookingDto extends CreateBookingDto {

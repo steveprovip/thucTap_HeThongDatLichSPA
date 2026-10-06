@@ -22,11 +22,13 @@ import { AvailabilityService } from './availability.service';
 import { CustomersService } from '../customers/customers.service';
 import { StylistsService } from '../stylists/stylists.service';
 import { MailService } from '../notifications/mail.service';
+import { EmailQueueService } from '../notifications/email-queue.service';
 import { MailTemplates, AppointmentMailData } from '../notifications/mail-templates';
 import { NotificationsService } from '../notifications/notifications.service';
 import { RateLimitService } from '../rate-limit/rate-limit.service';
 import { CreateBookingDto } from './dto/booking.dto';
 import { mapPublicAppointment } from './appointment.mapper';
+import { SlotHoldService } from './slot-hold.service';
 
 export interface BookingResult {
   code: string;
@@ -73,6 +75,8 @@ interface PersistContext {
   startAt: Date;
   endAt: Date;
   now: Date;
+  /** Giữ chỗ của chính khách này (nếu có) — không tính là bận, và bị xoá khi lịch được ghi. */
+  holdToken?: string;
 }
 
 @Injectable()
@@ -88,6 +92,8 @@ export class BookingService {
     private readonly mail: MailService,
     private readonly notifications: NotificationsService,
     private readonly rateLimit: RateLimitService,
+    private readonly holds: SlotHoldService,
+    private readonly emailQueue: EmailQueueService,
     @InjectRepository(Appointment) private readonly apptRepo: Repository<Appointment>,
     @InjectRepository(AppointmentServiceItem) private readonly apptServiceRepo: Repository<AppointmentServiceItem>,
     @InjectRepository(Customer) private readonly customerRepo: Repository<Customer>,
@@ -168,9 +174,16 @@ export class BookingService {
     const step = this.config.get<number>('business.slotStepMinutes')!;
     if (isOnline && timeToMinutes(dto.time) % step !== 0) throw new BadRequestException(MSG.SLOT_INVALID);
 
-    // ----- 5. Chọn thợ (đích danh hoặc tự phân)
+    // ----- 5. Chọn thợ (đích danh hoặc tự phân). Khách đang giữ chỗ (Mentor S2 · mục 11) -> chỗ giữ của CHÍNH họ
+    // không bị tính là bận, và "thợ bất kỳ" ưu tiên đúng thợ đã được giữ chỗ.
+    const hold = await this.holds.findActive(dto.holdToken);
+    const ownHold = hold && hold.startAt.getTime() === startAt.getTime() && hold.endAt.getTime() === endAt.getTime()
+      && (!dto.stylistId || dto.stylistId === hold.stylistId) ? hold : null;
+    const holdToken = ownHold?.token;
     let stylistId: string;
-    if (dto.stylistId) {
+    if (!dto.stylistId && ownHold) {
+      stylistId = ownHold.stylistId;
+    } else if (dto.stylistId) {
       stylistId = dto.stylistId;
       const stylist = await this.stylistRepo.findOne({ where: { id: stylistId } });
       if (!stylist) throw new NotFoundException(MSG.STYLIST_NOT_FOUND);
@@ -181,14 +194,15 @@ export class BookingService {
       // ngày thợ xin nghỉ, ngày tiệm đóng cửa hay thợ CHƯA XẾP CA đều bị từ chối. Áp dụng cả lịch tại quầy
       // (chỉ được bỏ mốc đặt trước 60 phút), không chỉ lịch đặt online.
       const verdict = await this.availability.checkSlot({
-        date: dto.date, time: dto.time, stylistId, totalDuration, ignoreLeadTime: params.ignoreLeadTime, now,
+        date: dto.date, time: dto.time, stylistId, totalDuration, ignoreLeadTime: params.ignoreLeadTime, now, holdToken,
       });
       if (verdict === 'invalid') throw new BadRequestException(MSG.SLOT_INVALID);
       if (verdict === 'taken') throw new ConflictException(MSG.SLOT_TAKEN);
+      if (verdict === 'held') throw new ConflictException({ message: MSG.SLOT_HELD, code: ERROR_CODES.SLOT_HELD });
     } else {
       const auto = await this.availability.pickAutoStylist({
         date: dto.date, time: dto.time, serviceIds: dto.serviceIds,
-        totalDuration, ignoreLeadTime: params.ignoreLeadTime, now,
+        totalDuration, ignoreLeadTime: params.ignoreLeadTime, now, holdToken,
       });
       if (!auto) throw new ConflictException(MSG.SLOT_TAKEN);
       stylistId = auto.id;
@@ -196,7 +210,7 @@ export class BookingService {
 
     // ----- 6. Ghi lịch. "Thợ bất kỳ" mà thợ vừa chọn bị người khác giành mất trong lúc chốt -> phân lại
     // sang thợ rảnh kế tiếp thay vì báo khách hết chỗ (QA-15, QA-19: 20 khách cùng giây, nhiều thợ rảnh).
-    const ctx: PersistContext = { dto, params, ordered, totalDuration, estimatedTotal, startAt, endAt, now };
+    const ctx: PersistContext = { dto, params, ordered, totalDuration, estimatedTotal, startAt, endAt, now, holdToken };
     const tried: string[] = [];
     for (;;) {
       try {
@@ -206,7 +220,7 @@ export class BookingService {
         tried.push(stylistId);
         const next = await this.availability.pickAutoStylist({
           date: dto.date, time: dto.time, serviceIds: dto.serviceIds,
-          totalDuration, ignoreLeadTime: params.ignoreLeadTime, now, excludeStylistIds: tried,
+          totalDuration, ignoreLeadTime: params.ignoreLeadTime, now, excludeStylistIds: tried, holdToken,
         });
         if (!next) throw e;
         stylistId = next.id;
@@ -249,6 +263,10 @@ export class BookingService {
       // một giao dịch khác chen ngang.
       const stillFree = await this.isRangeFree(manager, stylistId, startAt, endAt);
       if (!stillFree) throw new ConflictException(MSG.SLOT_TAKEN);
+      // Mentor S2 · mục 11: khung giờ đang được KHÁCH KHÁC giữ chỗ (chưa hết hạn) thì không ai khác chốt được
+      if (await SlotHoldService.heldByOthers(manager, stylistId, startAt, endAt, ctx.holdToken)) {
+        throw new ConflictException({ message: MSG.SLOT_HELD, code: ERROR_CODES.SLOT_HELD });
+      }
 
       // QA-17: đếm lại số lịch chưa hoàn tất của SĐT NGAY TRONG giao dịch SERIALIZABLE. Bước kiểm tra trước đó
       // chạy ngoài giao dịch nên N yêu cầu song song cùng một SĐT (khác thợ) từng cùng lọt qua mức 3 lịch.
@@ -295,6 +313,8 @@ export class BookingService {
         );
       }
       if (!appointment) throw new ConflictException('Không sinh được mã tra cứu, vui lòng thử lại');
+      // Giữ chỗ đã "đổi" thành lịch hẹn -> xoá trong CÙNG giao dịch
+      if (ctx.holdToken) await manager.query('DELETE FROM slot_holds WHERE token = $1', [ctx.holdToken]);
 
       await manager.save(
         ordered.map((s, index) =>
@@ -323,6 +343,8 @@ export class BookingService {
     let emailQueued = false;
     const mailData: AppointmentMailData = {
       code: result.appointment.code,
+      status: result.appointment.status,
+      cancelCutoffMinutes: this.config.get<number>('business.cancelCutoffMinutes'),
       customerName: result.customer.fullName,
       stylistName: stylist?.fullName ?? '',
       startAt,
@@ -346,6 +368,7 @@ export class BookingService {
       });
       await this.apptRepo.update(result.appointment.id, { confirmationSentAt: new Date() });
       emailQueued = true;
+      this.kickMailWorker();
     }
     if (params.autoConfirm) await this.scheduleReminder(result.appointment.id);
 
@@ -391,6 +414,52 @@ export class BookingService {
       [stylistId, start.toISOString(), end.toISOString(), excludeId ?? null],
     );
     return rows.length === 0;
+  }
+
+  /** Mentor S2 · mục 10: gửi email NGAY (không chờ lượt quét mỗi phút của worker); lỗi chỉ ghi log. */
+  private kickMailWorker(): void {
+    setImmediate(() => {
+      this.emailQueue.processDue().catch((e: unknown) => this.logger.warn(`Gửi email ngay thất bại: ${(e as Error).message}`));
+    });
+  }
+
+  /**
+   * Mentor S2 · mục 10 — khách chưa nhập email lúc đặt (hoặc muốn gửi lại) nhận email xác nhận từ màn hình
+   * "Đặt lịch thành công" / trang tra cứu. Xác thực bằng mã tra cứu + SĐT (đúng cặp thông tin dùng để tra cứu),
+   * giới hạn 5 lần/giờ/IP. Hồ sơ khách chưa có email thì lưu email này để lần sau tự gửi xác nhận & nhắc lịch.
+   */
+  async sendConfirmationEmail(params: { code: string; phone: string; email: string; ip: string }): Promise<{ emailQueued: boolean; toEmail: string }> {
+    const rl = await this.rateLimit.hit('confirm_email_ip', params.ip, 5, 60);
+    if (!rl.allowed) throw tooManyRequests('Bạn đã yêu cầu gửi email quá nhiều lần, vui lòng thử lại sau', 3600);
+    const appt = await this.apptRepo.findOne({ where: { code: params.code.trim().toUpperCase() } });
+    const customer = appt ? await this.customerRepo.findOne({ where: { id: appt.customerId } }) : null;
+    if (!appt || !customer || customer.phone !== normalizePhone(params.phone)) throw new NotFoundException(MSG.CODE_NOT_FOUND);
+    if (!ACTIVE_STATUSES.includes(appt.status)) throw new BadRequestException('Lịch hẹn này không còn hiệu lực để gửi xác nhận');
+    const email = params.email.trim().toLowerCase();
+    if (!customer.email) await this.customerRepo.update(customer.id, { email });
+
+    const stylist = await this.stylistRepo.findOne({ where: { id: appt.stylistId } });
+    const items = await this.apptServiceRepo.find({ where: { appointmentId: appt.id }, order: { position: 'ASC' } });
+    const tpl = MailTemplates.bookingConfirmation(this.mail.salonInfo, {
+      code: appt.code,
+      status: appt.status,
+      cancelCutoffMinutes: this.config.get<number>('business.cancelCutoffMinutes'),
+      customerName: customer.fullName,
+      stylistName: stylist?.fullName ?? '',
+      startAt: appt.startAt,
+      endAt: appt.endAt,
+      services: items.map((i) => ({ name: i.nameSnapshot, durationMinutes: i.durationSnapshot, price: i.priceSnapshot })),
+      totalDuration: appt.totalDurationMinutes,
+      estimatedTotal: appt.estimatedTotal,
+    });
+    await this.mail.enqueue({
+      kind: EmailKind.BOOKING_CONFIRMATION, toEmail: email, toName: customer.fullName,
+      subject: tpl.subject, html: tpl.html, appointmentId: appt.id,
+    });
+    await this.apptRepo.update(appt.id, { confirmationSentAt: new Date() });
+    this.kickMailWorker();
+    const [user, domain] = email.split('@');
+    return { emailQueued: true, toEmail: `${user.slice(0, 2)}***@${domain}` };
   }
 
   /**

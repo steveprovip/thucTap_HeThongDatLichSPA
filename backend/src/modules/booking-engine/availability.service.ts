@@ -7,6 +7,7 @@ import { ServiceCategory } from '../../database/entities/service-category.entity
 import { StylistService as StylistServiceLink } from '../../database/entities/stylist-service.entity';
 import { Stylist } from '../../database/entities/stylist.entity';
 import { Appointment, ACTIVE_STATUSES } from '../../database/entities/appointment.entity';
+import { SlotHold } from '../../database/entities/slot-hold.entity';
 import { ERROR_CODES, MSG } from '../../common/constants/messages.constant';
 import { formatVnd } from '../../common/utils/currency.util';
 import {
@@ -16,8 +17,10 @@ import { normalizeSearch } from '../../common/utils/text.util';
 import { WorkingHoursService } from '../working-hours/working-hours.service';
 import { StylistsService } from '../stylists/stylists.service';
 import {
-  computeAvailableSlots, isSlotAvailable, longestShiftLength, ShiftInput, SlotCalcInput, TimeOffInput,
+  computeAvailableSlots, computeFreeIntervals, Interval, isSlotAvailable, longestShiftLength, ShiftInput, SlotCalcInput,
+  TimeOffInput, toMinutes,
 } from './slot-calculator';
+import { rankSmartSlots, SmartSlot, SmartSlotCandidate } from './smart-slots';
 
 export interface PublicServiceView {
   id: string;
@@ -56,6 +59,19 @@ export interface AvailabilityResult {
   exceedsLongestShift: boolean;
 }
 
+export interface SmartSlotsResult {
+  fromDate: string;
+  days: number;
+  totalDurationMinutes: number;
+  suggestions: SmartSlot[];
+  /** Khoảng rảnh liên tục (đủ dài cho gói dịch vụ) của từng thợ từng ngày — để lễ tân nhìn nhanh, khỏi mở lịch ngày. */
+  windows: {
+    date: string;
+    closedReason: string | null;
+    stylists: { stylistId: string; stylistName: string; loadMinutes: number; free: { start: string; end: string }[] }[];
+  }[];
+}
+
 @Injectable()
 export class AvailabilityService {
   constructor(
@@ -67,6 +83,7 @@ export class AvailabilityService {
     @InjectRepository(StylistServiceLink) private readonly linkRepo: Repository<StylistServiceLink>,
     @InjectRepository(Stylist) private readonly stylistRepo: Repository<Stylist>,
     @InjectRepository(Appointment) private readonly apptRepo: Repository<Appointment>,
+    @InjectRepository(SlotHold) private readonly holdRepo: Repository<SlotHold>,
   ) {}
 
   /**
@@ -196,8 +213,10 @@ export class AvailabilityService {
     totalDuration: number;
     ignoreLeadTime?: boolean;
     excludeAppointmentId?: string;
+    /** Giữ chỗ của CHÍNH khách đang hỏi — không tính là bận với họ (Mentor S2 · mục 11). */
+    holdToken?: string;
     now?: Date;
-  }): Promise<SlotCalcInput> {
+  }): Promise<SlotCalcInput & { apptBusy: Interval[] }> {
     const { date, stylistId, totalDuration } = params;
     const dow = dayOfWeek(date);
     const wh = await this.workingHours.getByDayOfWeek(dow);
@@ -224,11 +243,21 @@ export class AvailabilityService {
     if (params.excludeAppointmentId) qb.andWhere('a.id <> :ex', { ex: params.excludeAppointmentId });
     const appts = await qb.getMany();
 
-    const busy = appts.map((a) => {
-      const s = toSalon(a.startAt);
-      const e = toSalon(a.endAt);
+    const toInterval = (startAt: Date, endAt: Date): Interval => {
+      const s = toSalon(startAt);
+      const e = toSalon(endAt);
       return { start: s.hour * 60 + s.minute, end: e.hour * 60 + e.minute };
-    });
+    };
+    const apptBusy = appts.map((a) => toInterval(a.startAt, a.endAt));
+
+    // Khung giờ khách khác đang giữ chỗ (chưa hết hạn) cũng là BẬN. Hạn giữ chỗ luôn so với giờ thật.
+    const hq = this.holdRepo.createQueryBuilder('h')
+      .where('h.stylist_id = :sid', { sid: stylistId })
+      .andWhere('h.expires_at > :real', { real: new Date() })
+      .andWhere('h.start_at < :dayEnd AND h.end_at > :dayStart', { dayStart: startOfDay(date), dayEnd: endOfDay(date) });
+    if (params.holdToken) hq.andWhere('h.token <> :tok', { tok: params.holdToken });
+    const holdBusy = (await hq.getMany()).map((h) => toInterval(h.startAt, h.endAt));
+    const busy = [...apptBusy, ...holdBusy];
 
     return {
       salonOpen: wh ? trimSeconds(wh.openTime) : '08:00',
@@ -240,6 +269,7 @@ export class AvailabilityService {
       totalDuration,
       stepMinutes: this.config.get<number>('business.slotStepMinutes')!,
       earliestStartMinutes: this.earliestStartMinutes(date, params.ignoreLeadTime, params.now),
+      apptBusy,
     };
   }
 
@@ -253,6 +283,7 @@ export class AvailabilityService {
     stylistId?: string;
     ignoreLeadTime?: boolean;
     excludeAppointmentId?: string;
+    holdToken?: string;
     now?: Date;
   }): Promise<AvailabilityResult> {
     if (!isValidDateString(params.date)) throw new BadRequestException('Ngày không hợp lệ');
@@ -277,6 +308,7 @@ export class AvailabilityService {
           totalDuration,
           ignoreLeadTime: params.ignoreLeadTime,
           excludeAppointmentId: params.excludeAppointmentId,
+          holdToken: params.holdToken,
           now: params.now,
         });
         for (const time of computeAvailableSlots(input)) {
@@ -313,6 +345,69 @@ export class AvailabilityService {
       slots,
       suggestedDates,
       exceedsLongestShift: longest > 0 && totalDuration > longest,
+    };
+  }
+
+  /**
+   * Mentor S2 · mục 4 — Trợ lý AI xếp lịch cho nhân viên: duyệt mọi khung hợp lệ của mọi thợ làm được gói dịch vụ
+   * trong `days` ngày kể từ `fromDate`, chấm điểm (sớm · vừa khít · cân bằng) và giải thích lý do.
+   * Dùng giờ thực của nhân viên: bỏ mốc đặt trước 60 phút nhưng không gợi ý giờ đã qua.
+   */
+  async smartSlots(params: {
+    serviceIds: string[]; fromDate: string; days?: number; stylistId?: string; limit?: number; now?: Date;
+  }): Promise<SmartSlotsResult> {
+    if (!isValidDateString(params.fromDate)) throw new BadRequestException('Ngày không hợp lệ');
+    const days = Math.min(7, Math.max(1, params.days ?? 3));
+    const services = await this.loadServices(params.serviceIds);
+    const totalDuration = services.reduce((sum, x) => sum + x.durationMinutes, 0);
+    let stylists = await this.capableStylists(params.serviceIds);
+    if (params.stylistId) stylists = stylists.filter((x) => x.id === params.stylistId);
+    const today = todaySalon(params.now);
+    const start = params.fromDate < today ? today : params.fromDate;
+
+    const candidates: SmartSlotCandidate[] = [];
+    const windows: SmartSlotsResult['windows'] = [];
+    for (let i = 0; i < days; i += 1) {
+      const date = addDays(start, i);
+      const closedReason = await this.closedReason(date);
+      if (closedReason) { windows.push({ date, closedReason, stylists: [] }); continue; }
+      const perStylist: { id: string; name: string; load: number; free: Interval[]; starts: number[] }[] = [];
+      for (const st of stylists) {
+        const input = await this.buildCalcInput({
+          date, stylistId: st.id, totalDuration, ignoreLeadTime: true, now: params.now,
+        });
+        const free = computeFreeIntervals(input).filter((f) => f.end - f.start >= totalDuration);
+        const starts = computeAvailableSlots(input).map(toMinutes);
+        const load = input.apptBusy.reduce((sum, b) => sum + (b.end - b.start), 0);
+        perStylist.push({ id: st.id, name: st.fullName, load, free, starts });
+      }
+      const loads = perStylist.map((p) => p.load);
+      const allStarts = perStylist.flatMap((p) => p.starts);
+      const earliestOfDay = allStarts.length ? Math.min(...allStarts) : 0;
+      for (const p of perStylist) {
+        for (const s of p.starts) {
+          const win = p.free.find((f) => f.start <= s && s + totalDuration <= f.end);
+          if (!win) continue;
+          candidates.push({
+            date, dayOffset: i, start: s, duration: totalDuration, stylistId: p.id, stylistName: p.name,
+            freeStart: win.start, freeEnd: win.end, dayLoadMinutes: p.load,
+            maxDayLoad: Math.max(...loads), minDayLoad: Math.min(...loads), earliestOfDay,
+          });
+        }
+      }
+      const fmt = (m: number): string => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+      windows.push({
+        date, closedReason: null,
+        stylists: perStylist.map((p) => ({
+          stylistId: p.id, stylistName: p.name, loadMinutes: p.load,
+          free: p.free.map((f) => ({ start: fmt(f.start), end: fmt(f.end) })),
+        })),
+      });
+    }
+    return {
+      fromDate: start, days, totalDurationMinutes: totalDuration,
+      suggestions: rankSmartSlots(candidates, Math.min(12, Math.max(1, params.limit ?? 6))),
+      windows,
     };
   }
 
@@ -359,6 +454,7 @@ export class AvailabilityService {
    * Phân loại một khung giờ của một thợ:
    *  - 'invalid': nằm ngoài ca / giờ mở cửa / giờ nghỉ / quá sát hiện tại -> khách gửi giờ không có trong danh sách
    *  - 'taken'  : hợp lệ nhưng đã có lịch khác chiếm
+   *  - 'held'   : còn trống nhưng một khách khác đang GIỮ CHỖ để hoàn tất đặt lịch (Mentor S2 · mục 11)
    *  - 'ok'     : nhận được
    */
   async checkSlot(params: {
@@ -368,18 +464,21 @@ export class AvailabilityService {
     totalDuration: number;
     ignoreLeadTime?: boolean;
     excludeAppointmentId?: string;
+    holdToken?: string;
     now?: Date;
-  }): Promise<'ok' | 'taken' | 'invalid'> {
+  }): Promise<'ok' | 'taken' | 'held' | 'invalid'> {
     const input = await this.buildCalcInput({
       date: params.date,
       stylistId: params.stylistId,
       totalDuration: params.totalDuration,
       ignoreLeadTime: params.ignoreLeadTime,
       excludeAppointmentId: params.excludeAppointmentId,
+      holdToken: params.holdToken,
       now: params.now,
     });
     if (input.salonClosed || !isSlotAvailable({ ...input, busy: [] }, params.time)) return 'invalid';
-    return isSlotAvailable(input, params.time) ? 'ok' : 'taken';
+    if (!isSlotAvailable({ ...input, busy: input.apptBusy }, params.time)) return 'taken';
+    return isSlotAvailable(input, params.time) ? 'ok' : 'held';
   }
 
   /** Kiểm tra một khung giờ cụ thể của một thợ có còn nhận được không. */
@@ -390,6 +489,7 @@ export class AvailabilityService {
     totalDuration: number;
     ignoreLeadTime?: boolean;
     excludeAppointmentId?: string;
+    holdToken?: string;
     now?: Date;
   }): Promise<boolean> {
     return (await this.checkSlot(params)) === 'ok';
@@ -408,6 +508,7 @@ export class AvailabilityService {
     now?: Date;
     /** Thợ đã thử và bị giành mất khung giờ trong lúc chốt lịch (QA-15). */
     excludeStylistIds?: string[];
+    holdToken?: string;
   }): Promise<Stylist | null> {
     const excluded = new Set(params.excludeStylistIds ?? []);
     const candidates = (await this.capableStylists(params.serviceIds)).filter((s) => !excluded.has(s.id));
@@ -421,6 +522,7 @@ export class AvailabilityService {
         stylistId: stylist.id,
         totalDuration: params.totalDuration,
         ignoreLeadTime: params.ignoreLeadTime,
+        holdToken: params.holdToken,
         now: params.now,
       });
       if (ok) available.push(stylist);

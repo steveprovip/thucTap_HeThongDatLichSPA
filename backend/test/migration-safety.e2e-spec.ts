@@ -81,9 +81,12 @@ describe('Migration an toàn cho dữ liệu đang có', () => {
     const before = await snapshot(conn);
     const report = await runMigrations(conn, { backup: 'off', log: () => undefined });
 
-    expect(report.pending).toEqual(['BaselineSchema1791158400000']);
-    expect(report.applied).toEqual(['BaselineSchema1791158400000']);
-    expect(await snapshot(conn)).toEqual(before);
+    // Migration gốc chạy đầu tiên; các migration sau (v1.4.0+) chỉ THÊM bảng mới, không đổi một dòng dữ liệu cũ nào
+    expect(report.pending[0]).toBe('BaselineSchema1791158400000');
+    expect(report.applied).toEqual(report.pending);
+    const after = await snapshot(conn);
+    for (const [table, fingerprint] of Object.entries(before)) expect(after[table]).toBe(fingerprint);
+    for (const added of Object.keys(after).filter((t) => !(t in before))) expect(after[added]).toBe('0:');
 
     await withClient(conn, async (c) => {
       // seed.sql mà chạy thì mật khẩu admin bị đặt lại về Admin@123

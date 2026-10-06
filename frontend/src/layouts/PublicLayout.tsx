@@ -3,6 +3,7 @@ import { CalendarCheck, Home, LogIn, Phone, Search } from 'lucide-react';
 import { SALON } from '@/utils/constants';
 import { Suspense } from 'react';
 import { BackButton, ErrorBoundary, Spinner } from '@/components';
+import { SiteFooter } from './SiteFooter';
 
 const navClass = ({ isActive }: { isActive: boolean }) =>
   `flex h-full flex-1 flex-col items-center justify-center gap-0.5 rounded-xl px-2 text-[11px] font-medium transition-colors
@@ -13,10 +14,12 @@ export function PublicLayout() {
   const location = useLocation();
   // Lỗi 8: trang con (tra cứu, đánh giá…) có nút quay lại; trang đặt lịch tự có nút lùi theo từng bước
   const showBack = location.pathname !== '/' && !location.pathname.startsWith('/dat-lich');
+  // Mentor S2 · mục 8: trang chủ dùng bề ngang rộng (hết khoảng trống hai bên); form đặt lịch / tra cứu giữ cột vừa mắt
+  const wide = location.pathname === '/';
   return (
     <div className="flex min-h-screen flex-col bg-surface-page">
       <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur-md">
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3">
           <Link to="/" className="flex items-center gap-2.5">
             <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-teal-600 text-sm font-bold text-white shadow-sm">
               HS
@@ -44,7 +47,7 @@ export function PublicLayout() {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-4 sm:pb-8">
+      <main className={`mx-auto w-full ${wide ? 'max-w-7xl' : 'max-w-5xl'} flex-1 px-4 pb-6 pt-4 sm:pb-8`}>
         <div key={location.pathname} className="animate-fade">
           {showBack && (
             <div className="mb-4 animate-slide-in-right-soft">
@@ -68,12 +71,8 @@ export function PublicLayout() {
         </div>
       </nav>
 
-      <footer className="hidden border-t border-slate-200 bg-white py-6 sm:block">
-        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2 px-4 text-xs text-ink-muted">
-          <p>{SALON.name} — {SALON.address}</p>
-          <p>Hotline {SALON.hotline} · Giờ hiển thị theo múi giờ Việt Nam</p>
-        </div>
-      </footer>
+      {/* Trang đặt lịch trên điện thoại đã có thanh hành động cố định: ẩn chân trang để form không bị che */}
+      <div className={location.pathname.startsWith('/dat-lich') ? 'hidden sm:block' : ''}><SiteFooter /></div>
     </div>
   );
 }

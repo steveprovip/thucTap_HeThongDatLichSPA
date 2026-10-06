@@ -64,6 +64,8 @@ export const MSG = {
 
   // Đặt lịch
   SLOT_TAKEN: 'Khung giờ vừa có người đặt, vui lòng chọn khung giờ khác',
+  SLOT_HELD: 'Khung giờ này đang được một khách khác giữ chỗ để hoàn tất đặt lịch, vui lòng chọn khung giờ khác',
+  SLOT_HOLD_RATE_LIMITED: 'Bạn giữ chỗ quá nhiều lần trong một giờ, vui lòng thử lại sau',
   SLOT_INVALID: 'Khung giờ không hợp lệ hoặc không còn trống',
   SLOT_IN_PAST: 'Không thể đặt lịch cho thời điểm trong quá khứ',
   SLOT_TOO_SOON: (m: number) => `Vui lòng đặt lịch trước ít nhất ${m} phút so với giờ bắt đầu`,
@@ -130,6 +132,8 @@ export const ERROR_CODES = {
   LOOKUP_LOCKED: 'LOOKUP_LOCKED',
   EXCEEDS_LONGEST_SHIFT: 'EXCEEDS_LONGEST_SHIFT',
   RATE_LIMITED: 'RATE_LIMITED',
+  SLOT_TAKEN: 'SLOT_TAKEN',
+  SLOT_HELD: 'SLOT_HELD',
   SALON_CLOSED: 'SALON_CLOSED',
 } as const;
 

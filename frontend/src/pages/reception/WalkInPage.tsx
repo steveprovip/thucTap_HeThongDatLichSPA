@@ -8,7 +8,8 @@ import type {
   Appointment, Customer, DayTimeline, ServiceItem, VisitHistoryItem,
 } from '@/types';
 import {
-  Button, Card, CustomerMetrics, EmptyState, Field, Input, Modal, Notice, SectionTitle, Spinner, StatusBadge, Textarea,
+  Button, Card, CustomerMetrics, EmptyState, Field, Input, Modal, Notice, SectionTitle, SmartSlotAssistant, Spinner, StatusBadge,
+  Textarea,
 } from '@/components';
 import {
   addDaysISO, formatDate, formatDuration, formatVnd, matchSearch, minutesToTime, salonClosedMessage, timeToMinutes, todayISO,
@@ -388,6 +389,15 @@ export function WalkInModal({ open, onClose, onCreated }: {
                 })}
               </div>
             </div>
+
+            {/* Mentor S2 · mục 4: trợ lý phân tích khung giờ ngay tại đây, không phải mở lịch ngày để dò */}
+            <SmartSlotAssistant
+              serviceIds={selectedIds}
+              date={mode === 'now' ? todayISO() : date}
+              today={todayISO()}
+              selected={mode === 'later' ? { date, time, stylistId } : undefined}
+              onPick={(s) => { setMode('later'); setDate(s.date); setTime(s.time); setStylistId(s.stylistId); }}
+            />
 
             <div>
               <h4 className="mb-2 text-sm font-bold text-teal-700">3. Thời gian</h4>
