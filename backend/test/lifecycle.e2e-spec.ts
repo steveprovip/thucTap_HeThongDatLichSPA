@@ -11,6 +11,7 @@ describe('Luồng end-to-end từ đặt lịch tới đánh giá', () => {
   let app: INestApplication;
   let server: ReturnType<INestApplication['getHttpServer']>;
   const token: Record<string, string> = {};
+  const realDate = Date;
 
   const login = async (key: keyof typeof ACCOUNTS) => {
     const res = await request(server).post('/api/auth/login').send(ACCOUNTS[key]).expect(200);
@@ -24,36 +25,32 @@ describe('Luồng end-to-end từ đặt lịch tới đánh giá', () => {
   }, 60000);
 
   afterAll(async () => { await app?.close(); });
+  afterEach(() => { global.Date = realDate; });
 
   it('Chạy trọn vòng đời một lịch hẹn', async () => {
     const today = new Date().toISOString().slice(0, 10);
 
-    // 1. Lấy dịch vụ ngắn nhất để dễ xếp lịch
+    // 1. Lấy dịch vụ ngắn trong danh mục mẫu để dễ xếp lịch.
     const catalog = await request(server).get('/api/public/catalog').expect(200);
     const service = catalog.body.data
       .flatMap((g: { services: { id: string; durationMinutes: number }[] }) => g.services)
-      .sort((a: { durationMinutes: number }, b: { durationMinutes: number }) =>
-        a.durationMinutes - b.durationMinutes)[0];
+      .find((s: { durationMinutes: number }) => s.durationMinutes <= 60);
+    expect(service).toBeDefined();
 
-    // 2. Khung giờ hôm nay (màn hình nội bộ bỏ qua ràng buộc đặt trước 60 phút)
-    const av = await request(server)
-      .get('/api/appointments/availability')
-      .query({ date: today, serviceIds: service.id })
-      .set('Authorization', `Bearer ${token.receptionist}`)
-      .expect(200);
-
-    const now = new Date();
-    const nowMinutes = now.getHours() * 60 + now.getMinutes();
-    const candidate = av.body.data.slots.find((s: { time: string; stylistIds: string[] }) => {
-      const [h, m] = s.time.split(':').map(Number);
-      const delta = h * 60 + m - nowMinutes;
-      return delta > 1 && delta < 55 && s.stylistIds.length > 0;
-    });
-    if (!candidate) {
-      // Ngoài giờ mở cửa hoặc đã kín — bỏ qua thay vì báo lỗi giả
-      console.warn('Không có khung giờ gần hiện tại để chạy kịch bản check-in, bỏ qua bước này.');
-      return;
+    // 2. Tìm ca mẫu khả dụng, không phụ thuộc giờ chạy test hoặc ngày nghỉ tuần.
+    let date = '';
+    let candidate: { time: string; stylistIds: string[] } | undefined;
+    for (let day = 10; day < 20 && !candidate; day += 1) {
+      date = tomorrowISO(day);
+      const av = await request(server)
+        .get('/api/appointments/availability')
+        .query({ date, serviceIds: service.id })
+        .set('Authorization', `Bearer ${token.receptionist}`)
+        .expect(200);
+      candidate = av.body.data.slots.find((s: { stylistIds: string[] }) => s.stylistIds.length > 0);
     }
+    expect(candidate).toBeDefined();
+    if (!candidate) throw new Error('Không có khung giờ để kiểm thử vòng đời');
 
     // 3. Lễ tân tạo lịch tại quầy (vào thẳng Đã xác nhận)
     const created = await request(server)
@@ -61,7 +58,7 @@ describe('Luồng end-to-end từ đặt lịch tới đánh giá', () => {
       .set('Authorization', `Bearer ${token.receptionist}`)
       .send({
         serviceIds: [service.id],
-        date: today,
+        date,
         time: candidate.time,
         stylistId: candidate.stylistIds[0],
         fullName: 'Khach Kiem Thu E2E',
@@ -74,6 +71,13 @@ describe('Luồng end-to-end từ đặt lịch tới đánh giá', () => {
     const code: string = created.body.data.code;
     expect(code).toHaveLength(8);
     expect(created.body.data.status).toBe('confirmed');
+
+    // Chỉ cố định new Date() cho cửa sổ check-in và thời điểm bắt đầu / hoàn tất.
+    // Date.now() (JWT) và các timer mạng vẫn dùng đồng hồ thật.
+    const fixtureTime = new realDate(`${date}T${candidate.time}:00+07:00`).getTime();
+    global.Date = class extends realDate {
+      constructor(value?: string | number) { super(value ?? fixtureTime); }
+    } as DateConstructor;
 
     // 4. Check-in
     const checkedIn = await request(server)
@@ -116,6 +120,7 @@ describe('Luồng end-to-end từ đặt lịch tới đánh giá', () => {
     const completed = await request(server).patch(`/api/appointments/${apptId}/complete`)
       .set('Authorization', `Bearer ${stylistToken}`).expect(200);
     expect(completed.body.data.status).toBe('completed');
+    global.Date = realDate;
 
     // 6. Lập phiếu tính tiền
     const invoice = await request(server).post('/api/invoices')

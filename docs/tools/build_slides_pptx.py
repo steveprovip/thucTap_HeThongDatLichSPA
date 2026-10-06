@@ -284,13 +284,13 @@ def s02_problem(prs):
 
 def s03_solution(prs):
     s = new_slide(prs)
-    header(s, 3, "Giải pháp", "Monorepo phân tầng: React SPA ⇄ NestJS ⇄ PostgreSQL 15")
+    header(s, 3, "Giải pháp", "4 tầng: React Vite ⇄ API ⇄ Nghiệp vụ ⇄ TypeORM / PostgreSQL")
     round_rect(s, M, Inches(1.7), Inches(7.9), Inches(5.1))
     picture_contain(s, DIAG("arch.png"), M + Inches(0.15), Inches(1.85), Inches(7.6), Inches(4.8))
     x = Inches(8.85)
     items = [
-        ("layers", "Controller – Service – Repository", "13 module nghiệp vụ, 59 endpoint REST, Swagger /api/docs"),
-        ("shield", "Guard toàn cục", "JWT + RBAC 5 vai trò; mọi endpoint mặc định phải đăng nhập"),
+        ("layers", "Controller – Service – Repository", "API và nghiệp vụ NestJS 10; TypeORM Migration; Swagger /api/docs"),
+        ("shield", "Guard toàn cục", "JWT + RBAC 4 vai trò nhân sự; khách dùng API công khai"),
         ("server", "Ràng buộc ở tầng CSDL", "24 bảng, EXCLUDE, CHECK, trigger nhật ký chỉ đọc"),
         ("calendar", "Giao diện Fresha", "36 màn hình, tối ưu 360 px, thông điệp tiếng Việt"),
     ]
@@ -310,7 +310,7 @@ def s04_scrum(prs):
     s = new_slide(prs)
     header(s, 4, "Quy trình Scrum", "4 Sprint · 39 User Story · 165 Story Point")
     # KPI
-    kpis = [("6", "Epic"), ("39", "User Story"), ("165", "Story Point"), ("100%", "Hoàn thành")]
+    kpis = [("6", "Epic"), ("39", "User Story"), ("165", "Story Point"), ("4", "Sprint")]
     for i, (v, l) in enumerate(kpis):
         x = M + Inches(1.55) * i
         stat(s, x, Inches(1.6), Inches(1.5), v, l, vsize=36)
@@ -335,15 +335,9 @@ def s04_scrum(prs):
         r.font.color.rgb = rgb(WHITE)
         text(s, M + Inches(1.45), y + Inches(0.1), Inches(3.3), Inches(0.3), sp[1], size=14.5, bold=True)
         text(s, M + Inches(1.45), y + Inches(0.44), Inches(3.3), Inches(0.35), f"{sp[3]} story", size=12, color=MUTED)
-        pts = sp[4] if sp[4] else ""
-        if i == 2:
-            pts = "83 pt"
-        elif i == 3:
-            pts = "(S3 + S4)"
-        else:
-            pts = f"{sp[4]} pt"
-        text(s, M + Inches(4.75), y + Inches(0.22), Inches(1.15), Inches(0.4), [[(pts, {"bold": i != 3})]],
-             size=16 if i != 3 else 12, color=TEAL_DARK, align=PP_ALIGN.RIGHT)
+        pts = f"{sp[4]} pt"
+        text(s, M + Inches(4.75), y + Inches(0.22), Inches(1.15), Inches(0.4), [[(pts, {"bold": True})]],
+             size=16, color=TEAL_DARK, align=PP_ALIGN.RIGHT)
     del sw
     # Chart: points per epic
     round_rect(s, Inches(7.05), Inches(1.6), Inches(5.68), Inches(5.2))
@@ -352,6 +346,10 @@ def s04_scrum(prs):
     cd.add_series("Story Point", [e[3] for e in D.EPICS][::-1])
     gf = s.shapes.add_chart(XL_CHART_TYPE.BAR_CLUSTERED, Inches(7.25), Inches(2.1), Inches(5.3), Inches(4.55), cd)
     ch = gf.chart
+    # OOXML axis IDs là unsignedInt; python-pptx mặc định sinh ID âm.
+    for element in ch._chartSpace.iter():
+        if element.tag in (qn("c:axId"), qn("c:crossAx")):
+            element.set("val", str(int(element.get("val")) % (1 << 32)))
     ch.has_title = False
     ch.has_legend = False
     plot = ch.plots[0]
@@ -378,8 +376,8 @@ def s04_scrum(prs):
     footer(s, 4)
     s.notes_slide.notes_text_frame.text = (
         "Thầy Cấn Tuấn Anh là Product Owner. Backlog có 6 epic, 39 story, 165 point. Sprint 1: 10 story 40 point, "
-        "nền tảng tài khoản và danh mục. Sprint 2: 9 story 42 point, ca làm và đặt lịch công khai. Sprint 3 và 4 gồm "
-        "20 story, 83 point: vận hành trong ngày, thanh toán, đánh giá và báo cáo. EP-04 Vận hành lịch hẹn là epic "
+        "nền tảng tài khoản và danh mục. Sprint 2: 9 story 42 point, ca làm và đặt lịch công khai. Sprint 3: "
+        "10 story 42 point; Sprint 4: 10 story 41 point, theo Excel gốc. EP-04 Vận hành lịch hẹn là epic "
         "lớn nhất. Mỗi Sprint kết thúc bằng Review có demo và PO nghiệm thu.")
 
 
@@ -504,7 +502,7 @@ def s08_stylist(prs):
 
 def s09_owner(prs):
     s = new_slide(prs)
-    header(s, 9, "Nghiệp vụ Chủ tiệm & Quản trị", "Hoá đơn – voucher, doanh thu realtime, RBAC 5 vai trò")
+    header(s, 9, "Nghiệp vụ Chủ tiệm & Quản trị", "Hoá đơn – voucher, doanh thu realtime, 4 vai trò nhân sự + khách")
     picture_fit(s, SCREEN("13_revenue.jpg"), M, Inches(1.7), Inches(6.0), Inches(3.3))
     bullets(s, M, Inches(5.2), Inches(6.0), Inches(1.7), [
         [("Phiếu tính tiền: ", {"bold": True}), ("giá snapshot, dịch vụ phát sinh, 1 mã giảm giá / phiếu; phiếu đóng bị khoá.", {})],
@@ -565,16 +563,16 @@ def s09_owner(prs):
     s.notes_slide.notes_text_frame.text = (
         "Chủ tiệm có tổng quan tự làm mới 60 giây, doanh thu theo thợ và dịch vụ, xuất CSV. Phiếu tính tiền lưu giá "
         "tại thời điểm hẹn, chỉ một mã giảm giá, phiếu đã đóng bị khoá – đây là cơ chế chống gian lận. Phân quyền "
-        "theo ma trận 5 vai trò, cùng một nguồn dữ liệu cho cả giao diện và guard chặn API.")
+        "theo 4 vai trò nhân sự và phạm vi khách công khai, cùng nguồn quyền cho giao diện và guard API.")
 
 
 def s10_infra(prs):
     s = new_slide(prs)
-    header(s, 10, "Hạ tầng & tự động hoá", "Docker 1 lệnh · Supervisor tự phục hồi v1.2.5")
+    header(s, 10, "Hạ tầng & tự động hoá", "SSE · TypeORM Migration · cập nhật một chạm")
     steps = [("check", "Kiểm tra", "Node ≥ 20; chờ Docker Desktop ≤ 2 phút, tự mở"),
              ("docker", "Docker Compose", "PostgreSQL 15 (healthcheck TCP), PgAdmin, Maildev"),
              ("layers", "Chuẩn bị", "Tạo .env, cài lại gói khi lockfile đổi, kiểm tra cổng"),
-             ("server", "Seed an toàn", "Chờ CSDL ≤ 120 s, schema + seed idempotent"),
+             ("server", "Migration", "Lược đồ có phiên bản; seed chỉ ở máy phát triển / QA"),
              ("refresh", "Supervisor", "Chạy API + WEB, chờ /health = 200 rồi mở trình duyệt")]
     cw = Inches(2.22)
     gap = (W - 2 * M - cw * 5) / 4
@@ -592,16 +590,16 @@ def s10_infra(prs):
         if not last:
             text(s, x + cw, Inches(2.5), int(gap), Inches(0.4), "›", size=24, bold=True, color=TEAL, align=PP_ALIGN.CENTER)
     # 3 stat cards
-    stats = [("13–21 giây", "từ lúc nhấp đúp đến khi trình duyệt mở (CSDL mới)"),
-             ("~2 giây", "tự khởi động lại khi Vite bị abort (mã 3221226505)"),
-             ("0 thao tác tay", "tạo .env, cài gói, nạp dữ liệu, mở trình duyệt")]
+    stats = [("SSE", "phát sự kiện sau commit, giao diện tải lại dữ liệu"),
+             ("Migration", "khoá nâng cấp; rollback bước lỗi; synchronize: false"),
+             ("1-Click Update", "build mới → sao lưu → migration → healthcheck")]
     for i, (v, l) in enumerate(stats):
         x = M + Inches(4.12) * i
         round_rect(s, x, Inches(4.1), Inches(3.9), Inches(1.45))
         text(s, x + Inches(0.3), Inches(4.25), Inches(3.4), Inches(0.6), [[(v, {"bold": True})]], size=30, color=TEAL)
         text(s, x + Inches(0.3), Inches(4.9), Inches(3.4), Inches(0.6), l, size=12.5, color=MUTED)
     bullets(s, M, Inches(5.8), W - 2 * M, Inches(1.2), [
-        [("Seed idempotent: ", {"bold": True}), ("ON CONFLICT DO NOTHING, bỏ qua khung giờ trùng lịch thật, reset 8 tài khoản mẫu mỗi lần chạy.", {})],
+        [("Máy vận hành: ", {"bold": True}), ("start_server.bat / update_project.bat; bootstrap, giữ dữ liệu khách, không nạp seed mẫu.", {})],
         [("/health = 200 ", {"bold": True}), ("chỉ khi API truy vấn được CSDL (503 nếu chưa) — trình duyệt không bao giờ mở trước khi hệ thống sẵn sàng.", {})],
     ], size=13.5, gap=5)
     footer(s, 10)
@@ -609,16 +607,18 @@ def s10_infra(prs):
         "Mục tiêu: sao chép dự án sang bất kỳ máy nào, bật Docker Desktop, nhấp đúp run_project.bat. Launcher kiểm "
         "tra Node, dựng Docker, tạo .env, cài gói khi lockfile đổi, nạp dữ liệu an toàn, rồi bộ giám sát chạy API và "
         "giao diện. Bản v1.2.5 xử lý lỗi Windows 3221226505: dịch vụ sập được tự khởi động lại, Ctrl+C dừng sạch cả "
-        "cây tiến trình.")
+        "cây tiến trình. SSE phát sau commit; TypeORM migration có phiên bản và rollback bước lỗi. "
+        "update_project.bat build bản mới, sao lưu trước migration, healthcheck; lỗi bật lại bản build cũ, "
+        "giữ migration đã hoàn tất tương thích. Máy vận hành không seed dữ liệu mẫu.")
 
 
 def s11_quality(prs):
     s = new_slide(prs)
     header(s, 11, "Đảm bảo chất lượng", "100% kiểm thử đạt · 0 cảnh báo lint · đồng bộ Backlog")
-    tiles = [("35 / 35", "Unit test đạt", "Bộ tính khung giờ"),
-             ("25 / 25", "E2E test đạt", "RBAC · đồng thời · vòng đời"),
+    tiles = [(f"{D.UNIT_TESTS}/{D.UNIT_TESTS}", "Unit test đạt", "8 bộ kiểm thử nghiệp vụ"),
+             (f"{D.E2E_TESTS}/{D.E2E_TESTS}", "E2E test đạt", f"{D.E2E_SUITES} bộ PostgreSQL · Demo {D.DEMO_TESTS}/{D.DEMO_TESTS}"),
              ("0", "Lỗi build · cảnh báo lint", "tsc -b · ESLint --max-warnings 0"),
-             ("39 / 39", "User story nghiệm thu", "BACKLOG-MAPPING ↔ Jira")]
+             ("39 / 39", "User story đối chiếu", "4 Sprint · 165 Story Point")]
     tw = Inches(2.87)
     for i, (v, l, d) in enumerate(tiles):
         x = M + (tw + Inches(0.21)) * i
@@ -652,9 +652,9 @@ def s11_quality(prs):
          "Định nghĩa Hoàn thành: review + merge vào develop · build & lint sạch · test đạt · story đối chiếu trong "
          "BACKLOG-MAPPING · chạy được trên staging dựng bằng một lệnh.", size=13, color=TEAL_DARK, anchor=MSO_ANCHOR.MIDDLE)
     s.notes_slide.notes_text_frame.text = (
-        "Chất lượng: 35 unit test cho bộ tính khung giờ, 25 E2E test gồm phân quyền, đồng thời và vòng đời lịch hẹn, "
-        "đều đạt. Build và lint 0 lỗi, 0 cảnh báo. 39/39 story được đối chiếu với mã nguồn trong BACKLOG-MAPPING, "
-        "làm căn cứ cập nhật Jira. Mọi phản hồi của PO đều được xử lý và phát hành thành phiên bản có tag.")
+        f"Kiểm định {D.QUALITY_DATE}: {D.UNIT_TESTS} unit test, {D.E2E_TESTS} E2E trong {D.E2E_SUITES} bộ, "
+        f"{D.DEMO_TESTS} test Demo đạt. Build và lint sạch. 39 story / 165 point đối chiếu Excel gốc và "
+        "BACKLOG-MAPPING; test tự động không thay thế biên bản nghiệm thu thủ công của PO.")
 
 
 def s12_demo(prs):

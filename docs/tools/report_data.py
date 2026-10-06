@@ -16,7 +16,7 @@ TITLE_SHORT = "Hệ thống Đặt lịch và Quản lý Vận hành Salon - Spa
 CLASS_CODE = "TTCS_T926_K2S3_N3"
 TEAM = "Nhóm 3"
 ADVISOR = "ThS. Cấn Tuấn Anh"
-PLACE_DATE = "Thái Nguyên, tháng 9 năm 2026"
+PLACE_DATE = "Thái Nguyên, tháng 10 năm 2026"
 REPO_URL = "https://github.com/steveprovip/thucTap_HeThongDatLichSPA"
 
 # ---------------------------------------------------------------- Thành viên
@@ -80,7 +80,7 @@ EPICS = [
 STORIES = [
     ("S1-01", "EP-01", "Đăng nhập, khoá 15 phút sau 5 lần sai, JWT 30 phút / 7 ngày"),
     ("S1-02", "EP-01", "Tạo / sửa / ngưng hoạt động tài khoản, mật khẩu tạm, chặn ngưng admin cuối cùng"),
-    ("S1-03", "EP-01", "5 vai trò, menu theo quyền, API trả 403"),
+    ("S1-03", "EP-01", "4 vai trò nhân sự; khách dùng trang công khai; menu theo quyền, API trả 403"),
     ("S1-04", "EP-01", "Đổi mật khẩu, quên mật khẩu, liên kết 30 phút dùng một lần"),
     ("S1-05", "EP-02", "Dịch vụ: thời lượng bội số 15 (15–240), giá ≤ 20.000.000 đ, không xoá khi đã có lịch"),
     ("S1-06", "EP-02", "Nhóm dịch vụ, thứ tự hiển thị, chặn xoá nhóm còn dịch vụ"),
@@ -89,7 +89,7 @@ STORIES = [
     ("S1-09", "EP-01", "Nhật ký hoạt động chỉ đọc, lọc theo ngày và tài khoản"),
     ("S1-10", "EP-01", "Môi trường staging một lệnh + dữ liệu mẫu chạy lại không nhân đôi"),
     ("S2-01", "EP-02", "Ca làm theo tuần, nghỉ giữa ca, chống chồng lấn, sao chép tuần"),
-    ("S2-02", "EP-02", "Ngày nghỉ của tiệm và nghỉ riêng của thợ"),
+    ("S2-02", "EP-02", "Ngày nghỉ tiệm / thợ; xác nhận lịch bị ảnh hưởng; chỉ ghi nhật ký sau khi lưu"),
     ("S2-03", "EP-03", "Danh mục công khai, tìm kiếm không dấu, hiển thị tốt ở 360 px"),
     ("S2-04", "EP-03", "Chọn tối đa 5 dịch vụ, cộng dồn thời lượng và tiền tạm tính"),
     ("S2-05", "EP-03", "Bộ tính khung giờ trống 15 phút, gợi ý 2 ngày gần nhất còn chỗ"),
@@ -119,29 +119,43 @@ STORIES = [
     ("S4-10", "EP-01", "Rà soát phân quyền bằng kiểm thử tự động + kịch bản demo"),
 ]
 
-# Sprint 1: 10 story / 40 point (tệp "SPRINT 1 — Nền tảng tài khoản và danh mục gốc.docx").
-# Sprint 2: 9 story / 42 point (S2-01, S2-02 thuộc EP-02 = 27 - 16 = 11 point; S2-03..S2-09 = EP-03 = 31 point).
-# Sprint 3 + 4: 20 story / 83 point (tổng 165 - 40 - 42); backlog chỉ ghi điểm theo epic nên không tách riêng.
+# Nguồn: de_tai/3. Hệ thống đặt lịch Salon Spa.xlsx, sheet 4. Product Backlog và 5. Sprint Plan.
+STORY_POINTS = dict(zip([s[0] for s in STORIES], [
+    5, 5, 5, 3, 5, 3, 5, 3, 3, 3,
+    8, 3, 5, 3, 8, 3, 5, 5, 2,
+    8, 3, 3, 5, 2, 3, 5, 5, 5, 3,
+    8, 2, 5, 5, 5, 3, 5, 3, 2, 3,
+]))
 SPRINTS = [
     ("Sprint 1", "Nền tảng tài khoản và danh mục gốc",
-     "Năm vai trò đăng nhập được và thấy đúng phần việc; dịch vụ, thợ, giờ mở cửa; staging 1 lệnh", 10, "40"),
+     "4 vai trò nhân sự, khách công khai; dịch vụ, thợ, giờ mở cửa; staging 1 lệnh", 10, "40"),
     ("Sprint 2", "Ca làm và đặt lịch công khai",
      "Ca làm theo tuần, ngày nghỉ; khách tự đặt lịch 4 bước; bộ tính khung giờ 15 phút; chống đặt trùng", 9, "42"),
     ("Sprint 3", "Vận hành lịch hẹn trong ngày",
-     "Lịch ngày theo cột thợ, xác nhận, check-in, dời lịch, vãng lai, no-show, lịch của thợ, chuyển lịch hàng loạt", 10, "83 (S3 + S4)"),
+     "Lịch ngày theo cột thợ, xác nhận, check-in, dời lịch, vãng lai, no-show, lịch của thợ, chuyển lịch hàng loạt", 10, "42"),
     ("Sprint 4", "Thanh toán, đánh giá, báo cáo",
-     "Phiếu tính tiền, mã giảm giá, lịch sử khách, đánh giá, email nhắc lịch, thông báo, doanh thu, rà soát phân quyền", 10, ""),
+     "Phiếu tính tiền, mã giảm giá, lịch sử khách, đánh giá, email nhắc lịch, thông báo, doanh thu, rà soát phân quyền", 10, "41"),
 ]
 
-# ---------------------------------------------------------------- Số liệu mã nguồn (đo trên nhánh main, v1.2.5)
+# ---------------------------------------------------------------- Snapshot kiểm định 06/10/2026, fix/ac-audit-0610
+QUALITY_DATE = "06/10/2026"
+UNIT_TESTS = 139
+E2E_TESTS = 83
+E2E_SUITES = 12
+DEMO_TESTS = 4
+ARCHITECTURE = [
+    ("1. Trình bày", "React 18 + Vite", "Trang công khai và quản lý; nhận SSE để làm mới dữ liệu"),
+    ("2. Giao tiếp API", "NestJS 10 Controller, DTO, Guard", "REST/JSON; xác thực JWT; kiểm tra dữ liệu và phân quyền"),
+    ("3. Nghiệp vụ", "NestJS Service", "Tính khung giờ, ngày nghỉ, vòng đời lịch, thanh toán; phát sự kiện sau commit"),
+    ("4. Lưu trữ", "TypeORM Repository + PostgreSQL", "Migration có phiên bản; giao dịch SERIALIZABLE, FOR UPDATE, EXCLUDE"),
+]
 STATS = [
-    ("Dòng mã TypeScript / TSX", "≈ 22.300"),
-    ("Module nghiệp vụ NestJS", "13"),
-    ("Endpoint REST (docs/API.md)", "59"),
-    ("Màn hình React (pages/)", "36"),
+    ("Sprint / User Story / Story Point", "4 / 39 / 165"),
+    ("Kiến trúc ứng dụng", "4 tầng: giao diện, API, nghiệp vụ, lưu trữ"),
+    ("Phân quyền nhân sự", "4 vai trò; khách đặt lịch công khai"),
+    ("Hạ tầng", "SSE · TypeORM Migration · 1-Click Update"),
     ("Bảng PostgreSQL / Entity TypeORM", "24 / 24"),
-    ("Khoá ngoại · EXCLUDE · CHECK · ENUM", "38 · 3 · 22 · 10"),
-    ("Kiểm thử đơn vị / E2E", "35 / 25 (100% đạt)"),
+    ("Kiểm thử đơn vị / E2E / Demo", f"{UNIT_TESTS} / {E2E_TESTS} ({E2E_SUITES} bộ) / {DEMO_TESTS}"),
 ]
 
 DEMO_ACCOUNTS = [

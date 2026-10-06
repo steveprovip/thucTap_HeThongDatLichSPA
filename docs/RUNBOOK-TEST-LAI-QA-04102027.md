@@ -1,6 +1,6 @@
-# Runbook test lại lỗi QA Sprint 2 (04/10/2027)
+# Runbook kiểm thử QA — cập nhật 06/10/2026
 
-Dành cho tester **Trương Khánh**. Làm lần lượt từng bước, không bỏ bước. Bản **v1.3.5** (nhánh `fix/qa-round5-0510`) bổ sung 7 lỗi vòng 3 ở mục 7b, 2 lỗi vòng 4 ở mục 7c và 2 lỗi vòng 5 ở mục 7d.
+Dành cho tester **Trương Khánh**. Làm lần lượt từng bước, không bỏ bước. Bản rà soát **06/10/2026** (`fix/ac-audit-0610`, hợp nhất vào `develop` / `main`) bổ sung 7 lỗi vòng 3 ở mục 7b, 2 lỗi vòng 4 ở mục 7c và 2 lỗi vòng 5 ở mục 7d.
 
 ## 0. Vì sao lần trước thấy "lỗi"
 
@@ -17,22 +17,18 @@ Bản này sửa tận gốc: giao diện **mặc định gọi API thật** (De
 
 ```bash
 git fetch origin
-git checkout fix/qa-round5-0510
-git pull origin fix/qa-round5-0510
+git checkout develop
+git pull --ff-only origin develop
 git log --oneline -3
 ```
 
-Nếu nhánh đã được merge vào `develop` thì: `git checkout develop && git pull origin develop`.
+Kiểm tra không có thay đổi cục bộ trước khi cập nhật. Máy đang vận hành dùng **`update_project.bat`**: lấy mã fast-forward, build, sao lưu trước migration và kiểm tra `/health`; lỗi sẽ bật lại bản build cũ. Không chạy seed mẫu trên máy vận hành.
 
 ## 3. Dọn dữ liệu cũ
 
-Trong trình duyệt đang dùng để test: mở `http://localhost:5173`, nhấn **F12 → Application → Local Storage → http://localhost:5173**, xoá các khoá `salon.demo.v5`, `salon.demo.v6`, `salon.demoUserId`, `salon.bookingDraft`, `salon.lookupLockedUntil` (hoặc bấm *Clear All*).
+Trong trình duyệt đang dùng để test: mở `http://localhost:5173`, nhấn **F12 → Application → Local Storage → http://localhost:5173**, xoá các khoá `salon.demo.v5`, `salon.demo.v6`, `salon.demoUserId`, `salon.bookingDraft`, `salon.lookupLockedUntil`.
 
-Dọn cơ sở dữ liệu cũ (xoá volume Postgres):
-
-```bash
-docker compose down -v
-```
+Giữ CSDL hiện có và chạy migration; **không xoá volume PostgreSQL** khi kiểm thử lại. E2E tự tạo / xoá CSDL riêng có hậu tố `_test`, không dùng CSDL vận hành. Dữ liệu mẫu chỉ nạp trên máy phát triển / QA.
 
 ## 4. Cấu hình môi trường (chỉ khi không dùng `run_project`)
 
@@ -60,7 +56,7 @@ npm run db:up
 docker compose ps
 ```
 
-Đợi cột `STATUS` của `salon_postgres` ghi `healthy` (tối đa ~2 phút lần đầu), rồi nạp lược đồ + dữ liệu mẫu. Bước này thêm cột `gender` cho thợ, cột `total_appointments` cho khách và tính lại số liệu của mọi khách từ bảng lịch hẹn:
+Đợi cột `STATUS` của `salon_postgres` ghi `healthy` (tối đa ~2 phút lần đầu), rồi áp dụng migration có phiên bản + dữ liệu mẫu trên máy QA. Bước này thêm cột `gender` cho thợ, cột `total_appointments` cho khách và tính lại số liệu của mọi khách từ bảng lịch hẹn:
 
 ```bash
 npm run db:seed
@@ -127,7 +123,7 @@ Dữ liệu mẫu thật: thứ 2–6 mở cửa **08:30 – 20:00**, thứ 7 v�
 
 ## 7d. Kiểm thử 2 lỗi vòng 5 (bản v1.3.5, QA 05/10/2026)
 
-**Bắt buộc chạy lại `npm run db:seed`** (hoặc `run_project.bat`, script đã tự chạy) để thêm cột `total_appointments` và tính lại số liệu của mọi khách. Đăng nhập `reception@salon.vn / Reception@123`; riêng bước thêm ngày nghỉ dùng `owner@salon.vn / Owner@123`.
+**Chạy `npm run db:migrate`** để cập nhật cấu trúc an toàn. Máy QA có thể dùng `run_project.bat` (tự migration + seed mẫu); máy vận hành dùng `update_project.bat` (không seed). Đăng nhập `reception@salon.vn / Reception@123`; riêng bước thêm ngày nghỉ dùng `owner@salon.vn / Owner@123`.
 
 Ba số liệu của khách đều **đếm trực tiếp từ bảng lịch hẹn** và dùng đúng một bộ nhãn ở mọi màn hình: **Lượt hoàn tất** (lịch trạng thái Hoàn tất), **Lượt không đến** (lịch trạng thái Không đến), **Tổng lịch đã đặt** (mọi lịch từng đặt, kể cả đã huỷ và sắp tới).
 
@@ -162,16 +158,36 @@ npm --prefix frontend run dev:demo
 
 Xoá `salon.demo.v5`, `salon.demo.v6`, `salon.demoUserId` trong Local Storage trước khi mở. Bản Demo có ô *"Chế độ demo · Xem vai trò"* ở góc dưới bên phải và áp dụng cùng 8 luật như API thật (giờ mở cửa mẫu là 08:00 – 21:00, ca mẫu chỉ có từ 7 ngày trước đến 13 ngày sau, giới hạn 5 lượt đặt và 10 lượt tra sai tính theo trình duyệt này). Muốn về dữ liệu ban đầu: xoá khoá `salon.demo.v6` rồi tải lại trang. Riêng QA-04 ở Demo: chọn bốn dịch vụ "Uốn sóng lơi", "Một ngày thư giãn", "Nhuộm màu thời trang", "Liệu trình phục hồi tóc" (510 phút, vượt ca mẫu dài nhất 480 phút).
 
-## 10. Kiểm tra tự động (tuỳ chọn, cần CSDL đang chạy và đã seed)
+## 10. Cổng kiểm tra tự động — một lệnh, cần PostgreSQL đang chạy
 
-```bash
-npm test
-npm run test:e2e
-npm run lint
-npm --prefix frontend run build
+Từ thư mục gốc, tester Trương Khánh chạy PowerShell:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File docs/tools/test_qa.ps1
 ```
 
-Kết quả mong đợi: `npm test` 105/105, `npm run test:e2e` 57/57 (9 bộ), lint không lỗi và không cảnh báo, build thành công. Các test e2e tự xoá bộ đếm giới hạn trước và sau khi chạy.
+Script dừng ngay khi một cổng lỗi. Các lệnh tương đương:
+
+```powershell
+npm run test --prefix backend
+npm run test:e2e --prefix backend
+node --test frontend/test/holidays.test.mjs
+npm run lint --prefix backend
+npm run lint --prefix frontend
+npm run build --prefix frontend
+npm run typecheck --prefix backend
+```
+
+Kết quả kiểm định 06/10/2026: **139/139 unit**, **83/83 E2E trong 12 bộ**, **4/4 Demo**, lint hai ứng dụng 0 lỗi / 0 cảnh báo, Vite build và backend typecheck đạt. E2E tự tạo, seed và xoá CSDL `_test`; cần tài khoản PostgreSQL có quyền tạo CSDL. Không chạy `db:reset` trước test.
+
+### Kiểm tra ngày nghỉ và nhật ký (S2-02, S1-09)
+
+1. Owner tạo ngày nghỉ **18/10/2026**, lý do **Lễ**. Nếu ngày này có lịch hoạt động, phải thấy Dialog liệt kê tác động.
+2. Trước xác nhận: không có bản ghi ngày nghỉ mới, không có nhật ký tạo ngày nghỉ. Bấm **Huỷ**, biểu mẫu giữ dữ liệu và vẫn chưa lưu.
+3. Bấm tạo lại, chọn **Xác nhận tạo**. Network phải có lần gửi `force: true`; danh sách ngày nghỉ có bản ghi sau F5. Nhật ký có **đúng một** bản ghi tạo với ID ngày nghỉ thật.
+4. Trang công khai không có khung giờ ngày nghỉ; tại quầy và dời lịch bị chặn. Gọi API trực tiếp trả **400 `SALON_CLOSED`**. Lịch cũ không bị huỷ tự động.
+5. Ngày không có lịch bị ảnh hưởng: lưu ngay lần đầu, đúng một nhật ký. Lặp lại ở Demo; dữ liệu Demo tồn tại sau F5 trong cùng trình duyệt.
+
 
 ## 11. Nếu gặp lỗi
 
@@ -179,15 +195,15 @@ Kết quả mong đợi: `npm test` 105/105, `npm run test:e2e` 57/57 (9 bộ), 
 |---|---|
 | Vẫn thấy ô *"Chế độ demo"* | Bạn đang chạy Demo (`dev:demo`) hoặc `frontend/.env` đặt `VITE_DEMO_MODE=true`. Dừng hẳn rồi chạy lại bằng `run_project.bat` / `run_project.sh` (luôn ép API thật); Vite chỉ đọc `.env` lúc khởi động |
 | Cửa sổ báo *"Máy chưa cài Docker"* hoặc *"Docker không phản hồi"* | Cài / bật Docker Desktop, đợi biểu tượng cá voi ở trạng thái *Engine running* rồi chạy lại. Không dùng được Docker thì tự cài PostgreSQL và chạy với `SALON_SKIP_DOCKER=1` (cmd: `set SALON_SKIP_DOCKER=1&& run_project.bat`) |
-| `npm run db:seed` báo `ECONNREFUSED` | Postgres chưa healthy: `docker compose ps`, đợi rồi chạy lại. Chạy lại seed bao nhiêu lần cũng an toàn |
+| `npm run db:seed` báo `ECONNREFUSED` | Postgres chưa healthy: `docker compose ps`, đợi rồi chạy lại. Chạy lại seed chỉ trên máy QA; seed đặt lại mật khẩu tài khoản mẫu |
 | Cổng 5432 / 3000 / 5173 đã bị chiếm | Tắt tiến trình đang chiếm, hoặc đổi cổng như mục 1 |
-| Thêm thợ báo thiếu giới tính dù đã chọn | Bạn đang chạy backend cũ: dừng hẳn `npm run start:all`, `git pull`, chạy lại và nhớ `npm run db:seed` |
+| Thêm thợ báo thiếu giới tính dù đã chọn | Bạn đang chạy backend cũ: dừng hẳn `npm run start:all`, `git pull`, chạy lại và nhớ `npm run db:migrate` |
 | Tra cứu báo "Mã tra cứu gồm 8 ký tự chữ hoặc số" | Mã tra cứu mới gồm đúng 8 ký tự (vd. `K7M2QP4X`), không có tiền tố `SL-`. Lấy mã ở trang xác nhận hoặc email trong Maildev |
 | Bước 1 vẫn hiện số dịch vụ lạ | Xoá khoá `salon.bookingDraft` trong Local Storage rồi tải lại trang. Bản mới tự dọn bản nháp cũ khi tải danh mục dịch vụ |
 | Nút Tra cứu vẫn xám, đếm ngược chưa hết | Giao diện nhớ mốc khoá. Xoá khoá `salon.lookupLockedUntil` trong Local Storage rồi tải lại trang (và xoá bộ đếm theo mục 8 nếu máy chủ cũng đang khoá) |
 | Không thấy khung vàng tách lịch dù dịch vụ rất dài | Khung chỉ hiện khi tổng thời lượng **lớn hơn** ca dài nhất trong 7 ngày tới của các thợ làm được dịch vụ đó, và phải có ít nhất một ca được xếp. Kiểm tra lại ca làm của thợ (mục 7, dòng 5) |
 | Bị 429 sớm hơn lượt thứ 6 | Mọi lượt thử đặt trong cùng một giờ (kể cả lượt bị từ chối vì trùng giờ, sai SĐT) đều tính vào hạn mức. Xoá bộ đếm theo mục 8 rồi thử lại |
-| Hồ sơ khách không có cột *Tổng lịch đã đặt* hoặc số liệu bằng 0 | Backend / CSDL còn bản cũ: dừng hẳn hệ thống, `git pull`, chạy lại bằng `run_project.bat` (hoặc `npm run db:seed`) để thêm cột `total_appointments` và tính lại. Ở Demo: xoá khoá `salon.demo.v6` rồi tải lại trang |
+| Hồ sơ khách không có cột *Tổng lịch đã đặt* hoặc số liệu bằng 0 | Backend / CSDL còn bản cũ: dừng hẳn hệ thống, `git pull`, chạy lại bằng `run_project.bat` (hoặc `npm run db:migrate`) để thêm cột `total_appointments` và tính lại. Ở Demo: xoá khoá `salon.demo.v6` rồi tải lại trang |
 | Không thấy khung đỏ "Tiệm nghỉ trong ngày này…" | Ngày đó chưa được khai báo nghỉ. Owner vào *Giờ mở cửa & ngày nghỉ* thêm ngày nghỉ (hoặc dùng kỳ nghỉ mẫu hôm nay + 21 đến + 23 ngày) rồi tải lại màn hình. Thợ đã có ca sẵn trong ngày nghỉ vẫn không nhận được lịch |
 | Mãi không bị 429 / khoá | Kiểm tra `backend/.env`: `BOOKING_IP_LIMIT_PER_HOUR=5`, `LOOKUP_IP_LIMIT_PER_HOUR=10`, `LOOKUP_BLOCK_MINUTES=30`, `MAX_ACTIVE_BOOKINGS_PER_PHONE=3` (giá trị trong `.env.example`), rồi chạy lại backend |
 

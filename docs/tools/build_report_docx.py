@@ -6,7 +6,7 @@ Sinh báo cáo thực tập (.docx) cho dự án Hệ thống Đặt lịch Salo
     python docs/tools/build_report_docx.py
 
 Kết quả: docs/Bao_Cao_Thuc_Tap_He_Thong_Dat_Lich_Salon_Spa.docx
-Định dạng: A4, lề trên 2 cm – dưới 2 cm – trái 3 cm – phải 2 cm, Times New Roman 13, giãn dòng 1.3.
+Định dạng: A4, lề trên 2 cm – dưới 2 cm – trái 3 cm – phải 1.5 cm, Times New Roman 13, giãn dòng 1.3.
 Mở bằng Word -> chọn "Yes" khi được hỏi cập nhật trường để Mục lục có số trang.
 """
 import os
@@ -31,9 +31,9 @@ OUT = os.path.join(DOCS, "Bao_Cao_Thuc_Tap_He_Thong_Dat_Lich_Salon_Spa.docx")
 
 FONT = "Times New Roman"
 BODY_PT = 13
-TABLE_PT = 11.5
+TABLE_PT = 13
 HEADER_FILL = "D9EFEC"  # teal rất nhạt cho hàng tiêu đề bảng
-TEXT_WIDTH_CM = 16.0    # 21 - 3 - 2
+TEXT_WIDTH_CM = 16.5    # 21 - 3 - 1.5
 
 # ============================================================================ tiện ích XML
 
@@ -48,7 +48,7 @@ def set_run_font(run, size=None, bold=None, italic=None, color=None, font=FONT):
     for attr in ("w:ascii", "w:hAnsi", "w:eastAsia", "w:cs"):
         rfonts.set(qn(attr), font)
     if size is not None:
-        run.font.size = Pt(size)
+        run.font.size = Pt(max(BODY_PT, size))
     if bold is not None:
         run.font.bold = bold
     if italic is not None:
@@ -197,6 +197,9 @@ class Report:
     # ---------------------------------------------------------------- styles
     def _setup_styles(self):
         st = self.doc.styles
+        for style in st:
+            if hasattr(style, "font"):
+                style_font(style, BODY_PT)
         normal = st["Normal"]
         style_font(normal, BODY_PT)
         pf = normal.paragraph_format
@@ -206,25 +209,25 @@ class Report:
         pf.space_after = Pt(6)
 
         h1 = st["Heading 1"]
-        style_font(h1, 14, bold=True)
+        style_font(h1, 16, bold=True)
         h1.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
         h1.paragraph_format.space_before = Pt(0)
-        h1.paragraph_format.space_after = Pt(18)
+        h1.paragraph_format.space_after = Pt(6)
         h1.paragraph_format.page_break_before = True
         h1.paragraph_format.keep_with_next = True
         h1.paragraph_format.line_spacing = 1.3
 
         h2 = st["Heading 2"]
-        style_font(h2, 13, bold=True)
-        h2.paragraph_format.space_before = Pt(12)
+        style_font(h2, 14, bold=True)
+        h2.paragraph_format.space_before = Pt(0)
         h2.paragraph_format.space_after = Pt(6)
         h2.paragraph_format.keep_with_next = True
         h2.paragraph_format.line_spacing = 1.3
 
         h3 = st["Heading 3"]
         style_font(h3, 13, bold=True, italic=True)
-        h3.paragraph_format.space_before = Pt(8)
-        h3.paragraph_format.space_after = Pt(4)
+        h3.paragraph_format.space_before = Pt(0)
+        h3.paragraph_format.space_after = Pt(6)
         h3.paragraph_format.keep_with_next = True
         h3.paragraph_format.line_spacing = 1.3
 
@@ -232,7 +235,7 @@ class Report:
             s = st[name]
             style_font(s, BODY_PT)
             s.paragraph_format.line_spacing = 1.3
-            s.paragraph_format.space_after = Pt(3)
+            s.paragraph_format.space_after = Pt(6)
 
         for i in (1, 2, 3):
             s = st[f"TOC {i}"] if f"TOC {i}" in [x.name for x in st] else st.add_style(f"TOC {i}", 1)
@@ -252,13 +255,13 @@ class Report:
         section.top_margin = Cm(2)
         section.bottom_margin = Cm(2)
         section.left_margin = Cm(3)
-        section.right_margin = Cm(2)
+        section.right_margin = Cm(1.5)
         section.header_distance = Cm(1.0)
         section.footer_distance = Cm(1.0)
 
     def _footer_page_number(self, section):
-        section.footer.is_linked_to_previous = False
-        p = section.footer.paragraphs[0]
+        section.header.is_linked_to_previous = False
+        p = section.header.paragraphs[0]
         p.text = ""
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         add_field(p, "PAGE")
@@ -269,7 +272,7 @@ class Report:
         p = self.doc.add_paragraph()
         p.alignment = align
         if indent:
-            p.paragraph_format.first_line_indent = Cm(1.0)
+            p.paragraph_format.first_line_indent = Cm(1.27)
         if space_after is not None:
             p.paragraph_format.space_after = Pt(space_after)
         if keep_next:
@@ -292,7 +295,7 @@ class Report:
                 set_run_font(r, size=size or BODY_PT, bold=bold, italic=True)
             elif part.startswith("`"):
                 r = p.add_run(part[1:-1])
-                set_run_font(r, size=(size or BODY_PT) - 1.5, bold=bold, italic=italic, font="Consolas", color="0F4F4A")
+                set_run_font(r, size=size or BODY_PT, bold=bold, italic=italic)
             else:
                 r = p.add_run(part)
                 set_run_font(r, size=size or BODY_PT, bold=bold, italic=italic)
@@ -309,23 +312,23 @@ class Report:
         self.tab = 0
         p = self.doc.add_paragraph(style="Heading 1")
         r = p.add_run(f"CHƯƠNG {self.chapter}")
-        set_run_font(r, size=14, bold=True)
+        set_run_font(r, size=16, bold=True)
         r.add_break(WD_BREAK.LINE)
         r2 = p.add_run(title.upper())
-        set_run_font(r2, size=14, bold=True)
+        set_run_font(r2, size=16, bold=True)
         self.sec = 0
 
     def h1_plain(self, title):
         p = self.doc.add_paragraph(style="Heading 1")
         r = p.add_run(title.upper())
-        set_run_font(r, size=14, bold=True)
+        set_run_font(r, size=16, bold=True)
 
     def h2(self, title):
         self.sec += 1
         self.sub = 0
         p = self.doc.add_paragraph(style="Heading 2")
         r = p.add_run(f"{self.chapter}.{self.sec}. {title}")
-        set_run_font(r, size=13, bold=True)
+        set_run_font(r, size=14, bold=True)
 
     def h3(self, title):
         self.sub += 1
@@ -342,14 +345,14 @@ class Report:
             n = self.fig
         p = self.doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        p.paragraph_format.space_before = Pt(4 if kind == "Hình" else 8)
-        p.paragraph_format.space_after = Pt(10 if kind == "Hình" else 4)
+        p.paragraph_format.space_before = Pt(0)
+        p.paragraph_format.space_after = Pt(6)
         if kind == "Bảng":
             p.paragraph_format.keep_with_next = True
-        r = p.add_run(f"{kind} {self.chapter}.{n}. ")
-        set_run_font(r, size=12, bold=True, italic=True)
+        r = p.add_run(f"{kind} {self.chapter}.{n}: ")
+        set_run_font(r, size=13, bold=True, italic=True)
         r2 = p.add_run(text)
-        set_run_font(r2, size=12, italic=True)
+        set_run_font(r2, size=13, italic=True)
 
     def figure(self, path, caption, width_cm=TEXT_WIDTH_CM):
         p = self.doc.add_paragraph()
@@ -362,6 +365,7 @@ class Report:
         self.caption("Hình", caption)
 
     def table(self, header, rows, widths_cm, caption=None, align=None, font_size=TABLE_PT, bold_first_col=False):
+        font_size = max(BODY_PT, font_size)
         if caption:
             self.caption("Bảng", caption)
         t = self.doc.add_table(rows=1, cols=len(header))
@@ -378,8 +382,8 @@ class Report:
             c.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
             p = c.paragraphs[0]
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            p.paragraph_format.line_spacing = 1.1
-            p.paragraph_format.space_after = Pt(0)
+            p.paragraph_format.line_spacing = 1.3
+            p.paragraph_format.space_after = Pt(6)
             r = p.add_run(h)
             set_run_font(r, size=font_size, bold=True)
         for row in rows:
@@ -390,15 +394,15 @@ class Report:
                 c.width = Cm(widths_cm[i])
                 c.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
                 p = c.paragraphs[0]
-                p.paragraph_format.line_spacing = 1.1
-                p.paragraph_format.space_after = Pt(0)
+                p.paragraph_format.line_spacing = 1.3
+                p.paragraph_format.space_after = Pt(6)
                 p.alignment = (align[i] if align else WD_ALIGN_PARAGRAPH.LEFT)
                 self._rich(p, str(val), bold=(bold_first_col and i == 0), size=font_size)
         # độ rộng cột ở cấp lưới bảng (Word + LibreOffice đều đọc)
         grid = t._tbl.tblGrid
         for i, gc in enumerate(grid.findall(qn("w:gridCol"))):
             gc.set(qn("w:w"), str(int(widths_cm[i] * 567)))
-        if len(rows) <= 12:  # bảng nhỏ: giữ trọn trên một trang
+        if len(rows) <= 5:  # bảng nhỏ: giữ trọn trên một trang
             for row in t.rows[:-1]:
                 for c in row.cells:
                     for p in c.paragraphs:
@@ -439,7 +443,7 @@ class Report:
             p.paragraph_format.line_spacing = 1.0
             p.paragraph_format.space_after = Pt(0)
             r = p.add_run(line if line else " ")
-            set_run_font(r, size=10, font="Consolas", color="0F172A")
+            set_run_font(r, size=13)
         sp = self.doc.add_paragraph()
         sp.paragraph_format.space_after = Pt(2)
 
@@ -510,7 +514,7 @@ def cover(R: Report):
         pp.alignment = WD_ALIGN_PARAGRAPH.CENTER
         pp.paragraph_format.space_after = Pt(0)
         pp.paragraph_format.line_spacing = 1.0
-        set_run_font(pp.add_run(h), size=12, bold=True)
+        set_run_font(pp.add_run(h), size=13, bold=True)
     for i, m in enumerate(D.MEMBERS, 1):
         cells = t.add_row().cells
         for j, (txt, al) in enumerate(((str(i), WD_ALIGN_PARAGRAPH.CENTER), (m["name"], WD_ALIGN_PARAGRAPH.LEFT),
@@ -521,7 +525,7 @@ def cover(R: Report):
             pp.alignment = al
             pp.paragraph_format.space_after = Pt(0)
             pp.paragraph_format.line_spacing = 1.0
-            set_run_font(pp.add_run(txt), size=12)
+            set_run_font(pp.add_run(txt), size=13)
     grid = t._tbl.tblGrid
     for i, gc in enumerate(grid.findall(qn("w:gridCol"))):
         gc.set(qn("w:w"), str(int(widths[i] * 567)))
@@ -638,7 +642,7 @@ def chapter1(R: Report):
         ("Thợ", "Biết hôm nay làm cho ai, dịch vụ gì", "Lịch của tôi, bắt đầu / hoàn tất, ghi chú kỹ thuật; SĐT khách bị che"),
         ("Chủ tiệm", "Nắm doanh thu, cấu hình dịch vụ và ca làm", "Tổng quan, doanh thu, phân bố khung giờ, dịch vụ, hồ sơ thợ, ca làm, giờ mở cửa, mã giảm giá"),
         ("Quản trị hệ thống", "Quản lý tài khoản, kiểm soát an toàn", "Tài khoản nhân sự, nhật ký hoạt động, bảng phân quyền"),
-    ], [3.0, 5.0, 8.0], caption="Năm vai trò người dùng của hệ thống")
+    ], [3.0, 5.0, 8.0], caption="Bốn vai trò nhân sự và khách trên trang công khai")
     R.para("Ngoài phạm vi của phiên bản hiện tại: thanh toán trực tuyến qua cổng thanh toán, ứng dụng di động gốc, quản lý "
            "nhiều chi nhánh và quản lý kho mỹ phẩm.")
 
@@ -687,28 +691,22 @@ def chapter2(R: Report):
            "chứa hai story kỹ thuật khó nhất là bộ tính khung giờ trống (S2-05) và chống đặt trùng (S2-08).")
 
     R.h3("Danh sách 39 User Story")
-    R.table(["Mã", "Epic", "Nội dung chính (tiêu chí chấp nhận tóm tắt)"],
-            [(s[0], s[1], s[2]) for s in D.STORIES], [1.7, 1.8, 12.5],
+    R.table(["Mã", "Epic", "Point", "Nội dung chính (tiêu chí chấp nhận tóm tắt)"],
+            [(s[0], s[1], D.STORY_POINTS[s[0]], s[2]) for s in D.STORIES], [1.8, 1.8, 1.4, 11.0],
             caption="Danh sách user story theo Sprint",
-            align=[WD_ALIGN_PARAGRAPH.CENTER, WD_ALIGN_PARAGRAPH.CENTER, WD_ALIGN_PARAGRAPH.LEFT], font_size=11)
+            align=[WD_ALIGN_PARAGRAPH.CENTER] * 3 + [WD_ALIGN_PARAGRAPH.LEFT])
     R.para("Tiền tố mã story cho biết Sprint thực hiện (S1 … S4). Story S4-10 thuộc EP-01 nhưng được đặt ở Sprint cuối "
            "vì là bước rà soát phân quyền tổng thể sau khi mọi màn hình đã hoàn thành.")
 
     R.h2("Kế hoạch bốn Sprint")
-    t = R.table(["Sprint", "Chủ đề", "Trọng tâm", "Story", "Point"],
+    R.table(["Sprint", "Chủ đề", "Trọng tâm", "Story", "Point"],
                 [(s[0], s[1], s[2], s[3], s[4]) for s in D.SPRINTS] + [("**Tổng**", "", "", "**39**", "**165**")],
                 [2.0, 3.6, 7.6, 1.3, 1.5], caption="Phân công user story vào bốn Sprint",
                 align=[WD_ALIGN_PARAGRAPH.CENTER, WD_ALIGN_PARAGRAPH.LEFT, WD_ALIGN_PARAGRAPH.LEFT,
                        WD_ALIGN_PARAGRAPH.CENTER, WD_ALIGN_PARAGRAPH.CENTER])
-    # Gộp ô point của Sprint 3 và Sprint 4 (Backlog chỉ ghi điểm theo epic cho hai Sprint này)
-    a, b = t.cell(3, 4), t.cell(4, 4)
-    merged = a.merge(b)
-    for extra in merged.paragraphs[1:]:
-        extra._element.getparent().remove(extra._element)
-    merged.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
-    R.para("Sprint 1 có 10 story / 40 point (theo bảng Sprint Backlog được PO duyệt); Sprint 2 có 9 story / 42 point. "
-           "Sprint 3 và Sprint 4 gồm 20 story với tổng 83 point; Product Backlog ghi điểm theo epic nên bảng gộp điểm "
-           "của hai Sprint này.")
+    R.para("Đối chiếu sheet Product Backlog và Sprint Plan của đề tài gốc: Sprint 1 có 10 story / 40 point; "
+           "Sprint 2 có 9 story / 42 point; Sprint 3 có 10 story / 42 point; Sprint 4 có 10 story / 41 point. "
+           "Tổng cộng 39 story và 165 point, không gộp điểm hai Sprint cuối.")
 
     R.h2("Ma trận phân công 10 thành viên")
     R.table(["TT", "Thành viên", "Vai trò", "Nhiệm vụ chính", "Sản phẩm bàn giao"],
@@ -725,14 +723,16 @@ def chapter2(R: Report):
 def chapter3(R: Report):
     R.h1("Thiết kế kiến trúc và cơ sở dữ liệu")
     R.h2("Kiến trúc tổng thể")
+    R.table(["Tầng", "Công nghệ", "Trách nhiệm"], D.ARCHITECTURE, [3.0, 4.5, 8.5],
+            caption="Kiến trúc bốn tầng của hệ thống")
     R.para("Hệ thống tổ chức theo dạng **monorepo**: một kho mã chứa cả backend, frontend, lược đồ CSDL, tài liệu và "
            "các script khởi động. Hai ứng dụng giao tiếp qua REST/JSON; ở môi trường phát triển, Vite làm proxy "
            "chuyển `/api`, `/uploads`, `/health` sang NestJS nên trình duyệt chỉ làm việc với một địa chỉ duy nhất.")
     R.figure(os.path.join(DIAGRAMS, "arch.png"), "Kiến trúc tổng thể của hệ thống")
     R.code([
         "du_an/",
-        "├── backend/            NestJS – 13 module, guard, interceptor, filter",
-        "├── frontend/           React SPA – 36 màn hình, api, contexts",
+        "├── backend/            NestJS – API, service, repository, events SSE",
+        "├── frontend/           React 18 + Vite – pages, api, contexts",
         "├── database/           schema.sql (24 bảng), seed.sql",
         "├── docs/               API, BACKLOG-MAPPING, DEMO-SCRIPT, …",
         "├── scripts/            launcher.mjs – bộ giám sát khởi động",
@@ -769,7 +769,7 @@ def chapter3(R: Report):
         ("Xác thực", "JWT: access token 30 phút, refresh token 7 ngày (lưu dạng băm trong `refresh_tokens`); mật khẩu băm bcrypt"),
         ("Chống dò mật khẩu", "Khoá tài khoản 15 phút sau 5 lần đăng nhập sai liên tiếp"),
         ("Thu hồi phiên", "`sessions_valid_from`: ngưng hoạt động hoặc đổi mật khẩu làm mọi phiên cũ mất hiệu lực ngay"),
-        ("Phân quyền RBAC", "5 vai trò: Khách hàng, Thợ, Lễ tân, Chủ tiệm, Quản trị; ma trận quyền F / W / R / – cho 8 nhóm chức năng"),
+        ("Phân quyền RBAC", "4 vai trò nhân sự: Thợ, Lễ tân, Chủ tiệm, Quản trị; Khách hàng dùng trang công khai; ma trận quyền F / W / R / – cho 8 nhóm chức năng"),
         ("Giới hạn tần suất", "Đặt lịch 5 lần/IP/giờ; tra cứu chặn 30 phút sau 10 lần sai; email khôi phục 3 lần/giờ"),
         ("Bảo vệ dữ liệu khách", "Thợ chỉ thấy SĐT đã che (`098***1234`); ghi chú kỹ thuật chỉ nhân sự nội bộ xem"),
     ], [4.0, 12.0], caption="Các cơ chế bảo mật")
@@ -778,7 +778,9 @@ def chapter3(R: Report):
     R.para("Lược đồ gồm **24 bảng** chia thành sáu nhóm nghiệp vụ, với 38 khoá ngoại, 10 kiểu ENUM, 22 ràng buộc CHECK "
            "và 3 ràng buộc EXCLUDE. Nguyên tắc thiết kế: **mọi quy tắc toàn vẹn quan trọng đều được cài ở tầng CSDL**, "
            "không chỉ ở tầng ứng dụng, vì vậy dữ liệu vẫn đúng ngay cả khi có công cụ khác ghi thẳng vào bảng. Do đó "
-           "TypeORM để `synchronize: false` – lược đồ do `database/schema.sql` quản lý.")
+           "TypeORM để `synchronize: false`; lược đồ được quản lý bằng migration có phiên bản trong "
+           "`backend/src/database/migrations`. `schema.sql` là nguồn cho migration nền, không chạy lại trực tiếp "
+           "mỗi lần khởi động. Migration dùng khoá để tránh hai tiến trình nâng cấp cùng lúc; bước lỗi được rollback.")
     R.figure(os.path.join(DIAGRAMS, "erd.png"), "Sơ đồ CSDL rút gọn theo nhóm nghiệp vụ (24 bảng)")
     R.table(["Nhóm", "Bảng", "Vai trò"], [
         ("Tài khoản & bảo mật", "users, refresh_tokens, password_reset_tokens, audit_logs, rate_limits", "Đăng nhập, phiên, khôi phục mật khẩu, nhật ký chỉ đọc, chống spam"),
@@ -869,7 +871,7 @@ def chapter3(R: Report):
 def chapter4(R: Report):
     R.h1("Cài đặt và hiện thực hệ thống")
     R.h2("Tổng quan mã nguồn")
-    R.table(["Chỉ số", "Giá trị"], D.STATS, [9.0, 7.0], caption="Quy mô mã nguồn (nhánh main, phiên bản v1.2.5)",
+    R.table(["Chỉ số", "Giá trị"], D.STATS, [9.0, 7.0], caption=f"Phạm vi và kiểm định hệ thống ngày {D.QUALITY_DATE}",
             align=[WD_ALIGN_PARAGRAPH.LEFT, WD_ALIGN_PARAGRAPH.CENTER])
     R.para("Tài liệu API sinh tự động bằng Swagger tại địa chỉ `/api/docs` của backend; danh mục 59 endpoint kèm vai trò "
            "được phép nằm trong `docs/API.md`.")
@@ -939,7 +941,7 @@ def chapter4(R: Report):
         "**Bảng phân quyền:** ma trận lấy thẳng từ máy chủ – cùng một nguồn với guard chặn API, nên giao diện và thực thi luôn khớp nhau.",
     ])
     R.figure(os.path.join(SCREENS, "18_audit.jpg"), "Nhật ký hoạt động chỉ đọc")
-    R.figure(os.path.join(SCREENS, "19_rbac.jpg"), "Bảng phân quyền 5 vai trò")
+    R.figure(os.path.join(SCREENS, "19_rbac.jpg"), "Phân quyền bốn vai trò nhân sự và khách công khai")
 
     R.h2("Hạ tầng tự động một chạm")
     R.para("Mục tiêu: sao chép dự án sang **bất kỳ máy Windows, macOS hay Linux** nào, chỉ cần bật Docker Desktop và nhấp "
@@ -948,10 +950,19 @@ def chapter4(R: Report):
     R.h3("Docker Compose và dữ liệu mẫu an toàn")
     R.bullets([
         "`docker compose up -d` dựng PostgreSQL 15, PgAdmin và Maildev. Healthcheck kiểm tra qua **TCP** (`pg_isready -h 127.0.0.1`) chứ không qua Unix socket, tránh báo “sẵn sàng” quá sớm khi container còn chạy script khởi tạo.",
-        "`run-seed.ts` tự chờ CSDL tới 120 giây, luôn áp dụng `schema.sql` (viết theo kiểu chạy lại được) rồi `seed.sql`.",
+        "`run-seed.ts` áp dụng migration còn thiếu rồi nạp `seed.sql` cho môi trường phát triển / QA; không dùng seed cho máy vận hành thật.",
         "`seed.sql` chạy lại an toàn (**idempotent**): `ON CONFLICT DO NOTHING` cho mọi khoá duy nhất; bỏ qua khung giờ mẫu đã trùng lịch thật; đưa 8 tài khoản mẫu về đúng mật khẩu và mở khoá mỗi lần chạy.",
         "Endpoint `/health` trả **200** khi API truy vấn được CSDL và **503** khi chưa, làm căn cứ để launcher quyết định mở trình duyệt.",
     ])
+    R.h3("Real-time SSE và cập nhật một chạm")
+    R.para("Backend phát sự kiện Server-Sent Events (SSE) sau khi giao dịch ghi dữ liệu thành công. "
+           "Frontend nhận sự kiện để tải lại lịch và dữ liệu liên quan; kiểm tra quyền vẫn thực hiện ở API. "
+           "Kết nối có cơ chế nối lại và làm mới dữ liệu để đồng bộ khi chuyển mạng.")
+    R.para("Máy vận hành dùng `start_server.bat` để chạy migration và bootstrap, không nạp dữ liệu mẫu. "
+           "`update_project.bat` cập nhật một chạm: lấy mã bằng fast-forward, cài gói, build bản mới, dừng bản cũ, "
+           "sao lưu trước migration, khởi động lại và kiểm tra sức khoẻ. Nếu cập nhật lỗi, launcher bật lại bản build cũ; "
+           "migration đang lỗi được rollback, migration đã hoàn tất vẫn phải tương thích với bản cũ. "
+           "GitHub Actions đã có cổng kiểm tra; triển khai vẫn do người vận hành chủ động khởi chạy.")
     R.h3("Bộ giám sát Supervisor tự phục hồi (v1.2.5)")
     R.para("Trên Windows, tiến trình Vite đôi khi kết thúc với mã **3221226505** (`0xC0000409`) – Node.js tự huỷ ở tầng "
            "native, không bắt được bằng JavaScript. Khi chạy qua `concurrently`, dịch vụ chết chỉ được báo mã lỗi rồi bỏ "
@@ -987,26 +998,30 @@ def chapter5(R: Report):
 
     R.h2("Kết quả kiểm thử")
     R.table(["Hạng mục", "Kết quả", "Ghi chú"], [
-        ("Kiểm thử đơn vị", "**35 / 35 đạt**", "slot-calculator.spec.ts"),
-        ("Kiểm thử E2E", "**25 / 25 đạt**", "auth-rbac, booking-concurrency, lifecycle – chạy trên CSDL mới"),
+        ("Kiểm thử đơn vị", f"**{D.UNIT_TESTS} / {D.UNIT_TESTS} đạt**", "8 bộ: khung giờ, ngày nghỉ, sự kiện, kết nối và bảo mật"),
+        ("Kiểm thử E2E", f"**{D.E2E_TESTS} / {D.E2E_TESTS} đạt**", f"{D.E2E_SUITES} bộ trên PostgreSQL; RBAC, đồng thời, migration, SSE và hồi quy QA"),
+        ("Kiểm thử Demo", f"**{D.DEMO_TESTS} / {D.DEMO_TESTS} đạt**", "node --test frontend/test/holidays.test.mjs"),
         ("Chống đặt trùng", "1 thành công / 19 nhận 409", "20 yêu cầu đồng thời vào cùng khung giờ, cùng thợ"),
-        ("npm run build (backend, frontend)", "0 lỗi", "`tsc -b && vite build` cho frontend"),
+        ("Build frontend / typecheck backend", "0 lỗi", "`tsc -b && vite build`; `tsc --noEmit`"),
         ("npm run lint (backend, frontend)", "0 cảnh báo", "`--max-warnings 0`"),
-        ("Đăng nhập 8 tài khoản mẫu", "8 / 8 thành công", "Qua proxy Vite như người dùng thật"),
-        ("Đăng nhập nhanh trên giao diện", "4 / 4 vai trò đúng trang đích", "Playwright + Chromium"),
-        ("Khởi động một chạm", "Sẵn sàng sau 13–21 giây", "CSDL mới; tự phục hồi sau ~2 giây khi Vite bị abort"),
     ], [5.4, 4.6, 6.0], caption="Tổng hợp kết quả kiểm thử")
-    R.para("Lưu ý: bộ kiểm thử chống đặt trùng dùng chung giới hạn 5 lượt đặt/IP/giờ với môi trường chạy, vì vậy khi chạy "
-           "lại nhiều lần trong một giờ trên cùng CSDL cần nạp lại dữ liệu (`npm run db:reset`) để kết quả phản ánh đúng.")
+    R.para(f"Snapshot kiểm định ngày {D.QUALITY_DATE}. E2E tự tạo và xoá CSDL riêng có hậu tố `_test`, "
+           "từ chối kết nối CSDL vận hành. Không cần reset hoặc seed lại dữ liệu thật để chạy test. "
+           "Ca 20 yêu cầu đồng thời tìm ngày có khung giờ thực sự khả dụng, tránh phụ thuộc ngày nghỉ tuần của ca mẫu.")
+    R.para("Giới hạn cần lưu ý: kịch bản `lifecycle.e2e-spec.ts` hiện chỉ chạy trọn vòng đời khi có khung giờ "
+           "trong cửa sổ check-in tại thời điểm chạy; ngoài giờ, nhánh này trả về sớm. Vì vậy số test đạt "
+           "không chứng minh mọi tiêu chí vòng đời đã được thực thi trong lần chạy này; cần kiểm tra thủ công "
+           "theo DEMO-SCRIPT hoặc chuẩn bị fixture thời gian độc lập trước khi nghiệm thu.")
 
     R.h2("Kết quả nghiệm thu")
     R.table(["Epic", "Story", "Point", "Trạng thái"],
-            [(f"{e[0]} {e[1]}", e[2], e[3], "Hoàn thành") for e in D.EPICS] + [("**Tổng**", "**39**", "**165**", "**39 / 39**")],
+            [(f"{e[0]} {e[1]}", e[2], e[3], "Đã đối chiếu") for e in D.EPICS] + [("**Tổng**", "**39**", "**165**", "**39 / 39**")],
             [9.0, 2.0, 2.0, 3.0], caption="Kết quả nghiệm thu theo Epic",
             align=[WD_ALIGN_PARAGRAPH.LEFT, WD_ALIGN_PARAGRAPH.CENTER, WD_ALIGN_PARAGRAPH.CENTER, WD_ALIGN_PARAGRAPH.CENTER])
     R.para("Bảng đối chiếu `docs/BACKLOG-MAPPING.md` chỉ rõ tệp cài đặt backend và màn hình frontend cho từng story, được "
-           "dùng làm căn cứ khi PO nghiệm thu và khi cập nhật trạng thái ticket trên Jira. Các vòng phản hồi của PO đều "
-           "được xử lý và phát hành thành phiên bản có tag:", keep_next=True)
+           "dùng làm căn cứ khi PO nghiệm thu và khi cập nhật trạng thái ticket trên Jira. "
+           "Đối chiếu mã nguồn và test tự động không thay thế biên bản nghiệm thu thủ công của PO. "
+           "Các mốc khắc phục lỗi đã ghi nhận:", keep_next=True)
     R.bullets([
         "Sprint 1 Review: **15 lỗi** kiểm thử về xác thực, đồng bộ hồ sơ thợ và logic hệ thống (26/09) và **8 lỗi** vòng hai – ảnh giao diện, tài khoản mẫu không khớp, mật khẩu tạm cho nhân sự mới, khách vãng lai, chặn xoá dịch vụ đã có lịch, nút Quay lại (27/09) → **v1.2.0**.",
         "Rà soát với máy chủ thật: 6 lỗi tích hợp (phân trang TypeORM, giới hạn 200 dòng, lệch múi giờ…) → **v1.2.1**.",
@@ -1026,7 +1041,7 @@ def chapter5(R: Report):
     R.bullets([
         "Chưa tích hợp thanh toán trực tuyến (VNPay, MoMo) và gửi SMS/Zalo nhắc lịch; email mới kiểm thử qua Maildev.",
         "Chỉ phục vụ một chi nhánh; chưa quản lý kho mỹ phẩm và hoa hồng thợ tự động.",
-        "Kiểm thử E2E cần CSDL đang chạy và chia sẻ trạng thái giới hạn tần suất giữa các lần chạy.",
+        "Kiểm thử E2E cần PostgreSQL đang chạy và tài khoản có quyền tạo CSDL kiểm thử riêng.",
         "Chưa có quy trình CI/CD tự động triển khai lên máy chủ thật.",
     ])
 
@@ -1036,7 +1051,7 @@ def chapter5(R: Report):
         "Nhắc lịch qua Zalo OA / SMS; chương trình khách hàng thân thiết và tích điểm.",
         "Mở rộng đa chi nhánh, báo cáo hợp nhất; quản lý kho và tính hoa hồng thợ.",
         "Ứng dụng di động cho thợ (thông báo đẩy khi có lịch mới hoặc khách check-in).",
-        "Thiết lập CI/CD (GitHub Actions) chạy build, lint, kiểm thử đơn vị và E2E trên mỗi Pull Request.",
+        "Mở rộng GitHub Actions từ kiểm tra chất lượng sang triển khai có kiểm soát, sao lưu và kiểm tra sức khoẻ.",
     ])
 
     R.h2("Kết luận")
@@ -1050,6 +1065,7 @@ def chapter5(R: Report):
 
     R.h1_plain("Tài liệu tham khảo")
     refs = [
+        "Chính phủ, Nghị định số 30/2020/NĐ-CP ngày 05/03/2020, Phụ lục I – thể thức và kỹ thuật trình bày văn bản hành chính, https://congbao.chinhphu.vn/van-ban/nghi-dinh-so-30-2020-nd-cp-30858.htm",
         "K. Schwaber, J. Sutherland, *The Scrum Guide – The Definitive Guide to Scrum: The Rules of the Game*, 2020.",
         "NestJS, *Documentation – Guards, Interceptors, Exception filters*, https://docs.nestjs.com",
         "TypeORM, *Documentation – Transactions, Entities*, https://typeorm.io",

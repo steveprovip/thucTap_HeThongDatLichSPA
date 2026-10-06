@@ -18,23 +18,27 @@ describe('Chống đặt trùng khi nhiều khách chốt cùng lúc (S2-08)', (
   afterAll(async () => { await app?.close(); });
 
   it('20 yêu cầu đồng thời vào cùng khung giờ của cùng một thợ: đúng 1 thành công', async () => {
-    const date = tomorrowISO(6);
-
     const catalog = await request(server).get('/api/public/catalog').expect(200);
     const service = catalog.body.data
       .flatMap((g: { services: { id: string; durationMinutes: number }[] }) => g.services)
       .find((s: { durationMinutes: number }) => s.durationMinutes <= 60);
     expect(service).toBeDefined();
 
-    const availability = await request(server)
-      .get('/api/public/availability')
-      .query({ date, serviceIds: service.id })
-      .expect(200);
-
-    const slot = availability.body.data.slots.find(
-      (s: { stylistIds: string[] }) => s.stylistIds.length > 0,
-    );
+    // Ca mẫu có ngày nghỉ theo tuần; không giả định ngày +6 luôn còn thợ rảnh.
+    let date = '';
+    let slot: { time: string; stylistIds: string[] } | undefined;
+    for (let day = 6; day < 20 && !slot; day += 1) {
+      date = tomorrowISO(day);
+      const availability = await request(server)
+        .get('/api/public/availability')
+        .query({ date, serviceIds: service.id })
+        .expect(200);
+      slot = availability.body.data.slots.find(
+        (s: { stylistIds: string[] }) => s.stylistIds.length > 0,
+      );
+    }
     expect(slot).toBeDefined();
+    if (!slot) throw new Error('Không có khung giờ để kiểm thử đồng thời');
     const stylistId = slot.stylistIds[0];
 
     const runBase = Number(String(Date.now()).slice(-7));
