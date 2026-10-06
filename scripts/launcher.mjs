@@ -167,6 +167,7 @@ function ensureDeps() {
       cwd: abs,
       stdio: 'inherit',
       shell: process.platform === 'win32', // npm là npm.cmd trên Windows
+      windowsHide: true,
     });
     if (r.status !== 0) {
       err(`[LỖI] npm install thất bại trong ${label}. Kiểm tra kết nối mạng rồi chạy lại.`);
@@ -304,12 +305,12 @@ function dbTarget() {
 }
 const dbReachable = ({ host, port }) => (host === 'localhost' ? portInUse(port) : tcpOpen(host, port));
 
-const dockerInstalled = () => !spawnSync('docker', ['--version'], { stdio: 'ignore' }).error;
-const dockerReady = () => spawnSync('docker', ['info'], { stdio: 'ignore', timeout: 30000 }).status === 0;
+const dockerInstalled = () => !spawnSync('docker', ['--version'], { stdio: 'ignore', windowsHide: true }).error;
+const dockerReady = () => spawnSync('docker', ['info'], { stdio: 'ignore', timeout: 30000, windowsHide: true }).status === 0;
 /** 'healthy' | 'running' | 'starting' | ... ; chuỗi rỗng nếu không đọc được container. */
 const containerState = (name) => {
   const fmt = '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}';
-  const r = spawnSync('docker', ['inspect', '--format', fmt, name], { encoding: 'utf8' });
+  const r = spawnSync('docker', ['inspect', '--format', fmt, name], { encoding: 'utf8', windowsHide: true });
   return r.status === 0 ? r.stdout.trim() : '';
 };
 
@@ -397,7 +398,7 @@ async function ensureDatabase(step = '[3/6]') {
     return false;
   }
   log('      Dựng PostgreSQL, PgAdmin và Maildev (lần đầu phải tải image, có thể mất vài phút) ...');
-  if (spawnSync('docker', composeArgs('up', '-d'), { cwd: ROOT, stdio: 'inherit' }).status !== 0) {
+  if (spawnSync('docker', composeArgs('up', '-d'), { cwd: ROOT, stdio: 'inherit', windowsHide: true }).status !== 0) {
     err('[LỖI] docker compose up thất bại. Nguyên nhân thường gặp:');
     err('      - Cổng 5432 / 5050 / 1080 đang bị chương trình khác chiếm (vd. PostgreSQL cài sẵn trên máy).');
     err('        Cách sửa: đặt POSTGRES_PORT=5433 trong .env và DB_PORT=5433 trong backend/.env rồi chạy lại.');
@@ -412,7 +413,7 @@ async function ensureDatabase(step = '[3/6]') {
 /** Bước 5: schema.sql + seed.sql đều viết để chạy lại nhiều lần vẫn an toàn. */
 function seedDatabase() {
   log('[5/6] Nạp lược đồ và dữ liệu mẫu (chạy lại nhiều lần vẫn an toàn) ...');
-  const r = spawnSync('npm', ['run', 'seed', '--prefix', 'backend'], { cwd: ROOT, stdio: 'inherit', shell: IS_WIN });
+  const r = spawnSync('npm', ['run', 'seed', '--prefix', 'backend'], { cwd: ROOT, stdio: 'inherit', shell: IS_WIN, windowsHide: true });
   if (r.status !== 0) {
     err('[LỖI] Nạp dữ liệu mẫu thất bại. Xem phần "Gợi ý" ở trên và kiểm tra kết nối CSDL trong backend/.env');
     return false;
@@ -714,13 +715,13 @@ function clearState() {
   } catch { /* chưa có tệp */ }
 }
 
-const npm = (args, opts = {}) => spawnSync('npm', args, { cwd: ROOT, shell: IS_WIN, ...opts });
-const git = (args, opts = {}) => spawnSync('git', args, { cwd: ROOT, encoding: 'utf8', ...opts });
+const npm = (args, opts = {}) => spawnSync('npm', args, { cwd: ROOT, shell: IS_WIN, windowsHide: true, ...opts });
+const git = (args, opts = {}) => spawnSync('git', args, { cwd: ROOT, encoding: 'utf8', windowsHide: true, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }, ...opts });
 const gitOut = (args) => {
   const r = git(args);
   return r.status === 0 ? r.stdout.trim() : '';
 };
-const gitAvailable = () => !spawnSync('git', ['--version'], { stdio: 'ignore' }).error;
+const gitAvailable = () => !spawnSync('git', ['--version'], { stdio: 'ignore', windowsHide: true }).error;
 const currentCommit = () => gitOut(['rev-parse', 'HEAD']);
 /** Tệp mã nguồn (đã theo dõi) đang bị sửa. KHÔNG dùng gitOut: nó trim() làm mất ký tự đầu của dòng đầu tiên. */
 const dirtyFiles = () =>
@@ -856,6 +857,7 @@ function backendScript(script, extra = []) {
     const child = spawn('npm', ['run', script, '--prefix', 'backend', ...(extra.length ? ['--', ...extra] : [])], {
       cwd: ROOT,
       shell: IS_WIN,
+      windowsHide: true,
       stdio: ['inherit', 'pipe', 'pipe'],
     });
     let out = '';

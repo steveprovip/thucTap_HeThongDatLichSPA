@@ -25,7 +25,7 @@ const stamp = (): string => {
 };
 
 const hasCommand = (cmd: string, args: string[] = ['--version']): boolean => {
-  const r = spawnSync(cmd, args, { stdio: 'ignore', timeout: 15_000 });
+  const r = spawnSync(cmd, args, { stdio: 'ignore', timeout: 15_000, windowsHide: true });
   return !r.error && r.status === 0;
 };
 
@@ -67,7 +67,7 @@ export function backupDatabase(conn: DbConnection, tag: string, kind = 'truoc'):
     let r;
     try {
       // Ghi thẳng stdout (nhị phân) vào tệp, không qua bộ đệm chuỗi
-      r = spawnSync(a.cmd, a.args, { env, stdio: ['ignore', fd, 'pipe'], timeout: 10 * 60_000 });
+      r = spawnSync(a.cmd, a.args, { env, stdio: ['ignore', fd, 'pipe'], timeout: 10 * 60_000, windowsHide: true });
     } finally {
       closeSync(fd);
     }
