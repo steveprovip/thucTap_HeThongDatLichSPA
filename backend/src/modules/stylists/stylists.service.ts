@@ -300,7 +300,7 @@ export class StylistsService {
   }
 
   /** S2-01: ca phải nằm trong giờ mở cửa của tiệm hôm đó. */
-  private async assertWithinSalonHours(item: ShiftItemDto): Promise<void> {
+  async assertWithinSalonHours(item: ShiftItemDto): Promise<void> {
     const dow = dayOfWeek(item.workDate);
     const wh = await this.workingHours.getByDayOfWeek(dow);
     const outside = (message: string, details: Record<string, string | null> = {}): BadRequestException =>
@@ -350,7 +350,7 @@ export class StylistsService {
    * QA-07: kiểm tra chồng lấn TRƯỚC khi chạm ràng buộc EXCLUDE để thông báo nêu rõ TÊN CA và KHUNG GIỜ
    * đang xung đột (lỗi 23P01 của CSDL chỉ biết báo chung chung). Xét cả ca đã lưu lẫn các ca trong cùng lô.
    */
-  private async assertNoShiftOverlap(stylistId: string, items: ShiftRange[]): Promise<void> {
+  async assertNoShiftOverlap(stylistId: string, items: ShiftRange[]): Promise<void> {
     const dates = Array.from(new Set(items.map((i) => i.workDate)));
     const saved = await this.shiftRepo.find({ where: { stylistId, workDate: In(dates) } });
     const accepted: ShiftRange[] = saved.map((s) => ({

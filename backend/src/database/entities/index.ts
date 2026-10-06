@@ -22,6 +22,7 @@ import { Notification } from './notification.entity';
 import { EmailQueueItem } from './email-queue.entity';
 import { AuditLog } from './audit-log.entity';
 import { RateLimit } from './rate-limit.entity';
+import { ShiftRequest } from './shift-request.entity';
 
 export const ALL_ENTITIES = [
   User, RefreshToken, PasswordResetToken,
@@ -30,6 +31,7 @@ export const ALL_ENTITIES = [
   Customer, Appointment, AppointmentServiceItem, ServiceNote, AppointmentChange,
   Voucher, Invoice, InvoiceItem, Review,
   Notification, EmailQueueItem, AuditLog, RateLimit,
+  ShiftRequest,
 ];
 
 export * from './numeric.transformer';
@@ -57,3 +59,4 @@ export * from './notification.entity';
 export * from './email-queue.entity';
 export * from './audit-log.entity';
 export * from './rate-limit.entity';
+export * from './shift-request.entity';

@@ -83,6 +83,12 @@ const addMinutes = (time: string, minutes: number) => {
 };
 const minute = (time: string) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3));
 const uid = () => Math.random().toString(36).slice(2, 10);
+interface DemoShiftRequest {
+  id: string; stylistId: string; kind: 'shift' | 'time_off'; workDate: string; startTime: string | null; endTime: string | null;
+  breakStart: string | null; breakEnd: string | null; note: string | null; status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  reviewNote: string | null; reviewedAt: string | null; reviewerName: string | null; createdAt: string;
+}
+const demoShiftRequests: DemoShiftRequest[] = [];
 const labels: Record<AppointmentStatus, string> = {
   pending: 'Chờ xác nhận', confirmed: 'Đã xác nhận', arrived: 'Đã đến',
   in_progress: 'Đang phục vụ', completed: 'Hoàn tất', cancelled: 'Đã huỷ', no_show: 'Vắng mặt',
@@ -690,6 +696,7 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
       'Tài khoản và phân quyền': { customer: '-', stylist: '-', receptionist: '-', owner: 'R', admin: 'F' },
       'Danh mục dịch vụ và giá': { customer: 'R', stylist: 'R', receptionist: 'R', owner: 'F', admin: 'R' },
       'Hồ sơ thợ và ca làm việc': { customer: 'R', stylist: 'R', receptionist: 'W', owner: 'F', admin: 'R' },
+      'Đăng ký ca làm và duyệt yêu cầu': { customer: '-', stylist: 'W', receptionist: 'R', owner: 'F', admin: 'R' },
       'Đặt lịch trên trang công khai': { customer: 'W', stylist: '-', receptionist: 'F', owner: 'F', admin: 'R' },
       'Lịch hẹn hằng ngày và check-in': { customer: 'R', stylist: 'W', receptionist: 'F', owner: 'F', admin: 'R' },
       'Phiếu tính tiền': { customer: 'R', stylist: 'R', receptionist: 'F', owner: 'F', admin: 'R' },
@@ -936,6 +943,43 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
       save(); record('UPDATE', 'stylist', `Cập nhật hồ sơ ${stylist.fullName}`); return withEmail(stylist);
     }
     return withEmail(stylist);
+  }
+  // Mentor S2 · mục 6 (chế độ Demo): yêu cầu đăng ký ca giữ trong bộ nhớ của tab
+  if (path.startsWith('/shift-requests')) {
+    const me = getUser() ?? bad(MSG.UNAUTHORIZED, undefined, 401);
+    const view = (r: DemoShiftRequest) => ({ ...r, stylistName: db.stylists.find(s => s.id === r.stylistId)?.fullName ?? '',
+      dayText: new Intl.DateTimeFormat('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(`${r.workDate}T00:00:00`)) });
+    const match = path.match(/^\/shift-requests\/([^/]+)(?:\/(approve|reject))?$/);
+    if (path === '/shift-requests/mine') return demoShiftRequests.filter(r => r.stylistId === me.stylistId).map(view);
+    if (path === '/shift-requests' && method === 'get') return demoShiftRequests
+      .filter(r => (!q.status || r.status === q.status) && (!q.from || r.workDate >= String(q.from)) && (!q.to || r.workDate <= String(q.to)))
+      .map(view);
+    if (path === '/shift-requests' && method === 'post') {
+      if (!me.stylistId) bad('Tài khoản chưa gắn với hồ sơ thợ nên không đăng ký ca được', undefined, 403);
+      const created = (p.items as DemoShiftRequest[]).map(i => ({ id: uid(), stylistId: me.stylistId as string, kind: i.kind, workDate: i.workDate,
+        startTime: i.startTime ?? null, endTime: i.endTime ?? null, breakStart: null, breakEnd: null, note: i.note ?? null,
+        status: 'pending' as const, reviewNote: null, reviewedAt: null, reviewerName: null, createdAt: new Date().toISOString() }));
+      demoShiftRequests.push(...created); return created.map(view);
+    }
+    if (path === '/shift-requests/approve-batch') {
+      const approved: string[] = [];
+      for (const id of p.ids as string[]) { const r = demoShiftRequests.find(x => x.id === id && x.status === 'pending'); if (r) { handle('post', `/shift-requests/${id}/approve`, {}, {}); approved.push(id); } }
+      return { approved, failed: [] };
+    }
+    if (match) {
+      const r = demoShiftRequests.find(x => x.id === match[1]) ?? bad('Không tìm thấy yêu cầu đăng ký', undefined, 404);
+      if (r.status !== 'pending') bad('Yêu cầu này đã được xử lý', undefined, 409);
+      if (method === 'delete') { r.status = 'cancelled'; return { success: true }; }
+      if (match[2] === 'reject') { Object.assign(r, { status: 'rejected', reviewNote: p.note ?? null, reviewedAt: new Date().toISOString(), reviewerName: me.fullName }); return view(r); }
+      if (r.kind === 'shift') handle('post', `/stylists/${r.stylistId}/shifts`, { shifts: [{ workDate: r.workDate,
+        startTime: p.startTime ?? r.startTime, endTime: p.endTime ?? r.endTime, breakStart: null, breakEnd: null }] }, {});
+      else {
+        const res = handle('post', `/stylists/${r.stylistId}/time-off`, { offDate: r.workDate, startTime: r.startTime, endTime: r.endTime, reason: r.note, force: p.force }, {});
+        if (res && typeof res === 'object' && 'warning' in res) return { ...(res as object), requiresForce: true };
+      }
+      Object.assign(r, { status: 'approved', reviewedAt: new Date().toISOString(), reviewerName: me.fullName, reviewNote: p.note ?? null });
+      return view(r);
+    }
   }
   if (path === '/shifts' && method === 'get') return db.shifts.filter(s =>
     (!q.from || s.workDate >= String(q.from)) && (!q.to || s.workDate <= String(q.to)) &&

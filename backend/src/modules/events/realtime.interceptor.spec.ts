@@ -13,6 +13,7 @@ describe('LIVE_PATH — thao tác ghi nào làm các thiết bị khác tải l�
     '/stylists/1/time-off',
     '/stylists/1/shifts',
     '/shifts/copy-week',
+    '/shift-requests/3f2c/approve',
     '/holidays',
     '/working-hours',
     '/services/5',

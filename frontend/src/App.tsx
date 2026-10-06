@@ -43,6 +43,7 @@ const AppointmentDetailPage = lazyPage(() => import('@/pages/reception/Appointme
 
 // Thợ
 const MySchedulePage = lazyPage(() => import('@/pages/stylist/MySchedulePage'), 'MySchedulePage');
+const ShiftRegistrationPage = lazyPage(() => import('@/pages/stylist/ShiftRegistrationPage'), 'ShiftRegistrationPage');
 
 // Chủ tiệm
 const DashboardPage = lazyPage(() => import('@/pages/owner/DashboardPage'), 'DashboardPage');
@@ -144,6 +145,8 @@ export default function App() {
 
             <Route path="lich-cua-toi" element={
               <RequireAuth roles={['stylist']}><MySchedulePage /></RequireAuth>} />
+            <Route path="dang-ky-ca" element={
+              <RequireAuth roles={['stylist']}><ShiftRegistrationPage /></RequireAuth>} />
 
             <Route path="tong-quan" element={
               <RequireAuth roles={['owner', 'admin', 'receptionist']}><DashboardPage /></RequireAuth>} />

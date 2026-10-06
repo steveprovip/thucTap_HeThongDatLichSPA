@@ -43,6 +43,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
     group: 'Của tôi',
     items: [
       { to: '/quan-ly/lich-cua-toi', label: 'Lịch của tôi', icon: <CalendarDays size={18} />, roles: ['stylist'] },
+      { to: '/quan-ly/dang-ky-ca', label: 'Đăng ký lịch làm', icon: <CalendarClock size={18} />, roles: ['stylist'] },
     ],
   },
   {

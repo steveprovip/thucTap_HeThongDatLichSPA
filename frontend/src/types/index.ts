@@ -175,6 +175,37 @@ export interface Holiday {
   reason: string;
 }
 
+/** Mentor S2 · mục 6: thợ tự đăng ký ca làm / nghỉ, quản lý duyệt. */
+export type ShiftRequestKind = 'shift' | 'time_off';
+export type ShiftRequestStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
+export interface ShiftRequest {
+  id: string;
+  stylistId: string;
+  stylistName: string;
+  kind: ShiftRequestKind;
+  workDate: string;
+  dayText: string;
+  startTime: string | null;
+  endTime: string | null;
+  breakStart: string | null;
+  breakEnd: string | null;
+  note: string | null;
+  status: ShiftRequestStatus;
+  reviewNote: string | null;
+  reviewedAt: string | null;
+  reviewerName: string | null;
+  createdAt: string;
+}
+export interface ShiftRequestItem {
+  kind: ShiftRequestKind;
+  workDate: string;
+  startTime?: string | null;
+  endTime?: string | null;
+  breakStart?: string | null;
+  breakEnd?: string | null;
+  note?: string;
+}
+
 /** Mentor S2 · mục 5: ngày lễ quốc gia do trợ lý đề xuất, đã đối chiếu dữ liệu tiệm. */
 export interface HolidaySuggestion {
   key: string;

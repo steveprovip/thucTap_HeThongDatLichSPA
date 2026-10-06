@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CalendarPlus, ChevronLeft, ChevronRight, Copy, Plus, Search } from 'lucide-react';
-import { getErrorCode, getErrorDetails, getErrorMessage, stylistsApi, workingHoursApi } from '@/api';
-import type { Holiday, Shift, ShiftConflictAppointment, Stylist, TimeOff, WorkingHour } from '@/types';
+import { getErrorCode, getErrorDetails, getErrorMessage, shiftRequestsApi, stylistsApi, workingHoursApi } from '@/api';
+import type { Holiday, Shift, ShiftConflictAppointment, ShiftRequest, Stylist, TimeOff, WorkingHour } from '@/types';
 import {
   Button, ConfirmDialog, Field, Input, Modal, SectionTitle, Select, Spinner, TimeSelect24,
 } from '@/components';
 import { addDaysISO, formatDate, formatDuration, startOfWeekISO, timeToMinutes, todayISO } from '@/utils/format';
 import { DayInfo, ShiftBoard } from './shifts/ShiftBoard';
+import { ShiftRequestsPanel } from './shifts/ShiftRequestsPanel';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 
@@ -25,6 +26,9 @@ export function ShiftsPage() {
   const [timeOff, setTimeOff] = useState<TimeOff[]>([]);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [hours, setHours] = useState<WorkingHour[]>([]);
+  /** Mentor S2 · mục 6: lịch rảnh thợ tự đăng ký, chờ duyệt. */
+  const [requests, setRequests] = useState<ShiftRequest[]>([]);
+  const canSeeRequests = user?.role === 'owner' || user?.role === 'receptionist' || user?.role === 'admin';
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [onlyScheduled, setOnlyScheduled] = useState(false);
@@ -99,6 +103,10 @@ export function ShiftsPage() {
         workingHoursApi.list(),
       ]);
       setStylists(sty); setShifts(sh); setTimeOff(off); setHolidays(hol); setHours(wh);
+      // Hộp yêu cầu là phần phụ: lỗi tải (vd. máy chủ cũ chưa có API) không được làm hỏng bảng ca
+      setRequests(canSeeRequests
+        ? await shiftRequestsApi.list({ status: 'pending', from: weekStart, to }).catch(() => [] as ShiftRequest[])
+        : []);
       if (!addStylist && sty.length) { setAddStylist(sty[0].id); setOffStylist(sty[0].id); }
     } catch (e) {
       toast.error(getErrorMessage(e));
@@ -198,12 +206,17 @@ export function ShiftsPage() {
         </label>
       </div>
 
+      {!loading && (
+        <ShiftRequestsPanel requests={requests} canApprove={canEdit} onChanged={() => void load()} />
+      )}
+
       {loading ? <Spinner /> : (
         <ShiftBoard
           days={dayInfos}
           stylists={visibleStylists}
           shifts={shifts}
           timeOff={timeOff}
+          pendingRequests={requests}
           today={todayISO()}
           canEdit={canEdit}
           canManageOff={canManageOff}
