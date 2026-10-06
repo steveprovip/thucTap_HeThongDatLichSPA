@@ -29,9 +29,24 @@
     "stop:server": "node scripts/launcher.mjs stop",
     "update": "node scripts/launcher.mjs update",
     "migration:generate": "npm run migration:generate --prefix backend --",
-    "security:check": "npm run security:check --prefix backend"
+    "security:check": "npm run security:check --prefix backend",
+    "test:ai:e2e": "e2e run",
+    "test:ai:e2e:headed": "e2e run --headed",
+    "test:ai:e2e:deterministic": "e2e run tests/01_public_booking_flow.e2e.ts tests/02_auth_and_roles.e2e.ts",
+    "test:ai:e2e:explore": "e2e explore \"Kham pha toan bo he thong Salon Spa va tim loi\""
   },
   "devDependencies": {
-    "concurrently": "^9.1.0"
+    "@ai-sdk/anthropic": "^4.0.72",
+    "@ai-sdk/google": "^4.0.88",
+    "@ai-sdk/openai": "^4.0.84",
+    "@ai-sdk/openai-compatible": "^3.0.63",
+    "@e2e-dev/web": "^0.12.0",
+    "ai": "^7.0.128",
+    "concurrently": "^9.1.0",
+    "dotenv": "^18.0.5",
+    "e2e": "^0.17.0",
+    "playwright": "^1.63.0",
+    "tsx": "^4.23.15",
+    "zod": "^4.6.5"
   }
 }

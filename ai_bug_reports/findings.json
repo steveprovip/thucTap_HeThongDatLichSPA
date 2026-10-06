@@ -1,0 +1,151 @@
+{
+  "startedAt": "16:42:25 6/10/2026",
+  "baseUrl": "http://127.0.0.1:5173",
+  "testedRoutes": [
+    "/",
+    "/dat-lich",
+    "/tra-cuu",
+    "/danh-gia",
+    "/dang-nhap",
+    "/quan-ly/nhat-ky",
+    "/quan-ly",
+    "/quan-ly/cho-xac-nhan",
+    "/quan-ly/khach-vang-lai",
+    "/quan-ly/chuyen-lich",
+    "/quan-ly/lich-hen",
+    "/quan-ly/phieu-tinh-tien",
+    "/quan-ly/khach-hang",
+    "/quan-ly/tong-quan",
+    "/quan-ly/doanh-thu",
+    "/quan-ly/phan-bo-khung-gio",
+    "/quan-ly/dich-vu",
+    "/quan-ly/tho",
+    "/quan-ly/ca-lam",
+    "/quan-ly/gio-mo-cua",
+    "/quan-ly/ma-giam-gia",
+    "/quan-ly/tai-khoan",
+    "/quan-ly/phan-quyen"
+  ],
+  "bugs": [],
+  "pageScreenshots": [
+    {
+      "route": "/",
+      "title": "Trang chủ Salon & Spa Hương Sen",
+      "file": "page_1791279747332_public_homepage.png"
+    },
+    {
+      "route": "/dat-lich",
+      "title": "Quy trình đặt lịch hẹn (Booking Wizard)",
+      "file": "page_1791279748535_public_booking.png"
+    },
+    {
+      "route": "/tra-cuu",
+      "title": "Tra cứu lịch hẹn",
+      "file": "page_1791279749435_public_lookup.png"
+    },
+    {
+      "route": "/danh-gia",
+      "title": "Đánh giá chất lượng dịch vụ",
+      "file": "page_1791279750337_public_review.png"
+    },
+    {
+      "route": "/dang-nhap",
+      "title": "Trang Đăng Nhập",
+      "file": "page_1791279751235_auth_login.png"
+    },
+    {
+      "route": "/quan-ly/nhat-ky",
+      "title": "Nhật ký hoạt động - Chi tiết trực quan (Đã khắc phục lỗi lộ code)",
+      "file": "page_1791279756015_audit_logs_cleaned_detail.png"
+    },
+    {
+      "route": "/quan-ly",
+      "title": "Lịch Ngày Timeline Lễ Tân",
+      "file": "page_1791279756936__quan_ly.png"
+    },
+    {
+      "route": "/quan-ly/cho-xac-nhan",
+      "title": "Danh Sách Chờ Xác Nhận",
+      "file": "page_1791279757846__quan_ly_cho_xac_nhan.png"
+    },
+    {
+      "route": "/quan-ly/khach-vang-lai",
+      "title": "Tiếp Nhận Khách Vãng Lai",
+      "file": "page_1791279758746__quan_ly_khach_vang_lai.png"
+    },
+    {
+      "route": "/quan-ly/chuyen-lich",
+      "title": "Chuyển Lịch Khẩn Cấp",
+      "file": "page_1791279759647__quan_ly_chuyen_lich.png"
+    },
+    {
+      "route": "/quan-ly/lich-hen",
+      "title": "Danh Sách & Lọc Lịch Hẹn",
+      "file": "page_1791279760544__quan_ly_lich_hen.png"
+    },
+    {
+      "route": "/quan-ly/phieu-tinh-tien",
+      "title": "Phiếu Tính Tiền & Thu Ngân",
+      "file": "page_1791279761480__quan_ly_phieu_tinh_tien.png"
+    },
+    {
+      "route": "/quan-ly/khach-hang",
+      "title": "Quản Lý Hồ Sơ Khách Hàng",
+      "file": "page_1791279762393__quan_ly_khach_hang.png"
+    },
+    {
+      "route": "/quan-ly/tong-quan",
+      "title": "Tổng Quan KPIs Báo Cáo Chủ Tiệm",
+      "file": "page_1791279763311__quan_ly_tong_quan.png"
+    },
+    {
+      "route": "/quan-ly/doanh-thu",
+      "title": "Báo Cáo Doanh Thu & Tài Chính",
+      "file": "page_1791279764240__quan_ly_doanh_thu.png"
+    },
+    {
+      "route": "/quan-ly/phan-bo-khung-gio",
+      "title": "Mật Độ Khung Giờ & No-Show",
+      "file": "page_1791279765151__quan_ly_phan_bo_khung_gio.png"
+    },
+    {
+      "route": "/quan-ly/dich-vu",
+      "title": "Danh Mục Dịch Vụ & Bảng Giá",
+      "file": "page_1791279766061__quan_ly_dich_vu.png"
+    },
+    {
+      "route": "/quan-ly/tho",
+      "title": "Quản Lý Thợ & Chuyên Viên",
+      "file": "page_1791279766980__quan_ly_tho.png"
+    },
+    {
+      "route": "/quan-ly/ca-lam",
+      "title": "Bảng Phân Ca Làm Việc",
+      "file": "page_1791279767901__quan_ly_ca_lam.png"
+    },
+    {
+      "route": "/quan-ly/gio-mo-cua",
+      "title": "Cấu Hình Giờ Mở Cửa & Ngày Nghỉ",
+      "file": "page_1791279768814__quan_ly_gio_mo_cua.png"
+    },
+    {
+      "route": "/quan-ly/ma-giam-gia",
+      "title": "Mã Giảm Giá & Khuyến Mãi",
+      "file": "page_1791279769733__quan_ly_ma_giam_gia.png"
+    },
+    {
+      "route": "/quan-ly/tai-khoan",
+      "title": "Quản Lý Tài Khoản Nhân Sự",
+      "file": "page_1791279770654__quan_ly_tai_khoan.png"
+    },
+    {
+      "route": "/quan-ly/phan-quyen",
+      "title": "Ma Trận Phân Quyền Hệ Thống",
+      "file": "page_1791279771562__quan_ly_phan_quyen.png"
+    }
+  ],
+  "completedAt": "16:42:51 6/10/2026",
+  "totalRoutes": 23,
+  "totalBugs": 0,
+  "totalScreenshots": 23
+}

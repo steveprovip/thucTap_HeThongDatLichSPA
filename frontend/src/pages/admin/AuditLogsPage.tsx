@@ -24,8 +24,23 @@ const ACTION_TONE: Record<string, string> = {
 };
 
 const ENTITY_LABELS: Record<string, string> = {
-  appointment: 'Lịch hẹn', service: 'Dịch vụ', category: 'Nhóm dịch vụ', stylist: 'Thợ', shift: 'Ca làm',
-  invoice: 'Phiếu tính tiền', user: 'Tài khoản', voucher: 'Mã giảm giá', review: 'Đánh giá', holiday: 'Ngày nghỉ',
+  appointment: 'Lịch hẹn',
+  appointment_item: 'Dịch vụ trong lịch',
+  service: 'Dịch vụ',
+  category: 'Nhóm dịch vụ',
+  stylist: 'Thợ',
+  stylist_shift: 'Ca làm việc của thợ',
+  shift: 'Ca làm việc',
+  working_hours: 'Giờ mở cửa của tiệm',
+  invoice: 'Phiếu tính tiền',
+  user: 'Tài khoản',
+  voucher: 'Mã giảm giá',
+  review: 'Đánh giá',
+  holiday: 'Ngày nghỉ của tiệm',
+  auth: 'Xác thực tài khoản',
+  system_config: 'Cấu hình hệ thống',
+  customer: 'Khách hàng',
+  payment: 'Thanh toán',
 };
 
 const PRESETS = [
@@ -194,17 +209,44 @@ export function AuditLogsPage() {
                       {isOpen && (
                         <tr>
                           <td />
-                          <td colSpan={6} className="bg-slate-50">
-                            <dl className="grid gap-2 py-1 text-xs sm:grid-cols-3">
-                              <div><dt className="text-ink-muted">Mã bản ghi</dt><dd className="font-mono">{r.id}</dd></div>
+                          <td colSpan={6} className="bg-slate-50 p-3">
+                            <dl className="grid gap-2 text-xs sm:grid-cols-3">
+                              <div><dt className="text-ink-muted">Mã bản ghi</dt><dd className="font-mono font-medium">{r.id}</dd></div>
                               <div><dt className="text-ink-muted">Mã đối tượng</dt><dd className="font-mono">{r.entityId ?? '—'}</dd></div>
-                              <div><dt className="text-ink-muted">Mã thao tác</dt><dd className="font-mono">{r.action}</dd></div>
+                              <div><dt className="text-ink-muted">Mã thao tác</dt><dd className="font-semibold text-teal-800">{actionLabel(r.action)} <span className="font-mono text-[10px] text-slate-500 font-normal">({r.action})</span></dd></div>
                             </dl>
-                            {r.changes ? (
-                              <pre className="thin-scroll mt-2 max-h-48 overflow-auto rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-[11px] text-slate-700">
-                                {JSON.stringify(r.changes, null, 2)}
-                              </pre>
-                            ) : <p className="mt-1 text-xs text-ink-muted">Không có dữ liệu thay đổi chi tiết.</p>}
+                            
+                            <div className="mt-3 border-t border-slate-200 pt-2">
+                              <p className="mb-1.5 text-xs font-semibold text-slate-700">Dữ liệu chi tiết của thao tác:</p>
+                              {r.changes ? (
+                                <div className="space-y-2">
+                                  {typeof r.changes === 'object' && !Array.isArray(r.changes) ? (
+                                    <div className="grid gap-2 rounded-lg border border-slate-200 bg-white p-2.5 text-xs sm:grid-cols-2">
+                                      {Object.entries(r.changes).map(([k, v]) => (
+                                        <div key={k} className="flex flex-col rounded bg-slate-50 px-2 py-1">
+                                          <span className="font-mono text-[11px] text-slate-500 font-medium">{k}</span>
+                                          <span className="font-semibold text-slate-800">
+                                            {typeof v === 'boolean' ? (v ? 'Có (True)' : 'Không (False)') : typeof v === 'object' ? JSON.stringify(v) : String(v ?? '—')}
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <div className="rounded-lg border border-slate-200 bg-white p-2.5 text-xs">
+                                      {String(r.changes)}
+                                    </div>
+                                  )}
+                                  <details className="mt-1 text-[11px] text-slate-500">
+                                    <summary className="cursor-pointer hover:text-teal-700">Xem mã nguồn JSON kỹ thuật</summary>
+                                    <pre className="thin-scroll mt-1 max-h-36 overflow-auto rounded border border-slate-200 bg-slate-900 p-2 font-mono text-[10px] text-emerald-400">
+                                      {JSON.stringify(r.changes, null, 2)}
+                                    </pre>
+                                  </details>
+                                </div>
+                              ) : (
+                                <p className="text-xs text-ink-muted">Không có dữ liệu thay đổi chi tiết.</p>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       )}
