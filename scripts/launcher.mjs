@@ -989,7 +989,8 @@ function startDetached(mode) {
   const command = mode === 'serve' ? 'resume' : 'run';
   const env = { ...process.env, SALON_NO_BROWSER: '1' };
   try {
-    if (IS_WIN) {
+    // Gọi từ HoYoSalon Launcher (SALON_LAUNCHER_UI=1): chạy ẩn, nhật ký vào logs/server.log để xem ngay trong Launcher
+    if (IS_WIN && process.env.SALON_LAUNCHER_UI !== '1') {
       // start "tiêu đề" /D "thư mục" cmd /k ... : cửa sổ riêng, giữ lại để đọc log
       const line = `/d /c start "Salon ${command}" /D "${ROOT}" cmd /k node scripts\\launcher.mjs ${command}`;
       const child = spawn('cmd.exe', [line], { detached: true, stdio: 'ignore', env, windowsVerbatimArguments: true });
@@ -998,7 +999,7 @@ function startDetached(mode) {
     } else {
       mkdirSync(join(ROOT, 'logs'), { recursive: true });
       const out = openSync(join(ROOT, 'logs', 'server.log'), 'a');
-      const child = spawn(process.execPath, [SELF, command], { cwd: ROOT, detached: true, stdio: ['ignore', out, out], env: { ...env, SALON_LOG_REDIRECTED: '1' } });
+      const child = spawn(process.execPath, [SELF, command], { cwd: ROOT, detached: true, windowsHide: true, stdio: ['ignore', out, out], env: { ...env, SALON_LOG_REDIRECTED: '1' } });
       child.on('error', () => {});
       child.unref();
     }
