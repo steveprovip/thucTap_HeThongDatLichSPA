@@ -10,7 +10,7 @@ const build = (holiday: { reason: string } | null, hours: { isClosed: boolean } 
     getByDayOfWeek: jest.fn().mockResolvedValue(hours),
   } as unknown as WorkingHoursService;
   return new AvailabilityService(
-    {} as never, workingHours, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never,
+    {} as never, workingHours, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never,
   );
 };
 

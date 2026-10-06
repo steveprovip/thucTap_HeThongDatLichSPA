@@ -14,6 +14,8 @@ import { Step3Stylist } from './steps/Step3Stylist';
 import { Step4Confirm, Step4Errors } from './steps/Step4Confirm';
 import { BookingSuccess } from './steps/BookingSuccess';
 import { SplitBookingWarning } from './steps/SplitBookingWarning';
+import { HoldBanner } from './steps/HoldBanner';
+import { useSlotHold } from './useSlotHold';
 
 const STEPS = [
   { n: 1, label: 'Dịch vụ' },
@@ -56,6 +58,21 @@ export function BookingWizard() {
     return () => { alive = false; };
   }, [cartKey]);
 
+  // Mentor S2 · mục 11: giữ chỗ khung giờ trong lúc khách điền thông tin ở bước 4
+  const serviceIds = useMemo(() => (cartKey ? cartKey.split(',') : []), [cartKey]);
+  const slotHold = useSlotHold({
+    active: step === 4 && !result,
+    serviceIds,
+    date,
+    time,
+    stylistId,
+    onLost: (message) => {
+      toast.error(message);
+      booking.setTime('');
+      setStep(2);
+    },
+  });
+
   const canNext = useMemo(() => {
     if (step === 1) return selected.length > 0;
     if (step === 2) return !!date && !!time;
@@ -89,7 +106,9 @@ export function BookingWizard() {
         phone: customer.phone,
         email: customer.email.trim() || undefined,
         note: customer.note.trim() || undefined,
+        holdToken: slotHold.token,
       });
+      slotHold.forget();
       setResult(res);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (e) {
@@ -156,7 +175,13 @@ export function BookingWizard() {
         {step === 1 && <Step1Services />}
         {step === 2 && <Step2Slot />}
         {step === 3 && <Step3Stylist />}
-        {step === 4 && <Step4Confirm errors={errors} />}
+        {step === 4 && (
+          <div className="space-y-4">
+            <HoldBanner hold={slotHold.hold} state={slotHold.state} remainingMs={slotHold.remainingMs}
+                        onExtend={() => void slotHold.extend()} />
+            <Step4Confirm errors={errors} />
+          </div>
+        )}
       </div>
 
       {/* Thanh tổng kết + điều hướng, dính đáy màn hình trên điện thoại */}

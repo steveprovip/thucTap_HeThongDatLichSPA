@@ -1,6 +1,6 @@
 import { api, unwrap } from './client';
 import type {
-  Availability, BookingResult, PublicAppointment, PublicCatalogGroup, PublicStylist, Quote,
+  Availability, BookingResult, PublicAppointment, PublicCatalogGroup, PublicStylist, Quote, SlotHold,
 } from '@/types';
 
 export interface CreateBookingPayload {
@@ -12,6 +12,8 @@ export interface CreateBookingPayload {
   phone: string;
   email?: string;
   note?: string;
+  /** Mã giữ chỗ (Mentor S2 · mục 11) — đổi chỗ đang giữ thành lịch hẹn. */
+  holdToken?: string;
 }
 
 export const publicApi = {
@@ -37,6 +39,15 @@ export const publicApi = {
         params: { date, serviceIds: serviceIds.join(','), ...(stylistId ? { stylistId } : {}) },
       }),
     );
+  },
+
+  /** Giữ chỗ khung giờ trong lúc điền thông tin; previousToken = chỗ cũ cần trả lại. */
+  async hold(payload: { serviceIds: string[]; date: string; time: string; stylistId?: string; previousToken?: string }): Promise<SlotHold> {
+    return unwrap<SlotHold>(await api.post('/public/holds', payload));
+  },
+
+  async releaseHold(token: string): Promise<void> {
+    await api.delete(`/public/holds/${encodeURIComponent(token)}`);
   },
 
   async createBooking(payload: CreateBookingPayload): Promise<BookingResult> {

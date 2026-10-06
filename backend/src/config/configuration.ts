@@ -78,6 +78,9 @@ const configuration = () => ({
     noShowUndoMinutes: 15,
     pendingOverdueHours: 12,
     reminderHoursBefore: 24,
+    /** Mentor S2 · mục 11: giữ chỗ khung giờ khi khách đang điền thông tin (5–15 phút, mặc định 10). */
+    slotHoldMinutes: Math.min(15, Math.max(5, int(process.env.SLOT_HOLD_MINUTES, 10))),
+    slotHoldIpLimitPerHour: int(process.env.SLOT_HOLD_IP_LIMIT_PER_HOUR, 30),
   },
   mail: {
     host: process.env.SMTP_HOST ?? 'localhost',

@@ -290,6 +290,18 @@ export interface Quote {
   note: string;
 }
 
+/** Mentor S2 · mục 11: chỗ đang tạm giữ trong lúc khách điền thông tin. */
+export interface SlotHold {
+  holdToken: string;
+  stylistId: string;
+  stylistName: string;
+  date: string;
+  time: string;
+  endTime: string;
+  expiresAt: string;
+  holdMinutes: number;
+}
+
 export interface BookingResult {
   code: string;
   appointmentId: string;

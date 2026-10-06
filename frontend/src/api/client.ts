@@ -118,6 +118,10 @@ export const getFieldErrors = (error: unknown): Record<string, string> =>
 export const getErrorCode = (error: unknown): string | undefined =>
   (error as AxiosError<ApiError>)?.response?.data?.code;
 
+/** Mã HTTP của lỗi API (vd. 409 khi khung giờ vừa bị giữ / đặt mất); undefined khi lỗi mạng. */
+export const getErrorStatus = (error: unknown): number | undefined =>
+  (error as AxiosError<ApiError>)?.response?.status;
+
 export const getErrorDetails = (error: unknown): ApiErrorDetails =>
   (error as AxiosError<ApiError>)?.response?.data?.details ?? {};
 
