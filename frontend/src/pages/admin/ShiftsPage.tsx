@@ -214,11 +214,11 @@ export function ShiftsPage() {
       </div>
 
       {!loading && (
-        <CoveragePanel report={coverage} minStaff={minStaff} onMinStaff={setMinStaff} canEdit={canEdit} onChanged={() => void load()} />
+        <ShiftRequestsPanel requests={requests} canApprove={canEdit} onChanged={() => void load()} />
       )}
 
       {!loading && (
-        <ShiftRequestsPanel requests={requests} canApprove={canEdit} onChanged={() => void load()} />
+        <CoveragePanel report={coverage} minStaff={minStaff} onMinStaff={setMinStaff} canEdit={canEdit} onChanged={() => void load()} />
       )}
 
       {loading ? <Spinner /> : (
