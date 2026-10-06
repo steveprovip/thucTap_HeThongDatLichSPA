@@ -6,6 +6,8 @@
 *.mjs  text eol=lf
 *.bat  text eol=crlf
 *.cmd  text eol=crlf
+# Windows Script Host chỉ đọc đúng tiếng Việt khi tệp là UTF-16 LE có BOM; kho mã vẫn lưu UTF-8 (diff đọc được)
+*.vbs  text eol=crlf working-tree-encoding=UTF-16LE-BOM
 *.png  binary
 *.jpg  binary
 *.jpeg binary

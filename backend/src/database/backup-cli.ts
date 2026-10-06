@@ -15,7 +15,9 @@ loadEnv();
 function main(): number {
   const conn = resolveDbConnection();
   console.log(`> Kết nối ${describeDb(conn)}`);
-  const result = backupDatabase(conn, '', 'thu_cong');
+  // --label=truoc_cap_nhat: Launcher gắn nhãn bản sao lưu tự động trước khi cập nhật phiên bản
+  const label = process.argv.find((a) => a.startsWith('--label='))?.slice('--label='.length).replace(/[^\w-]+/g, '_') || 'thu_cong';
+  const result = backupDatabase(conn, '', label);
   if (!result) {
     console.error('[LỖI] Không tìm thấy pg_dump trên máy và cũng không dùng được Docker (container salon_postgres).');
     console.error('      Bật Docker Desktop rồi chạy lại, hoặc cài công cụ PostgreSQL client (có pg_dump).');

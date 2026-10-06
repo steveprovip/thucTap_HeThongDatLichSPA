@@ -37,6 +37,8 @@ const IS_WIN = process.platform === 'win32';
 const API_PORT = 3000;
 const WEB_PORT = 5173;
 const IDLE_EXIT_MS = Number(process.env.SALON_LAUNCHER_IDLE_MS ?? 120_000);
+/** Tự kiểm tra bản mới định kỳ khi Launcher đang mở (mặc định 30 phút). */
+const AUTO_CHECK_MS = Number(process.env.SALON_LAUNCHER_CHECK_MS ?? 30 * 60_000);
 const SIGNATURE = 'salon-hoyo-launcher';
 
 mkdirSync(LOGS, { recursive: true });
@@ -47,7 +49,7 @@ const settings = () => {
   const s = readJson(SETTINGS_FILE, {});
   const runMode = readJson(RUN_STATE, null)?.mode;
   const mode = s.mode === 'serve' || s.mode === 'dev' ? s.mode : runMode === 'serve' ? 'serve' : 'dev';
-  return { mode, autoCheck: s.autoCheck !== false, openOnReady: s.openOnReady !== false };
+  return { mode, autoCheck: s.autoCheck !== false, openOnReady: s.openOnReady !== false, closeOnReady: s.closeOnReady !== false };
 };
 const saveSettings = (patch) => writeFileSync(SETTINGS_FILE, JSON.stringify({ ...settings(), ...patch }, null, 2));
 
@@ -83,7 +85,7 @@ let latestCheck = null;
 const STEP_RE = /^\[(\d)\/(\d)\]\s*(.*)$/;
 const rotate = (file) => { try { if (existsSync(file) && statSync(file).size > 5 * 1024 * 1024) renameSync(file, `${file}.1`); } catch { /* bỏ qua */ } };
 
-function runTask(kind, args, { percentOf, readyCheck } = {}) {
+function runTask(kind, args, { percentOf, readyCheck, onSuccess } = {}) {
   if (task?.running) throw Object.assign(new Error('Launcher đang bận một tác vụ khác'), { status: 409 });
   const logFile = join(LOGS, kind === 'start' ? 'app.log' : `${kind}.log`);
   rotate(logFile);
@@ -147,7 +149,7 @@ function runTask(kind, args, { percentOf, readyCheck } = {}) {
   child.on('exit', (code) => {
     t.running = false;
     t.exitCode = code ?? 0;
-    if (code === 0 && kind !== 'start') { t.percent = 100; t.done = true; }
+    if (code === 0 && kind !== 'start') { t.percent = 100; t.done = true; onSuccess?.(); }
     if (code !== 0 && !t.error) t.error = `Tác vụ dừng với mã ${code}. Xem nhật ký để biết chi tiết.`;
     out?.end();
   });
@@ -233,8 +235,12 @@ const readBody = (req) => new Promise((resolve) => {
 });
 const okHost = (host = '') => /^(127\.0\.0\.1|localhost)(:\d+)?$/i.test(host);
 
+let checking = null; // gộp các lần kiểm tra trùng nhau (tự động + người dùng bấm) -> chỉ một lệnh git fetch chạy
 async function versionInfo(fetchRemote) {
-  if (fetchRemote) latestCheck = await checkForUpdate(ROOT, { fetchRemote: true });
+  if (fetchRemote) {
+    checking ??= checkForUpdate(ROOT, { fetchRemote: true }).finally(() => { checking = null; });
+    latestCheck = await checking;
+  }
   const local = localVersion(ROOT);
   return { ...local, ...(latestCheck ?? {}), current: local.current, commit: local.commit, branch: local.branch };
 }
@@ -254,6 +260,7 @@ const routes = {
     if (body.mode === 'dev' || body.mode === 'serve') patch.mode = body.mode;
     if (typeof body.autoCheck === 'boolean') patch.autoCheck = body.autoCheck;
     if (typeof body.openOnReady === 'boolean') patch.openOnReady = body.openOnReady;
+    if (typeof body.closeOnReady === 'boolean') patch.closeOnReady = body.closeOnReady;
     saveSettings(patch);
     return settings();
   },
@@ -274,10 +281,27 @@ const routes = {
     return { stopped: r.status === 0, output: `${r.stdout}${r.stderr}`.trim() };
   },
   'POST /api/update': async (body) => {
-    runTask('update', ['update', ...(body.force ? ['--force'] : [])], { percentOf: (k, n) => Math.round((k / n) * 95) });
+    runTask('update', ['update', ...(body.force ? ['--force'] : [])], {
+      percentOf: (k, n) => Math.round((k / n) * 95),
+      // Cập nhật xong hệ thống đã tự chạy lại -> mở thẳng ứng dụng (như bấm BẮT ĐẦU)
+      onSuccess: async () => {
+        latestCheck = null;
+        const st = await appStatus();
+        if (st.running && settings().openOnReady) openUrl(st.url);
+      },
+    });
     return { started: true };
   },
   'GET /api/task': async () => task,
+  /** Cửa sổ Launcher tự đóng sau khi hệ thống sẵn sàng -> thoát máy chủ Launcher luôn, không chờ 2 phút. */
+  'POST /api/bye': async () => {
+    setTimeout(() => {
+      if (task?.running && task.kind !== 'start') return; // đang cập nhật: để vòng kiểm tra rảnh tự thoát sau
+      note('Cửa sổ Launcher đã thu gọn sau khi hệ thống sẵn sàng — thoát. Hệ thống Salon vẫn chạy nền.');
+      process.exit(0);
+    }, 4000).unref();
+    return { ok: true };
+  },
   'POST /api/open': async (body) => {
     const st = await appStatus();
     const target = { app: st.url, mail: 'http://localhost:1080', pgadmin: 'http://localhost:5050', docs: `http://localhost:${API_PORT}/api/docs` }[body.target];
@@ -370,6 +394,13 @@ server.on('error', async (e) => {
 server.listen(PORT, '127.0.0.1', () => {
   note(`HoYoSalon Launcher đang chạy tại ${uiUrl} (đóng cửa sổ này hoặc để tự thoát khi không còn ai dùng).`);
   if (wantOpen) openUrl(uiUrl, { appWindow: true });
+  // Kiểm tra bản mới ngay khi mở (chạy nền, không chặn giao diện) và lặp lại định kỳ
+  const autoCheck = () => {
+    if (!settings().autoCheck || task?.running) return;
+    versionInfo(true).then((v) => { if (v.updateAvailable) note(`Có phiên bản mới ${v.latest ?? ''} (${v.behind} thay đổi).`); }).catch(() => undefined);
+  };
+  autoCheck();
+  setInterval(autoCheck, AUTO_CHECK_MS).unref();
 });
 
 // Tự thoát khi không còn cửa sổ Launcher (giao diện gọi /api/state mỗi 1,5 giây). Hệ thống Salon vẫn chạy tiếp.

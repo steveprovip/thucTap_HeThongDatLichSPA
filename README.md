@@ -11,14 +11,14 @@ xem bảng đối chiếu tại [`docs/BACKLOG-MAPPING.md`](docs/BACKLOG-MAPPING
 
 ## Chạy dự án bằng MỘT cú nhấp — HoYoSalon Launcher
 
-**Windows:** nhấp đúp **`HoYoSalon.bat`** ở thư mục gốc. **macOS / Linux:** `npm run launcher`.
+**Windows:** nhấp đúp **`HoYoSalon.bat`** ở thư mục gốc một lần — tệp này giao cho `scripts\windows\HoYoSalon.vbs` chạy ẩn rồi đóng ngay, và tạo lối tắt **Hương Sen Salon** (biểu tượng hoa sen) trên màn hình. Từ đó chỉ cần bấm lối tắt: **không có cửa sổ CMD/Terminal nào hiện ra** (máy chủ Launcher, Docker, NestJS, Vite đều chạy nền, nhật ký ở `logs/`). Cần xem lỗi trực tiếp: `HoYoSalon.bat --console`. **macOS / Linux:** `npm run launcher`.
 
 Cửa sổ Launcher (nền tối kính mờ, phong cách game launcher) mở ra:
 
 | Nút / mục | Việc làm |
 |---|---|
-| **BẮT ĐẦU** | Chạy toàn bộ: Docker → PostgreSQL → gói npm → migration (+ dữ liệu mẫu ở chế độ phát triển) → API + giao diện, thanh tiến trình theo từng bước, tự mở ứng dụng khi `/health` = 200 |
-| **CẬP NHẬT vX.Y.Z** | Hiện khi GitHub có thẻ phiên bản mới (hoặc `main` có commit mới): tải mã → cài gói → build → **sao lưu CSDL** → migration → chạy lại; lỗi ở bước nào tự quay về bản cũ |
+| **BẮT ĐẦU** | Chạy toàn bộ: Docker → PostgreSQL → gói npm → migration (+ dữ liệu mẫu ở chế độ phát triển) → API + giao diện, thanh tiến trình theo từng bước; khi `GET http://127.0.0.1:3000/health` = 200 thì **tự mở trình duyệt vào ứng dụng và cửa sổ Launcher tự thu gọn** (đếm 3 giây, tắt được trong Cài đặt) |
+| **CẬP NHẬT (vX.Y.Z)** + huy hiệu **MỚI** | Launcher tự kiểm tra thẻ trên `origin` (`git ls-remote`, dự phòng GitHub Releases API) khi mở và mỗi 30 phút; có bản mới thì nút chính đổi thành CẬP NHẬT (kể cả khi hệ thống đang chạy). Một chạm: **sao lưu CSDL** → `git pull --ff-only` → cài gói → build → migration → chạy lại → mở ứng dụng; không tải tệp zip, lỗi ở bước nào tự quay về bản cũ. Chỉ nhánh `main` được tự cập nhật |
 | **MỞ ỨNG DỤNG** | Hệ thống đang chạy: mở trang |
 | ⚙ **Thông tin & Chẩn đoán** | Phiên bản + trạng thái kết nối kho mã, **Kiểm tra phiên bản mới nhất**, **Nhật ký cập nhật** (CHANGELOG), **Log Client / Server / CSDL** trực tiếp, **Xuất `system_logs.zip`** (đã ẩn mật khẩu), **Sao chép thông tin thiết bị** (OS, Node, Docker, cổng) |
 | Cài đặt | Chế độ *Phát triển · dữ liệu mẫu* hoặc *Máy chủ cửa hàng* (production, một cổng 3000, không nạp dữ liệu mẫu) |

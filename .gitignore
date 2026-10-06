@@ -24,3 +24,4 @@ logs/
 .e2e/
 # Trạng thái và nhật ký của HoYoSalon Launcher
 .salon-launcher.json
+.salon-shortcut
