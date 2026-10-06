@@ -84,8 +84,8 @@ export function Step4Confirm({ errors }: { errors: Step4Errors }) {
         </Field>
       </div>
 
-      <Field label="Email (tuỳ chọn)" error={errors.email} htmlFor="bk-email"
-             hint="Có email thì tiệm gửi xác nhận và nhắc lịch trước 24 giờ">
+      <Field label="Email nhận xác nhận (khuyến nghị)" error={errors.email} htmlFor="bk-email"
+             hint="Gửi ngay chi tiết lịch hẹn, mã tra cứu, đường đi và liên kết đổi/huỷ lịch; nhắc lịch trước 24 giờ">
         <Input
           id="bk-email"
           type="email"

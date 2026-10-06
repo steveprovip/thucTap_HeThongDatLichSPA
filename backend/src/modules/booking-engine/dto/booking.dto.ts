@@ -121,6 +121,18 @@ export class CreateSlotHoldDto {
   previousToken?: string;
 }
 
+/** POST /public/bookings/email — gửi (lại) email xác nhận đặt lịch (Mentor S2 · mục 10). */
+export class SendConfirmationEmailDto {
+  @IsString() @MaxLength(8, { message: CODE_LENGTH_MESSAGE }) @IsNotEmpty({ message: CODE_LENGTH_MESSAGE })
+  code!: string;
+
+  @Matches(VN_PHONE_REGEX, { message: VN_PHONE_MESSAGE })
+  phone!: string;
+
+  @IsEmail({}, { message: 'Email không đúng định dạng' }) @IsAsciiEmail() @MaxLength(160)
+  email!: string;
+}
+
 export class WalkInBookingDto extends CreateBookingDto {
   /** Lịch tại quầy luôn vào thẳng trạng thái Đã xác nhận (S3-07). */
   @IsOptional() @IsBoolean() startNow?: boolean;

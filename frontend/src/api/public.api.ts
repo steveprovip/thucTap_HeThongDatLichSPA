@@ -54,6 +54,11 @@ export const publicApi = {
     return unwrap<BookingResult>(await api.post('/public/bookings', payload));
   },
 
+  /** Mentor S2 · mục 10: gửi (lại) email xác nhận, xác thực bằng mã tra cứu + SĐT. */
+  async sendConfirmationEmail(payload: { code: string; phone: string; email: string }): Promise<{ emailQueued: boolean; toEmail: string }> {
+    return unwrap(await api.post('/public/bookings/email', payload));
+  },
+
   async lookup(params: { code?: string; phone?: string }): Promise<PublicAppointment[]> {
     return unwrap<PublicAppointment[]>(await api.post('/public/lookup', params));
   },

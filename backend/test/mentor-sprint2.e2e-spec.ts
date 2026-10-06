@@ -226,6 +226,37 @@ describe('Mentor Sprint 2', () => {
       await ds.query('DELETE FROM slot_holds WHERE stylist_id = $1', [stylistId]);
     });
 
+    it('Mục 10: đặt lịch có email -> email xác nhận đầy đủ; chưa có email -> gửi bổ sung bằng mã + SĐT', async () => {
+      const t4 = plus(time, 60);
+      const phone = `09${String(Date.now()).slice(-8)}`;
+      const withMail = await request(server).post('/api/public/bookings')
+        .send({ serviceIds: [serviceId], date, time: t4, stylistId, fullName: 'Khách Email', phone, email: 'khach.email@example.com' })
+        .expect(201);
+      expect(withMail.body.data.emailQueued).toBe(true);
+      const [mail] = await ds.query(
+        `SELECT subject, body_html FROM email_queue WHERE to_email = 'khach.email@example.com' ORDER BY created_at DESC LIMIT 1`);
+      expect(mail.subject).toContain(withMail.body.data.code);
+      expect(mail.body_html).toContain('Thêm vào Google Calendar');
+      expect(mail.body_html).toContain('Chờ tiệm xác nhận');
+      expect(mail.body_html).toContain(`tra-cuu?code=${withMail.body.data.code}`);
+      await ds.query('UPDATE appointments SET status = \'cancelled\' WHERE code = $1', [withMail.body.data.code]);
+
+      const phone2 = `09${String(Date.now() + 7).slice(-8)}`;
+      const noMail = await request(server).post('/api/public/bookings')
+        .send({ serviceIds: [serviceId], date, time: t4, stylistId, fullName: 'Khách Chưa Email', phone: phone2 }).expect(201);
+      expect(noMail.body.data.emailQueued).toBe(false);
+      const code = noMail.body.data.code as string;
+      await request(server).post('/api/public/bookings/email').send({ code, phone: '0912345678', email: 'x@example.com' }).expect(404);
+      const sent = await request(server).post('/api/public/bookings/email')
+        .send({ code, phone: phone2, email: 'Bo.Sung@Example.com' }).expect(200);
+      expect(sent.body.data).toEqual({ emailQueued: true, toEmail: 'bo***@example.com' });
+      const [row] = await ds.query(`SELECT COUNT(*)::int AS n FROM email_queue WHERE to_email = 'bo.sung@example.com' AND subject LIKE '%' || $1 || '%'`, [code]);
+      expect(row.n).toBe(1);
+      const [cust] = await ds.query('SELECT email FROM customers WHERE phone = $1', [phone2]);
+      expect(cust.email).toBe('bo.sung@example.com');
+      await ds.query('UPDATE appointments SET status = \'cancelled\' WHERE code = $1', [code]);
+    });
+
     it('giữ chỗ hết hạn thì tự trả lại; trả chỗ chủ động bằng DELETE', async () => {
       const t2 = plus(time, 60);
       const a = await request(server).post('/api/public/holds').send({ serviceIds: [serviceId], date, time: t2, stylistId }).expect(201);

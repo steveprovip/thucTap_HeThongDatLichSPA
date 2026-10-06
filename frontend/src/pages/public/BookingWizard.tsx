@@ -130,6 +130,8 @@ export function BookingWizard() {
     return (
       <BookingSuccess
         result={result}
+        phone={customer.phone}
+        email={customer.email.trim() || undefined}
         onBookAgain={() => { setResult(null); reset(); }}
       />
     );
