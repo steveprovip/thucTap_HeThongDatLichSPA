@@ -299,11 +299,18 @@ const copy = async (text) => {
 let state = null;
 let changelog = [];
 let lastCheck = null;
+/** Người dùng vừa bấm BẮT ĐẦU / CẬP NHẬT trong cửa sổ này -> khi hệ thống sẵn sàng thì tự thu gọn Launcher. */
+let autoClose = false;
+let closing = false;
+/** Dòng trạng thái khi đang/đã tự thu gọn (giữ nguyên qua các lần vẽ lại 1,5 giây). */
+let closeNote = '';
 const MODE_LABEL = { dev: 'Phát triển · dữ liệu mẫu', serve: 'Máy chủ cửa hàng' };
 
 function render() {
   if (!state) return;
   const { app, version, task, settings } = state;
+  // Vừa cập nhật xong -> kết quả kiểm tra cũ (còn "có bản mới") không còn đúng
+  if (task && task.kind === 'update' && task.done && !task.error && lastCheck?.canUpdate) lastCheck = null;
   const v = { ...version, ...(lastCheck || {}) };
   $('chipVersion').textContent = `${v.current}${v.commit ? ` · ${v.commit}` : ''}`;
   $('chipMode').textContent = MODE_LABEL[settings.mode];
@@ -323,25 +330,29 @@ function render() {
   if (busy) {
     label = `${task.kind === 'update' ? 'ĐANG CẬP NHẬT' : 'ĐANG KHỞI ĐỘNG'}<small>${Math.round(task.percent)}%</small>`;
     hero.disabled = true;
-    status = task.kind === 'update' ? 'Đang cập nhật phiên bản mới — dữ liệu khách được sao lưu trước khi đổi cấu trúc.' : 'Đang khởi động Docker, CSDL, API và giao diện…';
+    status = task.kind === 'update' ? 'Đang cập nhật: sao lưu CSDL → tải mã → cài gói → build → migration → chạy lại.' : 'Đang khởi động Docker, CSDL, API và giao diện…';
     led.className = 'led busy';
+  } else if (v.canUpdate) {
+    // Bản mới được ưu tiên hơn "MỞ ỨNG DỤNG": máy tiệm thường chạy suốt ngày, nếu không sẽ không bao giờ thấy nút cập nhật
+    const ver = v.latest && v.latest !== v.current ? v.latest : `${v.current} +${v.behind}`;
+    label = `CẬP NHẬT (<span style="text-transform:none">${esc(ver)}</span>)<small>${v.behind ? `${v.behind} thay đổi · ` : ''}1 chạm, tự sao lưu</small>`;
+    status = `Có phiên bản mới ${esc(ver)}. Nhấn CẬP NHẬT: Launcher tự sao lưu dữ liệu, cập nhật và mở lại hệ thống.`;
+    led.className = 'led warn';
+    const tag = document.createElement('span'); tag.className = 'tag'; tag.textContent = 'MỚI'; hero.appendChild(tag);
   } else if (app.running) {
     label = 'MỞ ỨNG DỤNG<small>Đang chạy</small>';
     hero.classList.add('running');
     status = `Hệ thống đang chạy (${MODE_LABEL[app.mode]}) tại ${app.url}`;
     led.className = 'led on';
-  } else if (v.updateAvailable) {
-    label = `CẬP NHẬT<small>${esc(v.latest || 'bản mới')}${v.behind ? ` · ${v.behind} thay đổi` : ''}</small>`;
-    status = `Có phiên bản mới ${v.latest || ''}. Nhấn CẬP NHẬT để tải mã, build và chạy migration tự động.`;
-    led.className = 'led warn';
-    const tag = document.createElement('span'); tag.className = 'tag'; tag.textContent = 'MỚI'; hero.appendChild(tag);
+    if (v.updateAvailable && !v.canUpdate) status += ` · Có bản ${esc(v.latest || 'mới')} trên kho mã (máy đang ở nhánh ${esc(v.branch)}, chỉ nhánh main tự cập nhật).`;
   }
   if (task && !task.running && task.error && !app.running) {
     status = `Lỗi: ${task.error}`;
     led.className = 'led warn';
   }
   $('heroLabel').innerHTML = label;
-  $('statusText').textContent = status;
+  $('statusText').textContent = (closing && app.running && closeNote) || status;
+  maybeAutoClose(app, task);
 
   $('progress').classList.toggle('show', !!(task && (task.running || task.error)));
   $('progressMeta').classList.toggle('show', !!(task && (task.running || task.error)));
@@ -352,9 +363,34 @@ function render() {
   }
 }
 
+/** Trải nghiệm 1 chạm: sẵn sàng -> trình duyệt đã mở ứng dụng -> cửa sổ Launcher tự đóng, Launcher thoát nền. */
+function maybeAutoClose(app, task) {
+  if (!autoClose || closing || !app.running || (task && (task.running || task.error))) return;
+  if (state.settings.closeOnReady === false) { autoClose = false; return; }
+  closing = true;
+  autoClose = false;
+  let left = 3;
+  const tick = () => {
+    closeNote = `Đã mở ${app.url} trong trình duyệt. Launcher tự thu gọn sau ${left} giây…`;
+    $('statusText').textContent = closeNote;
+    if (left-- > 0) return void setTimeout(tick, 1000);
+    fetch('/api/bye', { method: 'POST', keepalive: true, headers: { 'X-Launcher-Token': TOKEN } }).catch(() => undefined);
+    window.close();
+    // Trình duyệt không cho script đóng cửa sổ (ví dụ mở dạng tab thường) -> báo để người dùng tự đóng
+    setTimeout(() => {
+      closeNote = `Hệ thống đang chạy nền tại ${app.url}. Bạn có thể đóng cửa sổ Launcher này.`;
+      $('statusText').textContent = closeNote;
+    }, 400);
+  };
+  tick();
+}
+
 async function refresh() {
   try { state = await api('/api/state'); render(); }
-  catch { $('statusText').textContent = 'Mất kết nối tới Launcher. Chạy lại HoYoSalon.bat.'; $('led').className = 'led warn'; }
+  catch {
+    if (closing) return; // Launcher đã thoát có chủ đích sau khi mở ứng dụng
+    $('statusText').textContent = 'Mất kết nối tới Launcher. Mở lại biểu tượng Hương Sen Salon trên màn hình.'; $('led').className = 'led warn';
+  }
 }
 
 async function checkUpdate(silent = false) {
@@ -374,13 +410,17 @@ $('hero').addEventListener('click', async () => {
   if (!state) return;
   const v = { ...state.version, ...(lastCheck || {}) };
   try {
-    if (state.app.running) { await post('/api/open', { target: 'app' }); return; }
-    if (v.updateAvailable) {
-      if (!confirm(`Cập nhật lên ${v.latest || 'phiên bản mới'}?\n\nLauncher sẽ: tải mã mới → cài gói → build → dừng hệ thống → SAO LƯU CSDL → migration → chạy lại. Lỗi ở bước nào sẽ tự quay về bản cũ.`)) return;
+    if (v.canUpdate) {
+      if (!confirm(`Cập nhật lên ${v.latest || 'phiên bản mới'}?\n\nLauncher sẽ tự động: SAO LƯU CSDL → tải mã mới (git pull) → cài gói → build → migration → chạy lại. Lỗi ở bước nào sẽ tự quay về bản cũ, dữ liệu khách giữ nguyên.`)) return;
       await post('/api/update');
+      autoClose = true;
       toast('Bắt đầu cập nhật…');
+    } else if (state.app.running) {
+      await post('/api/open', { target: 'app' });
+      autoClose = true;
     } else {
       await post('/api/start');
+      autoClose = true;
       toast('Đang khởi động hệ thống…');
     }
   } catch (e) { toast(e.message, 'err'); }
@@ -494,10 +534,12 @@ async function showTab(tab) {
       <label class="opt"><input type="radio" name="mode" value="serve" ${s.mode === 'serve' ? 'checked' : ''}><span><b>Máy chủ cửa hàng</b><small>Bản production một cổng 3000, chạy migration, KHÔNG nạp dữ liệu mẫu, giữ nguyên dữ liệu khách.</small></span></label>
       <label class="opt"><input type="checkbox" id="sAuto" ${s.autoCheck !== false ? 'checked' : ''}><span><b>Tự kiểm tra bản mới khi mở Launcher</b><small>Cần Internet tới GitHub.</small></span></label>
       <label class="opt"><input type="checkbox" id="sOpen" ${s.openOnReady !== false ? 'checked' : ''}><span><b>Tự mở trình duyệt khi hệ thống sẵn sàng</b></span></label>
+      <label class="opt"><input type="checkbox" id="sClose" ${s.closeOnReady !== false ? 'checked' : ''}><span><b>Tự thu gọn Launcher khi đã mở ứng dụng</b><small>Hệ thống vẫn chạy nền. Mở lại Launcher bằng biểu tượng Hương Sen Salon trên màn hình.</small></span></label>
       <div class="row"><button class="btn" data-open="mail">Maildev</button><button class="btn" data-open="pgadmin">PgAdmin</button><button class="btn" data-open="docs">Swagger API</button><button class="btn danger" id="sStop">Dừng hệ thống</button></div>`;
     panel.querySelectorAll('input[name=mode]').forEach((r) => r.onchange = async () => { state.settings = await post('/api/settings', { mode: r.value }); render(); toast(`Chế độ: ${MODE_LABEL[r.value]}`, 'ok'); });
     $('sAuto').onchange = async (e) => { state.settings = await post('/api/settings', { autoCheck: e.target.checked }); };
     $('sOpen').onchange = async (e) => { state.settings = await post('/api/settings', { openOnReady: e.target.checked }); };
+    $('sClose').onchange = async (e) => { state.settings = await post('/api/settings', { closeOnReady: e.target.checked }); };
     panel.querySelectorAll('[data-open]').forEach((b) => b.onclick = () => post('/api/open', { target: b.dataset.open }));
     $('sStop').onclick = async () => { if (!confirm('Dừng toàn bộ hệ thống?')) return; const r = await post('/api/stop'); toast(r.stopped ? 'Đã dừng hệ thống' : (r.output || 'Không có hệ thống nào đang chạy')); refresh(); };
   }
@@ -535,6 +577,8 @@ async function loadNews() {
   await loadNews();
   if (state?.settings?.autoCheck !== false) checkUpdate(true);
   setInterval(refresh, 1500);
+  // Launcher để mở lâu (máy quầy): kiểm tra lại bản mới mỗi 30 phút
+  setInterval(() => { if (state?.settings?.autoCheck !== false && !(state?.task?.running)) checkUpdate(true); }, 30 * 60_000);
 })();
 </script>
 </body>

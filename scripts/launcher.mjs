@@ -1102,7 +1102,7 @@ async function update() {
   log(BAR);
   log('');
 
-  log('[1/7] Kiểm tra Git ...');
+  log('[1/8] Kiểm tra Git ...');
   if (!gitAvailable()) {
     err('[LỖI] Máy chưa cài Git. Tải tại https://git-scm.com/download/win , cài xong bấm CẬP NHẬT lại trong HoYoSalon.bat.');
     return 1;
@@ -1133,7 +1133,7 @@ async function update() {
   }
 
   const oldRev = currentCommit();
-  log('[2/7] Lấy phiên bản mới: git pull origin main ...');
+  log('[2/8] Kiểm tra phiên bản trên kho mã (git fetch origin main) ...');
   if (git(['fetch', '--quiet', 'origin', 'main'], { stdio: 'inherit' }).status !== 0) {
     err('[LỖI] Không kết nối được kho mã (kiểm tra Internet / quyền truy cập GitHub). CHƯA có gì bị thay đổi.');
     return 1;
@@ -1144,7 +1144,26 @@ async function update() {
     log(`      Đã là phiên bản mới nhất (${short(oldRev)}). Không có gì để cập nhật.`);
     return 0;
   }
+  log('[3/8] Sao lưu CSDL trước khi cập nhật ...');
+  let preBackup = '';
+  if (process.env.UPDATE_BACKUP === 'off') {
+    log('      Bỏ qua (UPDATE_BACKUP=off).');
+  } else {
+    if (!(await ensureDatabase('     -'))) {
+      err('[LỖI] Không kết nối được PostgreSQL để sao lưu. CHƯA có gì bị thay đổi.');
+      return 1;
+    }
+    const built = existsSync(join(ROOT, 'backend', 'dist', 'database', 'backup-cli.js'));
+    const bk = await backendScript(built ? 'backup:prod' : 'backup', ['--label=truoc_cap_nhat']);
+    if (!bk.ok) {
+      err('[LỖI] Sao lưu CSDL thất bại nên KHÔNG cập nhật (an toàn dữ liệu khách). CHƯA có gì bị thay đổi.');
+      return 1;
+    }
+    preBackup = /Đã sao lưu \([^)]*\): (.+)/.exec(bk.out)?.[1]?.trim() ?? '';
+  }
+
   if (force) rmSync(BUILD_STAMP, { force: true }); // buộc build lại
+  log(`      Lấy mã mới: git pull --ff-only origin main (${short(oldRev)} -> ${short(remoteRev)}) ...`);
   if (remoteRev !== oldRev) {
     // package-lock.json bị npm sửa tại máy + bản mới cũng đổi chính tệp đó -> hoàn lại bản của máy để kéo về không xung đột
     const incoming = gitOut(['diff', '--name-only', `${oldRev}..origin/main`]).split('\n');
@@ -1162,7 +1181,9 @@ async function update() {
   }
   const newRev = currentCommit();
   // Từ đây chạy bằng mã MỚI vừa kéo về: logic cập nhật mới (nếu có) áp dụng ngay trong lần này
-  const r = spawnSync(process.execPath, [SELF, 'update-apply', oldRev, newRev], { cwd: ROOT, stdio: 'inherit' });
+  const r = spawnSync(process.execPath, [SELF, 'update-apply', oldRev, newRev], {
+    cwd: ROOT, stdio: 'inherit', windowsHide: true, env: { ...process.env, SALON_PRE_UPDATE_BACKUP: preBackup },
+  });
   return r.status ?? 1;
 }
 
@@ -1212,7 +1233,7 @@ async function updateApply() {
   const changes = oldRev && newRev && oldRev !== newRev ? gitOut(['log', '--oneline', '--no-decorate', '-n', '12', `${oldRev}..${newRev}`]) : '';
   if (changes) log(changes.split('\n').map((l) => `        ${l}`).join('\n'));
 
-  log('[3/7] Kiểm tra gói npm (chỉ cài khi package.json / package-lock.json đổi) ...');
+  log('[4/8] Cài gói npm (chỉ cài khi package.json / package-lock.json đổi) ...');
   ensureEnvFiles();
   if (staleDeps().length && wasRunning) {
     // Cài gói lúc hệ thống còn chạy có thể lỗi khoá tệp .node (bcrypt...) trên Windows -> dừng trước, chỉ khi có gói mới
@@ -1224,17 +1245,17 @@ async function updateApply() {
 
   const needBuild = mode === 'serve' && needsBuild();
   if (mode !== 'serve') {
-    log('[4/7] Chế độ phát triển: không cần build.');
+    log('[5/8] Chế độ phát triển: không cần build.');
   } else if (needBuild) {
-    log(stopped ? '[4/7] Build bản mới ...' : '[4/7] Build bản mới ở thư mục tạm (bản cũ vẫn phục vụ trong lúc này) ...');
+    log(stopped ? '[5/8] Build bản mới ...' : '[5/8] Build bản mới ở thư mục tạm (bản cũ vẫn phục vụ trong lúc này) ...');
     if (!buildNext()) {
       return fail(stopped ? '[LỖI] Build thất bại.' : '[LỖI] Build thất bại. Hệ thống đang chạy KHÔNG bị đụng tới, vẫn là bản cũ.');
     }
   } else {
-    log('[4/7] Bản build đã khớp mã nguồn, bỏ qua build.');
+    log('[5/8] Bản build đã khớp mã nguồn, bỏ qua build.');
   }
 
-  log('[5/7] Dừng hệ thống, sao lưu CSDL và cập nhật cấu trúc ...');
+  log('[6/8] Dừng hệ thống, chạy migration CSDL ...');
   if (!stopped) {
     if (!(await stopRunning(state))) return fail(`[LỖI] Không dừng được hệ thống cũ (cổng ${API_PORT} vẫn bận). Chưa thay đổi gì.`);
     stopped = true;
@@ -1248,13 +1269,13 @@ async function updateApply() {
     );
   }
 
-  log('[6/7] Chuyển sang bản mới ...');
+  log('[7/8] Chuyển sang bản mới ...');
   if (needBuild) {
     await swapNext();
     swapped = true;
   }
 
-  log('[7/7] Khởi động lại và kiểm tra ...');
+  log('[8/8] Khởi động lại và kiểm tra ...');
   if (!startDetached(mode)) {
     err('[CẢNH BÁO] Không tự mở được cửa sổ mới. Hãy mở HoYoSalon.bat và bấm BẮT ĐẦU để bật hệ thống.');
     return 1;
@@ -1291,7 +1312,7 @@ async function updateApply() {
   log(`  CẬP NHẬT XONG sau ${secs} giây`);
   log(`  Phiên bản        : ${short(oldRev)} -> ${short(newRev)}`);
   log(`  Cấu trúc CSDL    : ${mig.applied.length ? `đã áp dụng ${mig.applied.join(', ')}` : 'không có thay đổi'}`);
-  log(`  Sao lưu trước đó : ${mig.backupFile ?? 'không cần (CSDL chưa có thay đổi cấu trúc)'}`);
+  log(`  Sao lưu trước đó : ${mig.backupFile ?? (process.env.SALON_PRE_UPDATE_BACKUP || 'không cần (CSDL chưa có thay đổi cấu trúc)')}`);
   log('  Dữ liệu khách    : giữ nguyên, không nạp dữ liệu mẫu');
   log('  Phiên đăng nhập  : giữ nguyên (khoá JWT trong backend/.env không đổi, phiên lưu trong CSDL)');
   log(`  Địa chỉ          : ${mode === 'serve' ? SERVER_URL : APP_URL}`);

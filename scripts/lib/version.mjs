@@ -34,7 +34,7 @@ export const compareSemver = (a, b) => {
 export const latestTag = (tags) => tags.filter((t) => parseSemver(t)).sort(compareSemver).pop() ?? null;
 
 const git = (root, args, timeout = 20_000) => {
-  const r = spawnSync('git', args, { cwd: root, encoding: 'utf8', timeout, windowsHide: true });
+  const r = spawnSync('git', args, { cwd: root, encoding: 'utf8', timeout, windowsHide: true, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
   return r.status === 0 ? r.stdout.trim() : null;
 };
 
@@ -77,7 +77,7 @@ const fetchJson = (url, timeoutMs = 6000) => new Promise((resolve) => {
 
 /**
  * Kiểm tra bản mới. fetchRemote=false chỉ trả thông tin tại máy (dùng khi mở launcher, không chờ mạng).
- * @returns {{ current, latest, updateAvailable, behind, branch, commit, remoteReachable, source, checkedAt, notes }}
+ * @returns {{ current, latest, updateAvailable, canUpdate, behind, branch, commit, remoteReachable, source, checkedAt, notes }}
  */
 export async function checkForUpdate(root, { fetchRemote = true } = {}) {
   const local = localVersion(root);
@@ -85,6 +85,7 @@ export async function checkForUpdate(root, { fetchRemote = true } = {}) {
     ...local,
     latest: null,
     updateAvailable: false,
+    canUpdate: false,
     behind: 0,
     remoteReachable: false,
     source: null,
@@ -112,6 +113,8 @@ export async function checkForUpdate(root, { fetchRemote = true } = {}) {
     }
   }
   out.updateAvailable = (!!out.latest && compareSemver(out.latest, out.current) > 0) || (out.branch === 'main' && out.behind > 0);
+  // Cập nhật 1 chạm chỉ chạy trên nhánh main (máy tiệm). Máy lập trình (develop/feature) chỉ được báo, không tự kéo mã.
+  out.canUpdate = out.updateAvailable && out.branch === 'main';
   return out;
 }
 
