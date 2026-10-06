@@ -21,7 +21,7 @@
 ---
 
 ## 🔍 3. Checklist Tự Kiểm Tra (Dành Cho Tác Giả PR)
-- [ ] Nhánh làm việc được tách từ `develop` mới nhất (`git pull origin develop`).
+- [ ] Nhánh đặt tên đúng mô hình `feature/*` · `fix/*` · `docs/*`, tách từ `develop` mới nhất (`git pull origin develop`) — xem `docs/guides/git/GIT-BRANCHING.md`.
 - [ ] Commit message tuân thủ đúng chuẩn Conventional Commits (`feat(...)`, `fix(...)`, `docs(...)`).
 - [ ] Chạy `npm run lint` không có bất kỳ warning/error nào (`--max-warnings 0`).
 - [ ] Chạy `npm run build` thành công trên cả backend và frontend.
