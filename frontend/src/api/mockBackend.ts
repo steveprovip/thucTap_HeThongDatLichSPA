@@ -736,6 +736,16 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
         durationMinutes: s.durationMinutes, price: s.price })), totalDurationMinutes: a.totalDurationMinutes,
       estimatedTotal: a.estimatedTotal, status: a.status, nameConflict: false, emailQueued: false };
   }
+  if (path === '/public/holds' && method === 'post') {
+    // Chế độ Demo: chỉ một trình duyệt nên giữ chỗ là hình thức (máy chủ thật khoá khung giờ với mọi khách khác)
+    const duration = db.services.filter(sv => (p.serviceIds as string[]).includes(sv.id)).reduce((n, sv) => n + sv.durationMinutes, 0);
+    const stylist = db.stylists.find(st => st.id === p.stylistId) ?? db.stylists.find(st => st.isActive);
+    const end = minute(String(p.time)) + duration;
+    return { holdToken: uid(), stylistId: stylist?.id ?? '', stylistName: stylist?.fullName ?? '', date: p.date, time: p.time,
+      endTime: `${String(Math.floor(end / 60)).padStart(2, '0')}:${String(end % 60).padStart(2, '0')}`,
+      expiresAt: new Date(Date.now() + 10 * 60000).toISOString(), holdMinutes: 10 };
+  }
+  if (path.startsWith('/public/holds/') && method === 'delete') return { released: true };
   if (path === '/public/lookup') {
     if (!p.code && !p.phone) bad('Vui lòng nhập mã tra cứu hoặc số điện thoại');
     if (String(p.code ?? '').length > 8) bad(MSG.CODE_LENGTH, 'code');

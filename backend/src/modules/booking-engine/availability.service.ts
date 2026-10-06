@@ -7,6 +7,7 @@ import { ServiceCategory } from '../../database/entities/service-category.entity
 import { StylistService as StylistServiceLink } from '../../database/entities/stylist-service.entity';
 import { Stylist } from '../../database/entities/stylist.entity';
 import { Appointment, ACTIVE_STATUSES } from '../../database/entities/appointment.entity';
+import { SlotHold } from '../../database/entities/slot-hold.entity';
 import { ERROR_CODES, MSG } from '../../common/constants/messages.constant';
 import { formatVnd } from '../../common/utils/currency.util';
 import {
@@ -16,7 +17,7 @@ import { normalizeSearch } from '../../common/utils/text.util';
 import { WorkingHoursService } from '../working-hours/working-hours.service';
 import { StylistsService } from '../stylists/stylists.service';
 import {
-  computeAvailableSlots, isSlotAvailable, longestShiftLength, ShiftInput, SlotCalcInput, TimeOffInput,
+  computeAvailableSlots, Interval, isSlotAvailable, longestShiftLength, ShiftInput, SlotCalcInput, TimeOffInput,
 } from './slot-calculator';
 
 export interface PublicServiceView {
@@ -67,6 +68,7 @@ export class AvailabilityService {
     @InjectRepository(StylistServiceLink) private readonly linkRepo: Repository<StylistServiceLink>,
     @InjectRepository(Stylist) private readonly stylistRepo: Repository<Stylist>,
     @InjectRepository(Appointment) private readonly apptRepo: Repository<Appointment>,
+    @InjectRepository(SlotHold) private readonly holdRepo: Repository<SlotHold>,
   ) {}
 
   /**
@@ -196,8 +198,10 @@ export class AvailabilityService {
     totalDuration: number;
     ignoreLeadTime?: boolean;
     excludeAppointmentId?: string;
+    /** Giữ chỗ của CHÍNH khách đang hỏi — không tính là bận với họ (Mentor S2 · mục 11). */
+    holdToken?: string;
     now?: Date;
-  }): Promise<SlotCalcInput> {
+  }): Promise<SlotCalcInput & { apptBusy: Interval[] }> {
     const { date, stylistId, totalDuration } = params;
     const dow = dayOfWeek(date);
     const wh = await this.workingHours.getByDayOfWeek(dow);
@@ -224,11 +228,21 @@ export class AvailabilityService {
     if (params.excludeAppointmentId) qb.andWhere('a.id <> :ex', { ex: params.excludeAppointmentId });
     const appts = await qb.getMany();
 
-    const busy = appts.map((a) => {
-      const s = toSalon(a.startAt);
-      const e = toSalon(a.endAt);
+    const toInterval = (startAt: Date, endAt: Date): Interval => {
+      const s = toSalon(startAt);
+      const e = toSalon(endAt);
       return { start: s.hour * 60 + s.minute, end: e.hour * 60 + e.minute };
-    });
+    };
+    const apptBusy = appts.map((a) => toInterval(a.startAt, a.endAt));
+
+    // Khung giờ khách khác đang giữ chỗ (chưa hết hạn) cũng là BẬN. Hạn giữ chỗ luôn so với giờ thật.
+    const hq = this.holdRepo.createQueryBuilder('h')
+      .where('h.stylist_id = :sid', { sid: stylistId })
+      .andWhere('h.expires_at > :real', { real: new Date() })
+      .andWhere('h.start_at < :dayEnd AND h.end_at > :dayStart', { dayStart: startOfDay(date), dayEnd: endOfDay(date) });
+    if (params.holdToken) hq.andWhere('h.token <> :tok', { tok: params.holdToken });
+    const holdBusy = (await hq.getMany()).map((h) => toInterval(h.startAt, h.endAt));
+    const busy = [...apptBusy, ...holdBusy];
 
     return {
       salonOpen: wh ? trimSeconds(wh.openTime) : '08:00',
@@ -240,6 +254,7 @@ export class AvailabilityService {
       totalDuration,
       stepMinutes: this.config.get<number>('business.slotStepMinutes')!,
       earliestStartMinutes: this.earliestStartMinutes(date, params.ignoreLeadTime, params.now),
+      apptBusy,
     };
   }
 
@@ -253,6 +268,7 @@ export class AvailabilityService {
     stylistId?: string;
     ignoreLeadTime?: boolean;
     excludeAppointmentId?: string;
+    holdToken?: string;
     now?: Date;
   }): Promise<AvailabilityResult> {
     if (!isValidDateString(params.date)) throw new BadRequestException('Ngày không hợp lệ');
@@ -277,6 +293,7 @@ export class AvailabilityService {
           totalDuration,
           ignoreLeadTime: params.ignoreLeadTime,
           excludeAppointmentId: params.excludeAppointmentId,
+          holdToken: params.holdToken,
           now: params.now,
         });
         for (const time of computeAvailableSlots(input)) {
@@ -359,6 +376,7 @@ export class AvailabilityService {
    * Phân loại một khung giờ của một thợ:
    *  - 'invalid': nằm ngoài ca / giờ mở cửa / giờ nghỉ / quá sát hiện tại -> khách gửi giờ không có trong danh sách
    *  - 'taken'  : hợp lệ nhưng đã có lịch khác chiếm
+   *  - 'held'   : còn trống nhưng một khách khác đang GIỮ CHỖ để hoàn tất đặt lịch (Mentor S2 · mục 11)
    *  - 'ok'     : nhận được
    */
   async checkSlot(params: {
@@ -368,18 +386,21 @@ export class AvailabilityService {
     totalDuration: number;
     ignoreLeadTime?: boolean;
     excludeAppointmentId?: string;
+    holdToken?: string;
     now?: Date;
-  }): Promise<'ok' | 'taken' | 'invalid'> {
+  }): Promise<'ok' | 'taken' | 'held' | 'invalid'> {
     const input = await this.buildCalcInput({
       date: params.date,
       stylistId: params.stylistId,
       totalDuration: params.totalDuration,
       ignoreLeadTime: params.ignoreLeadTime,
       excludeAppointmentId: params.excludeAppointmentId,
+      holdToken: params.holdToken,
       now: params.now,
     });
     if (input.salonClosed || !isSlotAvailable({ ...input, busy: [] }, params.time)) return 'invalid';
-    return isSlotAvailable(input, params.time) ? 'ok' : 'taken';
+    if (!isSlotAvailable({ ...input, busy: input.apptBusy }, params.time)) return 'taken';
+    return isSlotAvailable(input, params.time) ? 'ok' : 'held';
   }
 
   /** Kiểm tra một khung giờ cụ thể của một thợ có còn nhận được không. */
@@ -390,6 +411,7 @@ export class AvailabilityService {
     totalDuration: number;
     ignoreLeadTime?: boolean;
     excludeAppointmentId?: string;
+    holdToken?: string;
     now?: Date;
   }): Promise<boolean> {
     return (await this.checkSlot(params)) === 'ok';
@@ -408,6 +430,7 @@ export class AvailabilityService {
     now?: Date;
     /** Thợ đã thử và bị giành mất khung giờ trong lúc chốt lịch (QA-15). */
     excludeStylistIds?: string[];
+    holdToken?: string;
   }): Promise<Stylist | null> {
     const excluded = new Set(params.excludeStylistIds ?? []);
     const candidates = (await this.capableStylists(params.serviceIds)).filter((s) => !excluded.has(s.id));
@@ -421,6 +444,7 @@ export class AvailabilityService {
         stylistId: stylist.id,
         totalDuration: params.totalDuration,
         ignoreLeadTime: params.ignoreLeadTime,
+        holdToken: params.holdToken,
         now: params.now,
       });
       if (ok) available.push(stylist);

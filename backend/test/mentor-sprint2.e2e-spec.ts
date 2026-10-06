@@ -166,6 +166,81 @@ describe('Mentor Sprint 2', () => {
     });
   });
 
+  describe('Mục 11 — Tạm giữ chỗ khi khách đang điền form', () => {
+    let serviceId = '';
+    let stylistId = '';
+    let date = '';
+    let time = '';
+    const body = (extra: Record<string, unknown> = {}) => ({ serviceIds: [serviceId], date, time, ...extra });
+    const customer = (n: number) => ({ fullName: `Khách giữ chỗ ${n}`, phone: `09${String(Date.now() + n).slice(-8)}` });
+
+    beforeAll(async () => {
+      const cat = await request(server).get('/api/service-categories').set(as('owner')).expect(200);
+      const svc = await request(server).post('/api/services').set(as('owner'))
+        .send({ categoryId: cat.body.data[0].id, name: `Giữ chỗ ${Date.now()}`, durationMinutes: 60, price: 150000 }).expect(201);
+      serviceId = svc.body.data.id;
+      const sty = await request(server).post('/api/stylists').set(as('owner'))
+        .send({ fullName: `Thợ giữ chỗ ${Date.now()}`, gender: 'female', serviceIds: [serviceId] }).expect(201);
+      stylistId = sty.body.data.id;
+      const [d] = await freeDays(stylistId, 20, 1, 15);
+      date = d.date;
+      await request(server).post(`/api/stylists/${stylistId}/shifts`).set(as('owner'))
+        .send({ shifts: [{ workDate: date, startTime: d.hours.open, endTime: plus(d.hours.open, 180) }] }).expect(201);
+      time = plus(d.hours.open, 60);
+    });
+
+    const slotsOf = async (token?: string): Promise<string[]> => {
+      const res = await request(server).get('/api/public/availability')
+        .query({ date, serviceIds: serviceId, stylistId, ...(token ? { holdToken: token } : {}) }).expect(200);
+      return (res.body.data.slots as { time: string }[]).map((x) => x.time);
+    };
+
+    it('giữ chỗ ẩn khung giờ với khách khác, chặn giữ trùng / chốt trùng / tạo tại quầy; chủ giữ chỗ chốt được', async () => {
+      expect(await slotsOf()).toContain(time);
+      const a = await request(server).post('/api/public/holds').send(body()).expect(201);
+      const hold = a.body.data as { holdToken: string; stylistId: string; holdMinutes: number; expiresAt: string };
+      expect(hold.stylistId).toBe(stylistId);
+      expect(hold.holdMinutes).toBe(10);
+      expect(new Date(hold.expiresAt).getTime() - Date.now()).toBeGreaterThan(9 * 60_000);
+
+      expect(await slotsOf()).not.toContain(time);
+      expect(await slotsOf(hold.holdToken)).toContain(time);
+
+      const b = await request(server).post('/api/public/holds').send(body({ stylistId })).expect(409);
+      expect(b.body.code ?? b.body.error?.code ?? JSON.stringify(b.body)).toContain('SLOT_HELD');
+      await request(server).post('/api/public/bookings').send(body({ stylistId, ...customer(1) })).expect(409);
+      await request(server).post('/api/appointments/walk-in').set(as('owner')).send(body({ stylistId, ...customer(2) })).expect(409);
+
+      const ok = await request(server).post('/api/public/bookings').send(body({ holdToken: hold.holdToken, ...customer(3) })).expect(201);
+      expect(ok.body.data.stylistName).toContain('Thợ giữ chỗ');
+      const [{ n }] = await ds.query('SELECT COUNT(*)::int AS n FROM slot_holds WHERE token = $1', [hold.holdToken]);
+      expect(n).toBe(0);
+    });
+
+    it('10 khách cùng giữ một khung giờ một lúc -> đúng 1 người giữ được', async () => {
+      const t3 = plus(time, -60); // khung đầu ca, chưa ai đặt
+      const results = await Promise.all(Array.from({ length: 10 }, () =>
+        request(server).post('/api/public/holds').send({ serviceIds: [serviceId], date, time: t3, stylistId })));
+      expect(results.filter((r) => r.status === 201)).toHaveLength(1);
+      expect(results.filter((r) => r.status === 409)).toHaveLength(9);
+      await ds.query('DELETE FROM slot_holds WHERE stylist_id = $1', [stylistId]);
+    });
+
+    it('giữ chỗ hết hạn thì tự trả lại; trả chỗ chủ động bằng DELETE', async () => {
+      const t2 = plus(time, 60);
+      const a = await request(server).post('/api/public/holds').send({ serviceIds: [serviceId], date, time: t2, stylistId }).expect(201);
+      await ds.query(`UPDATE slot_holds SET expires_at = now() - interval '1 second' WHERE token = $1`, [a.body.data.holdToken]);
+      const slots = (await request(server).get('/api/public/availability').query({ date, serviceIds: serviceId, stylistId }).expect(200))
+        .body.data.slots as { time: string }[];
+      expect(slots.map((x) => x.time)).toContain(t2);
+
+      const c = await request(server).post('/api/public/holds').send({ serviceIds: [serviceId], date, time: t2, stylistId }).expect(201);
+      const rel = await request(server).delete(`/api/public/holds/${c.body.data.holdToken}`).expect(200);
+      expect(rel.body.data.released).toBe(true);
+      await request(server).post('/api/public/holds').send({ serviceIds: [serviceId], date, time: t2, stylistId }).expect(201);
+    });
+  });
+
   describe('Mục 5 — AI sinh ngày lễ cả năm', () => {
     const YEAR = 2099;
     afterAll(async () => {

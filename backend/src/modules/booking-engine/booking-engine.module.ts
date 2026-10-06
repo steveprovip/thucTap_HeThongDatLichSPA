@@ -8,9 +8,11 @@ import { Stylist } from '../../database/entities/stylist.entity';
 import { ServiceItem } from '../../database/entities/service.entity';
 import { ServiceCategory } from '../../database/entities/service-category.entity';
 import { StylistService } from '../../database/entities/stylist-service.entity';
+import { SlotHold } from '../../database/entities/slot-hold.entity';
 import { AvailabilityService } from './availability.service';
 import { BookingService } from './booking.service';
 import { AppointmentsService } from './appointments.service';
+import { SlotHoldService } from './slot-hold.service';
 import { PublicBookingController } from './public-booking.controller';
 import { AppointmentsController } from './appointments.controller';
 import { StylistsModule } from '../stylists/stylists.module';
@@ -21,14 +23,14 @@ import { WorkingHoursModule } from '../working-hours/working-hours.module';
   imports: [
     TypeOrmModule.forFeature([
       Appointment, AppointmentServiceItem, AppointmentChange,
-      Customer, Stylist, ServiceItem, ServiceCategory, StylistService,
+      Customer, Stylist, ServiceItem, ServiceCategory, StylistService, SlotHold,
     ]),
     StylistsModule,
     CustomersModule,
     WorkingHoursModule,
   ],
-  providers: [AvailabilityService, BookingService, AppointmentsService],
+  providers: [AvailabilityService, BookingService, AppointmentsService, SlotHoldService],
   controllers: [PublicBookingController, AppointmentsController],
-  exports: [AvailabilityService, BookingService, AppointmentsService],
+  exports: [AvailabilityService, BookingService, AppointmentsService, SlotHoldService],
 })
 export class BookingEngineModule {}

@@ -27,6 +27,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { RateLimitService } from '../rate-limit/rate-limit.service';
 import { CreateBookingDto } from './dto/booking.dto';
 import { mapPublicAppointment } from './appointment.mapper';
+import { SlotHoldService } from './slot-hold.service';
 
 export interface BookingResult {
   code: string;
@@ -73,6 +74,8 @@ interface PersistContext {
   startAt: Date;
   endAt: Date;
   now: Date;
+  /** Giữ chỗ của chính khách này (nếu có) — không tính là bận, và bị xoá khi lịch được ghi. */
+  holdToken?: string;
 }
 
 @Injectable()
@@ -88,6 +91,7 @@ export class BookingService {
     private readonly mail: MailService,
     private readonly notifications: NotificationsService,
     private readonly rateLimit: RateLimitService,
+    private readonly holds: SlotHoldService,
     @InjectRepository(Appointment) private readonly apptRepo: Repository<Appointment>,
     @InjectRepository(AppointmentServiceItem) private readonly apptServiceRepo: Repository<AppointmentServiceItem>,
     @InjectRepository(Customer) private readonly customerRepo: Repository<Customer>,
@@ -168,9 +172,16 @@ export class BookingService {
     const step = this.config.get<number>('business.slotStepMinutes')!;
     if (isOnline && timeToMinutes(dto.time) % step !== 0) throw new BadRequestException(MSG.SLOT_INVALID);
 
-    // ----- 5. Chọn thợ (đích danh hoặc tự phân)
+    // ----- 5. Chọn thợ (đích danh hoặc tự phân). Khách đang giữ chỗ (Mentor S2 · mục 11) -> chỗ giữ của CHÍNH họ
+    // không bị tính là bận, và "thợ bất kỳ" ưu tiên đúng thợ đã được giữ chỗ.
+    const hold = await this.holds.findActive(dto.holdToken);
+    const ownHold = hold && hold.startAt.getTime() === startAt.getTime() && hold.endAt.getTime() === endAt.getTime()
+      && (!dto.stylistId || dto.stylistId === hold.stylistId) ? hold : null;
+    const holdToken = ownHold?.token;
     let stylistId: string;
-    if (dto.stylistId) {
+    if (!dto.stylistId && ownHold) {
+      stylistId = ownHold.stylistId;
+    } else if (dto.stylistId) {
       stylistId = dto.stylistId;
       const stylist = await this.stylistRepo.findOne({ where: { id: stylistId } });
       if (!stylist) throw new NotFoundException(MSG.STYLIST_NOT_FOUND);
@@ -181,14 +192,15 @@ export class BookingService {
       // ngày thợ xin nghỉ, ngày tiệm đóng cửa hay thợ CHƯA XẾP CA đều bị từ chối. Áp dụng cả lịch tại quầy
       // (chỉ được bỏ mốc đặt trước 60 phút), không chỉ lịch đặt online.
       const verdict = await this.availability.checkSlot({
-        date: dto.date, time: dto.time, stylistId, totalDuration, ignoreLeadTime: params.ignoreLeadTime, now,
+        date: dto.date, time: dto.time, stylistId, totalDuration, ignoreLeadTime: params.ignoreLeadTime, now, holdToken,
       });
       if (verdict === 'invalid') throw new BadRequestException(MSG.SLOT_INVALID);
       if (verdict === 'taken') throw new ConflictException(MSG.SLOT_TAKEN);
+      if (verdict === 'held') throw new ConflictException({ message: MSG.SLOT_HELD, code: ERROR_CODES.SLOT_HELD });
     } else {
       const auto = await this.availability.pickAutoStylist({
         date: dto.date, time: dto.time, serviceIds: dto.serviceIds,
-        totalDuration, ignoreLeadTime: params.ignoreLeadTime, now,
+        totalDuration, ignoreLeadTime: params.ignoreLeadTime, now, holdToken,
       });
       if (!auto) throw new ConflictException(MSG.SLOT_TAKEN);
       stylistId = auto.id;
@@ -196,7 +208,7 @@ export class BookingService {
 
     // ----- 6. Ghi lịch. "Thợ bất kỳ" mà thợ vừa chọn bị người khác giành mất trong lúc chốt -> phân lại
     // sang thợ rảnh kế tiếp thay vì báo khách hết chỗ (QA-15, QA-19: 20 khách cùng giây, nhiều thợ rảnh).
-    const ctx: PersistContext = { dto, params, ordered, totalDuration, estimatedTotal, startAt, endAt, now };
+    const ctx: PersistContext = { dto, params, ordered, totalDuration, estimatedTotal, startAt, endAt, now, holdToken };
     const tried: string[] = [];
     for (;;) {
       try {
@@ -206,7 +218,7 @@ export class BookingService {
         tried.push(stylistId);
         const next = await this.availability.pickAutoStylist({
           date: dto.date, time: dto.time, serviceIds: dto.serviceIds,
-          totalDuration, ignoreLeadTime: params.ignoreLeadTime, now, excludeStylistIds: tried,
+          totalDuration, ignoreLeadTime: params.ignoreLeadTime, now, excludeStylistIds: tried, holdToken,
         });
         if (!next) throw e;
         stylistId = next.id;
@@ -249,6 +261,10 @@ export class BookingService {
       // một giao dịch khác chen ngang.
       const stillFree = await this.isRangeFree(manager, stylistId, startAt, endAt);
       if (!stillFree) throw new ConflictException(MSG.SLOT_TAKEN);
+      // Mentor S2 · mục 11: khung giờ đang được KHÁCH KHÁC giữ chỗ (chưa hết hạn) thì không ai khác chốt được
+      if (await SlotHoldService.heldByOthers(manager, stylistId, startAt, endAt, ctx.holdToken)) {
+        throw new ConflictException({ message: MSG.SLOT_HELD, code: ERROR_CODES.SLOT_HELD });
+      }
 
       // QA-17: đếm lại số lịch chưa hoàn tất của SĐT NGAY TRONG giao dịch SERIALIZABLE. Bước kiểm tra trước đó
       // chạy ngoài giao dịch nên N yêu cầu song song cùng một SĐT (khác thợ) từng cùng lọt qua mức 3 lịch.
@@ -295,6 +311,8 @@ export class BookingService {
         );
       }
       if (!appointment) throw new ConflictException('Không sinh được mã tra cứu, vui lòng thử lại');
+      // Giữ chỗ đã "đổi" thành lịch hẹn -> xoá trong CÙNG giao dịch
+      if (ctx.holdToken) await manager.query('DELETE FROM slot_holds WHERE token = $1', [ctx.holdToken]);
 
       await manager.save(
         ordered.map((s, index) =>

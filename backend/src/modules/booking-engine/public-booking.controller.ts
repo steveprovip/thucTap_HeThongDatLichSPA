@@ -1,13 +1,14 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, Query } from '@nestjs/common';
 import { AvailabilityService } from './availability.service';
 import { BookingService } from './booking.service';
+import { SlotHoldService } from './slot-hold.service';
 import { AppointmentSource } from '../../database/entities/appointment.entity';
 import { Public } from '../../common/decorators/public.decorator';
 import { ClientIp } from '../../common/decorators/client-ip.decorator';
 import { formatVnd } from '../../common/utils/currency.util';
 import { ERROR_CODES } from '../../common/constants/messages.constant';
 import {
-  AvailabilityQueryDto, CancelByCodeDto, CapableStylistsQueryDto, CreateBookingDto, LookupDto, QuoteDto,
+  AvailabilityQueryDto, CancelByCodeDto, CapableStylistsQueryDto, CreateBookingDto, CreateSlotHoldDto, LookupDto, QuoteDto,
 } from './dto/booking.dto';
 
 /**
@@ -19,6 +20,7 @@ export class PublicBookingController {
   constructor(
     private readonly availability: AvailabilityService,
     private readonly booking: BookingService,
+    private readonly holds: SlotHoldService,
   ) {}
 
   /** S2-03: danh mục dịch vụ theo nhóm, có tìm kiếm không dấu. */
@@ -67,7 +69,20 @@ export class PublicBookingController {
       date: query.date,
       serviceIds: query.serviceIds,
       stylistId: query.stylistId,
+      holdToken: query.holdToken,
     });
+  }
+
+  /** Mentor S2 · mục 11: giữ chỗ khung giờ trong lúc khách điền thông tin (mặc định 10 phút). */
+  @Post('holds')
+  createHold(@Body() dto: CreateSlotHoldDto, @ClientIp() ip: string) {
+    return this.holds.create(dto, ip);
+  }
+
+  /** Khách quay lại đổi giờ / rời trang: trả chỗ ngay cho người khác. */
+  @Delete('holds/:token')
+  releaseHold(@Param('token') token: string) {
+    return this.holds.release(String(token).slice(0, 64));
   }
 
   /** S2-07 + S2-08: chốt lịch, sinh mã tra cứu 8 ký tự. */
