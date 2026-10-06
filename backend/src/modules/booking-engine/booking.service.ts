@@ -22,6 +22,7 @@ import { AvailabilityService } from './availability.service';
 import { CustomersService } from '../customers/customers.service';
 import { StylistsService } from '../stylists/stylists.service';
 import { MailService } from '../notifications/mail.service';
+import { EmailQueueService } from '../notifications/email-queue.service';
 import { MailTemplates, AppointmentMailData } from '../notifications/mail-templates';
 import { NotificationsService } from '../notifications/notifications.service';
 import { RateLimitService } from '../rate-limit/rate-limit.service';
@@ -92,6 +93,7 @@ export class BookingService {
     private readonly notifications: NotificationsService,
     private readonly rateLimit: RateLimitService,
     private readonly holds: SlotHoldService,
+    private readonly emailQueue: EmailQueueService,
     @InjectRepository(Appointment) private readonly apptRepo: Repository<Appointment>,
     @InjectRepository(AppointmentServiceItem) private readonly apptServiceRepo: Repository<AppointmentServiceItem>,
     @InjectRepository(Customer) private readonly customerRepo: Repository<Customer>,
@@ -341,6 +343,8 @@ export class BookingService {
     let emailQueued = false;
     const mailData: AppointmentMailData = {
       code: result.appointment.code,
+      status: result.appointment.status,
+      cancelCutoffMinutes: this.config.get<number>('business.cancelCutoffMinutes'),
       customerName: result.customer.fullName,
       stylistName: stylist?.fullName ?? '',
       startAt,
@@ -364,6 +368,7 @@ export class BookingService {
       });
       await this.apptRepo.update(result.appointment.id, { confirmationSentAt: new Date() });
       emailQueued = true;
+      this.kickMailWorker();
     }
     if (params.autoConfirm) await this.scheduleReminder(result.appointment.id);
 
@@ -409,6 +414,52 @@ export class BookingService {
       [stylistId, start.toISOString(), end.toISOString(), excludeId ?? null],
     );
     return rows.length === 0;
+  }
+
+  /** Mentor S2 · mục 10: gửi email NGAY (không chờ lượt quét mỗi phút của worker); lỗi chỉ ghi log. */
+  private kickMailWorker(): void {
+    setImmediate(() => {
+      this.emailQueue.processDue().catch((e: unknown) => this.logger.warn(`Gửi email ngay thất bại: ${(e as Error).message}`));
+    });
+  }
+
+  /**
+   * Mentor S2 · mục 10 — khách chưa nhập email lúc đặt (hoặc muốn gửi lại) nhận email xác nhận từ màn hình
+   * "Đặt lịch thành công" / trang tra cứu. Xác thực bằng mã tra cứu + SĐT (đúng cặp thông tin dùng để tra cứu),
+   * giới hạn 5 lần/giờ/IP. Hồ sơ khách chưa có email thì lưu email này để lần sau tự gửi xác nhận & nhắc lịch.
+   */
+  async sendConfirmationEmail(params: { code: string; phone: string; email: string; ip: string }): Promise<{ emailQueued: boolean; toEmail: string }> {
+    const rl = await this.rateLimit.hit('confirm_email_ip', params.ip, 5, 60);
+    if (!rl.allowed) throw tooManyRequests('Bạn đã yêu cầu gửi email quá nhiều lần, vui lòng thử lại sau', 3600);
+    const appt = await this.apptRepo.findOne({ where: { code: params.code.trim().toUpperCase() } });
+    const customer = appt ? await this.customerRepo.findOne({ where: { id: appt.customerId } }) : null;
+    if (!appt || !customer || customer.phone !== normalizePhone(params.phone)) throw new NotFoundException(MSG.CODE_NOT_FOUND);
+    if (!ACTIVE_STATUSES.includes(appt.status)) throw new BadRequestException('Lịch hẹn này không còn hiệu lực để gửi xác nhận');
+    const email = params.email.trim().toLowerCase();
+    if (!customer.email) await this.customerRepo.update(customer.id, { email });
+
+    const stylist = await this.stylistRepo.findOne({ where: { id: appt.stylistId } });
+    const items = await this.apptServiceRepo.find({ where: { appointmentId: appt.id }, order: { position: 'ASC' } });
+    const tpl = MailTemplates.bookingConfirmation(this.mail.salonInfo, {
+      code: appt.code,
+      status: appt.status,
+      cancelCutoffMinutes: this.config.get<number>('business.cancelCutoffMinutes'),
+      customerName: customer.fullName,
+      stylistName: stylist?.fullName ?? '',
+      startAt: appt.startAt,
+      endAt: appt.endAt,
+      services: items.map((i) => ({ name: i.nameSnapshot, durationMinutes: i.durationSnapshot, price: i.priceSnapshot })),
+      totalDuration: appt.totalDurationMinutes,
+      estimatedTotal: appt.estimatedTotal,
+    });
+    await this.mail.enqueue({
+      kind: EmailKind.BOOKING_CONFIRMATION, toEmail: email, toName: customer.fullName,
+      subject: tpl.subject, html: tpl.html, appointmentId: appt.id,
+    });
+    await this.apptRepo.update(appt.id, { confirmationSentAt: new Date() });
+    this.kickMailWorker();
+    const [user, domain] = email.split('@');
+    return { emailQueued: true, toEmail: `${user.slice(0, 2)}***@${domain}` };
   }
 
   /**

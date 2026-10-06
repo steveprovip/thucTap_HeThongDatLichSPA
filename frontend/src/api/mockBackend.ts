@@ -736,6 +736,12 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
         durationMinutes: s.durationMinutes, price: s.price })), totalDurationMinutes: a.totalDurationMinutes,
       estimatedTotal: a.estimatedTotal, status: a.status, nameConflict: false, emailQueued: false };
   }
+  if (path === '/public/bookings/email') {
+    const a = db.appointments.find(item => item.code.toUpperCase() === String(p.code ?? '').trim().toUpperCase());
+    if (!a || a.customer.phone !== p.phone) bad(MSG.CODE_NOT_FOUND, undefined, 404);
+    const [user, domain] = String(p.email).trim().toLowerCase().split('@');
+    return { emailQueued: true, toEmail: `${user.slice(0, 2)}***@${domain}` };
+  }
   if (path === '/public/holds' && method === 'post') {
     // Chế độ Demo: chỉ một trình duyệt nên giữ chỗ là hình thức (máy chủ thật khoá khung giờ với mọi khách khác)
     const duration = db.services.filter(sv => (p.serviceIds as string[]).includes(sv.id)).reduce((n, sv) => n + sv.durationMinutes, 0);

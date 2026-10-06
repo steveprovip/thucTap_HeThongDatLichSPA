@@ -1,13 +1,36 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CalendarCheck, Copy, PartyPopper, Printer } from 'lucide-react';
+import { CalendarCheck, Copy, Mail, MailCheck, PartyPopper, Printer } from 'lucide-react';
 import type { BookingResult } from '@/types';
-import { Button, Card } from '@/components';
+import { getErrorMessage, publicApi } from '@/api';
+import { Button, Card, Input } from '@/components';
+import { emailError } from '@/utils/validators';
 import { formatDuration, formatVnd } from '@/utils/format';
 import { SALON } from '@/utils/constants';
 import { useToast } from '@/contexts/ToastContext';
 
-export function BookingSuccess({ result, onBookAgain }: { result: BookingResult; onBookAgain: () => void }) {
+export function BookingSuccess({ result, onBookAgain, phone, email }: {
+  result: BookingResult; onBookAgain: () => void; phone: string; email?: string;
+}) {
   const toast = useToast();
+  // Mentor S2 · mục 10: khách chưa nhập email vẫn nhận được xác nhận qua email ngay tại màn hình này
+  const [mailTo, setMailTo] = useState('');
+  const [sentTo, setSentTo] = useState<string | null>(result.emailQueued ? email ?? null : null);
+  const [sending, setSending] = useState(false);
+  const mailError = mailTo ? emailError(mailTo, true) : null;
+  const sendMail = async () => {
+    if (!mailTo || mailError) return;
+    setSending(true);
+    try {
+      const res = await publicApi.sendConfirmationEmail({ code: result.code, phone, email: mailTo.trim() });
+      setSentTo(res.toEmail);
+      toast.success(`Đã gửi email xác nhận tới ${res.toEmail}`);
+    } catch (e) {
+      toast.error(getErrorMessage(e));
+    } finally {
+      setSending(false);
+    }
+  };
 
   const copyCode = async () => {
     try {
@@ -72,10 +95,24 @@ export function BookingSuccess({ result, onBookAgain }: { result: BookingResult;
             </li>
           </ul>
 
-          {result.emailQueued && (
-            <p className="rounded-xl bg-blue-50 px-3.5 py-2.5 text-xs text-blue-900">
-              Email xác nhận đang được gửi tới hộp thư của bạn. Tiệm cũng sẽ gửi email nhắc trước giờ hẹn 24 giờ.
+          {sentTo ? (
+            <p className="flex items-start gap-2 rounded-xl bg-blue-50 px-3.5 py-2.5 text-xs text-blue-900" role="status">
+              <MailCheck size={15} className="mt-px shrink-0" />
+              <span>
+                Đã gửi email xác nhận{sentTo ? <> tới <strong>{sentTo}</strong></> : ''} (mã tra cứu, đường đi, liên kết đổi/huỷ lịch,
+                thêm vào Google Calendar). Tiệm cũng sẽ gửi email nhắc trước giờ hẹn 24 giờ.
+              </span>
             </p>
+          ) : (
+            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 print:hidden">
+              <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-ink"><Mail size={14} /> Nhận xác nhận lịch hẹn qua email</p>
+              <div className="flex gap-2">
+                <Input type="email" placeholder="ban@example.com" value={mailTo} onChange={(e) => setMailTo(e.target.value)}
+                       aria-label="Email nhận xác nhận" invalid={!!mailError} className="min-h-[40px]" autoComplete="email" />
+                <Button size="sm" loading={sending} disabled={!mailTo || !!mailError} onClick={sendMail}>Gửi</Button>
+              </div>
+              {mailError && <p className="field-error">{mailError}</p>}
+            </div>
           )}
           {result.nameConflict && (
             <p className="rounded-xl bg-amber-50 px-3.5 py-2.5 text-xs text-amber-900">

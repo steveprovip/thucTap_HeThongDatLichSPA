@@ -8,7 +8,7 @@ import { ClientIp } from '../../common/decorators/client-ip.decorator';
 import { formatVnd } from '../../common/utils/currency.util';
 import { ERROR_CODES } from '../../common/constants/messages.constant';
 import {
-  AvailabilityQueryDto, CancelByCodeDto, CapableStylistsQueryDto, CreateBookingDto, CreateSlotHoldDto, LookupDto, QuoteDto,
+  AvailabilityQueryDto, CancelByCodeDto, CapableStylistsQueryDto, CreateBookingDto, CreateSlotHoldDto, LookupDto, QuoteDto, SendConfirmationEmailDto,
 } from './dto/booking.dto';
 
 /**
@@ -89,6 +89,13 @@ export class PublicBookingController {
   @Post('bookings')
   create(@Body() dto: CreateBookingDto, @ClientIp() ip: string) {
     return this.booking.createBooking({ dto, ip, source: AppointmentSource.ONLINE });
+  }
+
+  /** Mentor S2 · mục 10: gửi (lại) email xác nhận chi tiết lịch hẹn — xác thực bằng mã tra cứu + SĐT. */
+  @Post('bookings/email')
+  @HttpCode(HttpStatus.OK)
+  sendConfirmationEmail(@Body() dto: SendConfirmationEmailDto, @ClientIp() ip: string) {
+    return this.booking.sendConfirmationEmail({ ...dto, ip });
   }
 
   /** S2-09: tra cứu bằng mã hoặc số điện thoại. */
