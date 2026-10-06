@@ -259,7 +259,7 @@ class Report:
         section.header_distance = Cm(1.0)
         section.footer_distance = Cm(1.0)
 
-    def _footer_page_number(self, section):
+    def _page_number(self, section):
         section.header.is_linked_to_previous = False
         p = section.header.paragraphs[0]
         p.text = ""
@@ -537,7 +537,7 @@ def front_matter(R: Report):
     s = R.doc.add_section(WD_SECTION.NEW_PAGE)
     Report._margins(s)
     set_page_number_format(s, "lowerRoman", 1)
-    R._footer_page_number(s)
+    R._page_number(s)
 
     R.h1_plain("Lời cảm ơn")
     R.para(f"Nhóm 3 xin gửi lời cảm ơn chân thành tới **{D.ADVISOR}** – giảng viên hướng dẫn, đồng thời đảm nhận "
@@ -578,7 +578,7 @@ def chapter1(R: Report):
     s = R.doc.add_section(WD_SECTION.NEW_PAGE)
     Report._margins(s)
     set_page_number_format(s, "decimal", 1)
-    R._footer_page_number(s)
+    R._page_number(s)
 
     R.h1("Tổng quan đề tài và bài toán thực tế")
     R.h2("Lý do chọn đề tài")
@@ -728,7 +728,6 @@ def chapter3(R: Report):
     R.para("Hệ thống tổ chức theo dạng **monorepo**: một kho mã chứa cả backend, frontend, lược đồ CSDL, tài liệu và "
            "các script khởi động. Hai ứng dụng giao tiếp qua REST/JSON; ở môi trường phát triển, Vite làm proxy "
            "chuyển `/api`, `/uploads`, `/health` sang NestJS nên trình duyệt chỉ làm việc với một địa chỉ duy nhất.")
-    R.figure(os.path.join(DIAGRAMS, "arch.png"), "Kiến trúc tổng thể của hệ thống")
     R.code([
         "du_an/",
         "├── backend/            NestJS – API, service, repository, events SSE",
@@ -873,7 +872,7 @@ def chapter4(R: Report):
     R.h2("Tổng quan mã nguồn")
     R.table(["Chỉ số", "Giá trị"], D.STATS, [9.0, 7.0], caption=f"Phạm vi và kiểm định hệ thống ngày {D.QUALITY_DATE}",
             align=[WD_ALIGN_PARAGRAPH.LEFT, WD_ALIGN_PARAGRAPH.CENTER])
-    R.para("Tài liệu API sinh tự động bằng Swagger tại địa chỉ `/api/docs` của backend; danh mục 59 endpoint kèm vai trò "
+    R.para("Tài liệu API sinh tự động bằng Swagger tại địa chỉ `/api/docs` của backend; danh mục endpoint kèm vai trò "
            "được phép nằm trong `docs/API.md`.")
 
     R.h2("Phân hệ Khách hàng – đặt lịch trực tuyến")
@@ -1008,15 +1007,16 @@ def chapter5(R: Report):
     R.para(f"Snapshot kiểm định ngày {D.QUALITY_DATE}. E2E tự tạo và xoá CSDL riêng có hậu tố `_test`, "
            "từ chối kết nối CSDL vận hành. Không cần reset hoặc seed lại dữ liệu thật để chạy test. "
            "Ca 20 yêu cầu đồng thời tìm ngày có khung giờ thực sự khả dụng, tránh phụ thuộc ngày nghỉ tuần của ca mẫu.")
-    R.para("Giới hạn cần lưu ý: kịch bản `lifecycle.e2e-spec.ts` hiện chỉ chạy trọn vòng đời khi có khung giờ "
-           "trong cửa sổ check-in tại thời điểm chạy; ngoài giờ, nhánh này trả về sớm. Vì vậy số test đạt "
-           "không chứng minh mọi tiêu chí vòng đời đã được thực thi trong lần chạy này; cần kiểm tra thủ công "
-           "theo DEMO-SCRIPT hoặc chuẩn bị fixture thời gian độc lập trước khi nghiệm thu.")
+    R.para("Kịch bản vòng đời chọn dịch vụ seed cố định và ca mẫu còn trống; đồng hồ tạo Date được cố định "
+           "trong giai đoạn check-in / bắt đầu / hoàn tất, trong khi JWT và timer mạng dùng thời gian thật. "
+           "Test chạy trọn đến thanh toán, đóng phiếu, đánh giá và đối chiếu doanh thu; không trả về sớm "
+           "khi chạy ngoài giờ mở cửa. AC về bố cục di động, thao tác UI và thời hạn email vẫn cần tester "
+           "ghi Pass/Fail theo DEMO-SCRIPT trước khi nghiệm thu.")
 
-    R.h2("Kết quả nghiệm thu")
+    R.h2("Kết quả đối chiếu User Story")
     R.table(["Epic", "Story", "Point", "Trạng thái"],
             [(f"{e[0]} {e[1]}", e[2], e[3], "Đã đối chiếu") for e in D.EPICS] + [("**Tổng**", "**39**", "**165**", "**39 / 39**")],
-            [9.0, 2.0, 2.0, 3.0], caption="Kết quả nghiệm thu theo Epic",
+            [9.0, 2.0, 2.0, 3.0], caption="Kết quả đối chiếu theo Epic",
             align=[WD_ALIGN_PARAGRAPH.LEFT, WD_ALIGN_PARAGRAPH.CENTER, WD_ALIGN_PARAGRAPH.CENTER, WD_ALIGN_PARAGRAPH.CENTER])
     R.para("Bảng đối chiếu `docs/BACKLOG-MAPPING.md` chỉ rõ tệp cài đặt backend và màn hình frontend cho từng story, được "
            "dùng làm căn cứ khi PO nghiệm thu và khi cập nhật trạng thái ticket trên Jira. "
@@ -1031,7 +1031,7 @@ def chapter5(R: Report):
     R.h2("Đánh giá")
     R.h3("Ưu điểm")
     R.bullets([
-        "Hoàn thành 100% Product Backlog (39 story / 165 point) trong 4 Sprint.",
+        "Đối chiếu đủ phạm vi Product Backlog: 39 story / 165 point trong 4 Sprint.",
         "Tính đúng đắn dữ liệu được bảo vệ ở tầng CSDL (EXCLUDE, CHECK, trigger chỉ đọc), không phụ thuộc hoàn toàn vào ứng dụng.",
         "Chống đặt trùng đã được chứng minh bằng kiểm thử đồng thời tự động.",
         "Giao diện hiện đại, nhất quán, dùng tốt trên điện thoại 360 px; thông điệp lỗi tiếng Việt rõ ràng.",
@@ -1056,7 +1056,7 @@ def chapter5(R: Report):
 
     R.h2("Kết luận")
     R.para("Qua bốn Sprint, Nhóm 3 đã xây dựng hoàn chỉnh **Hệ thống Đặt lịch và Quản lý Vận hành Salon - Spa** đáp ứng "
-           "toàn bộ 39 user story đã được PO phê duyệt. Hệ thống giải quyết trực tiếp những vấn đề của cách quản lý thủ "
+           "phạm vi 39 user story trong đề tài gốc. Hệ thống giải quyết trực tiếp những vấn đề của cách quản lý thủ "
            "công: khách tự đặt lịch 24/7 theo đúng khung giờ thợ rảnh, không còn chồng lịch nhờ ba lớp bảo vệ đồng thời, "
            "lễ tân điều phối trực quan, doanh thu minh bạch và có nhật ký không thể xoá.")
     R.para("Về quy trình, nhóm đã vận dụng Scrum một cách thực chất: Product Backlog có tiêu chí chấp nhận rõ ràng, mỗi "

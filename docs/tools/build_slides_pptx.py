@@ -292,7 +292,7 @@ def s03_solution(prs):
         text(s, M + Inches(0.45), y + Inches(0.1), Inches(2.3), Inches(0.35), layer, size=16, bold=True)
         text(s, M + Inches(2.8), y + Inches(0.08), Inches(4.3), Inches(0.35), technology, size=14, bold=True)
         text(s, M + Inches(0.45), y + Inches(0.48), Inches(6.8), Inches(0.4), responsibility, size=13, color=MUTED)
-    text(s, M + Inches(0.45), Inches(6.6), Inches(7), Inches(0.3),
+    text(s, M + Inches(0.45), Inches(6.45), Inches(7), Inches(0.3),
          "SSE sau commit · Migration có phiên bản · cập nhật một chạm", size=13, color=TEAL_DARK)
     x = Inches(8.85)
     items = [
@@ -672,7 +672,7 @@ def s12_demo(prs):
         ("lock", "Chống đặt trùng", "Terminal", "npm run test:e2e -- booking-concurrency → 1 thành công / 19 nhận 409"),
         ("calendar", "Lễ tân điều phối", "reception@salon.vn", "Xác nhận lịch vừa đặt, tạo khách vãng lai, check-in trên Lịch ngày"),
         ("scissors", "Thợ phục vụ", "stylist1@salon.vn", "Bắt đầu → Hoàn tất; SĐT khách hiển thị 098***1234; ghi chú kỹ thuật"),
-        ("receipt", "Thu tiền", "reception@salon.vn", "Lập phiếu, mã NGAYTHUONG10 → 270.000 đ, đóng phiếu → email đánh giá"),
+        ("receipt", "Thu tiền", "reception@salon.vn", "Lập phiếu, mã NGAYTHUONG10 → 963.000 đ, đóng phiếu → email đánh giá"),
         ("chart", "Báo cáo & kiểm soát", "owner@ · admin@", "Doanh thu cộng đúng thợ, xuất CSV; Nhật ký ghi mọi thao tác"),
     ]
     cw, ch = Inches(3.86), Inches(2.4)
@@ -700,9 +700,9 @@ def s13_end(prs):
     text(s, M, Inches(0.95), Inches(7.4), Inches(1.4), "Từ sổ tay đến một hệ thống vận hành trọn vẹn",
          size=36, bold=True, color=WHITE, line_spacing=1.0)
     results = [
-        ("39 / 39 story · 165 point", "Hoàn thành toàn bộ Product Backlog trong 4 Sprint"),
+        ("39 / 39 story · 165 point", "Đối chiếu đủ Product Backlog trong 4 Sprint"),
         ("Không chồng lịch", "Ba lớp bảo vệ, chứng minh bằng 20 yêu cầu đồng thời"),
-        ("Minh bạch doanh thu", "Phiếu khoá, nhật ký chỉ đọc, RBAC 5 vai trò"),
+        ("Minh bạch doanh thu", "Phiếu khoá, nhật ký chỉ đọc, RBAC 4 vai trò nhân sự + khách"),
         ("Triển khai 1 chạm", "Tự phục hồi trên Windows, macOS, Linux"),
     ]
     for i, (t, d) in enumerate(results):
@@ -731,7 +731,7 @@ def s13_end(prs):
           [("github.com/steveprovip/thucTap_HeThongDatLichSPA", {"size": 11})]],
          size=13, color=MUTED_2, align=PP_ALIGN.CENTER, spacing_after=3)
     s.notes_slide.notes_text_frame.text = (
-        "Tóm lại, nhóm đã hoàn thành 39/39 story, giải quyết trực tiếp các vấn đề của cách quản lý thủ công. "
+        "Nhóm đã đối chiếu 39/39 story với phạm vi đề tài, giải quyết các vấn đề của cách quản lý thủ công. "
         "Hướng phát triển: thanh toán và đặt cọc trực tuyến, nhắc lịch qua Zalo/SMS, đa chi nhánh và CI/CD. "
         "Nhóm xin cảm ơn và sẵn sàng trả lời câu hỏi.")
 
