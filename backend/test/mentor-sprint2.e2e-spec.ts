@@ -131,6 +131,41 @@ describe('Mentor Sprint 2', () => {
     });
   });
 
+  describe('Mục 9 — Cảnh báo khung giờ chưa có thợ, gợi ý cân bằng', () => {
+    it('ngày chỉ có một ca ngắn -> báo khoảng trống đúng giờ, có thợ gợi ý; lễ tân xem được, thợ không', async () => {
+      const cat = await request(server).get('/api/service-categories').set(as('owner')).expect(200);
+      const svc = await request(server).post('/api/services').set(as('owner'))
+        .send({ categoryId: cat.body.data[0].id, name: `Phủ ca ${Date.now()}`, durationMinutes: 30, price: 100000 }).expect(201);
+      const solo = await request(server).post('/api/stylists').set(as('owner'))
+        .send({ fullName: `Thợ phủ ca ${Date.now()}`, gender: 'male', serviceIds: [svc.body.data.id] }).expect(201);
+      // Một ngày mà KHÔNG thợ nào có ca: chỉ xếp thợ mới 2 tiếng đầu ngày
+      let target: { date: string; hours: Hours } | null = null;
+      for (let d = 70; d < 100 && !target; d += 1) {
+        const date = isoIn(d);
+        const [{ n }] = await ds.query('SELECT COUNT(*)::int AS n FROM stylist_shifts WHERE work_date = $1', [date]);
+        if (n > 0) continue;
+        const found = await freeDays(solo.body.data.id, d, 1, 1).catch(() => []);
+        if (found.length) target = found[0];
+      }
+      expect(target).not.toBeNull();
+      const { date, hours } = target!;
+      await request(server).post(`/api/stylists/${solo.body.data.id}/shifts`).set(as('owner'))
+        .send({ shifts: [{ workDate: date, startTime: hours.open, endTime: plus(hours.open, 120) }] }).expect(201);
+
+      const res = await request(server).get(`/api/shifts/coverage?from=${date}&to=${date}`).set(as('receptionist')).expect(200);
+      const day = res.body.data.days[0];
+      expect(day.staffCount).toBe(1);
+      expect(day.gaps).toHaveLength(1);
+      expect(day.gaps[0]).toMatchObject({ startTime: plus(hours.open, 120), endTime: hours.close, minCount: 0 });
+      expect(day.gaps[0].candidates.length).toBeGreaterThan(0);
+      expect(day.gaps[0].candidates.some((c: { stylistId: string }) => c.stylistId === solo.body.data.id)).toBe(false);
+      expect(res.body.data.understaffedDays).toBe(1);
+
+      await request(server).get(`/api/shifts/coverage?from=${date}&to=${date}`).set(as('stylist')).expect(403);
+      await request(server).get(`/api/shifts/coverage?from=${date}&to=${isoIn(200)}`).set(as('owner')).expect(400);
+    });
+  });
+
   describe('Mục 5 — AI sinh ngày lễ cả năm', () => {
     const YEAR = 2099;
     afterAll(async () => {
