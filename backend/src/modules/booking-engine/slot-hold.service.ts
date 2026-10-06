@@ -9,9 +9,10 @@ import { DataSource, EntityManager, LessThan, Repository } from 'typeorm';
 import { SlotHold } from '../../database/entities/slot-hold.entity';
 import { Stylist } from '../../database/entities/stylist.entity';
 import { ERROR_CODES, MSG } from '../../common/constants/messages.constant';
-import { addMinutes, combine, toDateString, toTimeString } from '../../common/utils/time.util';
+import { addMinutes, combine, timeToMinutes, toDateString, toTimeString } from '../../common/utils/time.util';
 import { AvailabilityService } from './availability.service';
 import { RateLimitService } from '../rate-limit/rate-limit.service';
+import { StylistsService } from '../stylists/stylists.service';
 import { CreateSlotHoldDto } from './dto/booking.dto';
 
 export interface SlotHoldView {
@@ -45,6 +46,7 @@ export class SlotHoldService {
     private readonly dataSource: DataSource,
     private readonly availability: AvailabilityService,
     private readonly rateLimit: RateLimitService,
+    private readonly stylists: StylistsService,
     @InjectRepository(SlotHold) private readonly repo: Repository<SlotHold>,
     @InjectRepository(Stylist) private readonly stylistRepo: Repository<Stylist>,
   ) {}
@@ -84,9 +86,14 @@ export class SlotHoldService {
     const startAt = combine(dto.date, dto.time);
     const endAt = addMinutes(startAt, totalDuration);
     if (startAt.getTime() <= Date.now()) throw new BadRequestException(MSG.SLOT_IN_PAST);
+    // Giữ chỗ là luồng của khách online: cùng luật lưới 15 phút như lúc chốt lịch (không giữ 09:07 làm lẻ lịch thợ)
+    const step = this.config.get<number>('business.slotStepMinutes') ?? 15;
+    if (timeToMinutes(dto.time) % step !== 0) throw new BadRequestException(MSG.SLOT_INVALID);
 
     let stylistId: string;
     if (dto.stylistId) {
+      const skill = await this.stylists.canDoAll(dto.stylistId, dto.serviceIds);
+      if (!skill.ok) throw new BadRequestException(MSG.STYLIST_MISSING_SKILL(skill.missing.join(', ')));
       const verdict = await this.availability.checkSlot({ date: dto.date, time: dto.time, stylistId: dto.stylistId, totalDuration });
       if (verdict === 'invalid') throw new BadRequestException(MSG.SLOT_INVALID);
       if (verdict === 'taken') throw new ConflictException({ message: MSG.SLOT_TAKEN, code: ERROR_CODES.SLOT_TAKEN });

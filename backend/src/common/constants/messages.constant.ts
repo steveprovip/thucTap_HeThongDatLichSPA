@@ -83,6 +83,9 @@ export const MSG = {
   ALREADY_CANCELLED: 'Lịch hẹn đã được huỷ trước đó',
   INVALID_STATUS_TRANSITION: (from: string, to: string) =>
     `Không thể chuyển lịch hẹn từ trạng thái "${from}" sang "${to}"`,
+  BULK_NO_TARGET: 'Chưa chọn thợ thay thế hoặc giờ mới cho lịch này — cần gọi điện cho khách',
+  APPOINTMENT_CHANGED_CONCURRENTLY: (now: string) =>
+    `Lịch hẹn vừa được người khác cập nhật (trạng thái hiện tại: "${now}"). Tải lại để xem thông tin mới nhất`,
   CHECKIN_WINDOW: 'Chỉ check-in được trong khoảng 60 phút trước đến 60 phút sau giờ hẹn',
   CHECKIN_REQUIRES_CONFIRMED: 'Chỉ check-in được lịch hẹn đã xác nhận',
   NO_SHOW_TOO_EARLY: (m: number) => `Chỉ đánh dấu không đến sau giờ hẹn ít nhất ${m} phút`,
