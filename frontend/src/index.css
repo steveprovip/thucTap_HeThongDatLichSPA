@@ -43,6 +43,8 @@
   }
   .field-error { @apply mt-1 text-xs text-red-600; }
   .chip { @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium; }
+  /* Ngày tiệm nghỉ trên bảng ca: gạch chéo nhạt, không cần chữ vẫn nhận ra */
+  .bg-stripes { background-image: repeating-linear-gradient(135deg, rgb(248 250 252) 0 6px, rgb(226 232 240) 6px 7px); }
 
   .table-wrap { @apply overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm; }
   .table { @apply w-full text-sm text-slate-700; }

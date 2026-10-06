@@ -4,7 +4,7 @@ import { HolidayAssistantModal } from './HolidayAssistantModal';
 import { getErrorMessage, workingHoursApi } from '@/api';
 import type { Holiday, WorkingHour } from '@/types';
 import {
-  Button, Card, ConfirmDialog, Field, Input, Modal, Notice, SectionTitle, Spinner, Toggle,
+  Button, Card, ConfirmDialog, Field, Input, Modal, Notice, SectionTitle, Spinner, TimeSelect24, Toggle,
 } from '@/components';
 import { addDaysISO, formatDate, formatDuration, timeToMinutes, todayISO } from '@/utils/format';
 import { DOW_LABELS, DOW_ORDER } from '@/utils/constants';
@@ -211,16 +211,15 @@ export function WorkingHoursPage() {
                       </div>
                     </td>
                     <td>
-                      <input type="time" step={900} className="field-input min-h-[38px] w-32" value={r.openTime}
-                             disabled={!canEdit || r.isClosed} aria-label={`Giờ mở ${DOW_LABELS[r.dayOfWeek]}`}
-                             onChange={(e) => patch(r.dayOfWeek, { openTime: e.target.value })} />
+                      <TimeSelect24 className="min-h-[38px] w-32" value={r.openTime}
+                                    disabled={!canEdit || r.isClosed} aria-label={`Giờ mở ${DOW_LABELS[r.dayOfWeek]}`}
+                                    onChange={(v) => patch(r.dayOfWeek, { openTime: v })} />
                     </td>
                     <td>
-                      <input type="time" step={900}
-                             className={`field-input min-h-[38px] w-32 ${err ? 'border-red-400' : ''}`}
-                             value={r.closeTime} disabled={!canEdit || r.isClosed}
-                             aria-label={`Giờ đóng ${DOW_LABELS[r.dayOfWeek]}`} aria-invalid={!!err}
-                             onChange={(e) => patch(r.dayOfWeek, { closeTime: e.target.value })} />
+                      <TimeSelect24 className="min-h-[38px] w-32" invalid={!!err}
+                                    value={r.closeTime} disabled={!canEdit || r.isClosed}
+                                    aria-label={`Giờ đóng ${DOW_LABELS[r.dayOfWeek]}`}
+                                    onChange={(v) => patch(r.dayOfWeek, { closeTime: v })} />
                       {err && <p className="field-error text-red-600">{err}</p>}
                     </td>
                     <td className="whitespace-nowrap text-xs text-ink-soft">
