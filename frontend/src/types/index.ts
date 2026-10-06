@@ -175,6 +175,38 @@ export interface Holiday {
   reason: string;
 }
 
+/** Mentor S2 · mục 9: độ phủ ca làm theo ngày. */
+export interface CoverageGap {
+  startTime: string;
+  endTime: string;
+  minutes: number;
+  minCount: number;
+  candidates: { stylistId: string; fullName: string; weekMinutes: number }[];
+}
+export interface CoverageDay {
+  date: string;
+  dayText: string;
+  closedReason: string | null;
+  openTime: string | null;
+  closeTime: string | null;
+  staffCount: number;
+  openMinutes: number;
+  coveredMinutes: number;
+  coveragePercent: number;
+  peakCount: number;
+  hourly: { hour: number; count: number }[];
+  gaps: CoverageGap[];
+}
+export interface CoverageReport {
+  from: string;
+  to: string;
+  minStaff: number;
+  totalGapMinutes: number;
+  understaffedDays: number;
+  workload: { stylistId: string; fullName: string; minutes: number }[];
+  days: CoverageDay[];
+}
+
 /** Mentor S2 · mục 6: thợ tự đăng ký ca làm / nghỉ, quản lý duyệt. */
 export type ShiftRequestKind = 'shift' | 'time_off';
 export type ShiftRequestStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';

@@ -8,7 +8,7 @@ import { diskStorage } from 'multer';
 import { open, unlink } from 'fs/promises';
 import { StylistsService } from './stylists.service';
 import {
-  CopyWeekDto, CreateShiftsDto, CreateStylistDto, CreateTimeOffDto, UpdateShiftDto, UpdateStylistDto,
+  CopyWeekDto, CoverageQueryDto, CreateShiftsDto, CreateStylistDto, CreateTimeOffDto, UpdateShiftDto, UpdateStylistDto,
 } from './dto/stylist.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Role } from '../../common/constants/roles.constant';
@@ -149,6 +149,13 @@ export class ShiftsController {
   @Roles(Role.ADMIN, Role.OWNER, Role.RECEPTIONIST, Role.STYLIST)
   list(@Query('from') from: string, @Query('to') to: string, @Query('stylistId') stylistId?: string) {
     return this.service.listShifts({ from, to, stylistId });
+  }
+
+  /** Mentor S2 · mục 9: khung giờ mở cửa chưa có thợ trực + gợi ý thợ nên xếp (cân bằng giờ làm). */
+  @Get('coverage')
+  @Roles(Role.ADMIN, Role.OWNER, Role.RECEPTIONIST)
+  coverage(@Query() query: CoverageQueryDto) {
+    return this.service.coverage(query.from, query.to, query.minStaff ?? 1);
   }
 
   @Patch(':id')

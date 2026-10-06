@@ -1,7 +1,7 @@
 import { Type } from 'class-transformer';
 import {
-  ArrayMaxSize, ArrayUnique, IsArray, IsBoolean, IsEmail, IsIn, IsNotEmpty, IsOptional, IsString, IsUUID,
-  Matches, MaxLength, MinLength, ValidateNested,
+  ArrayMaxSize, ArrayUnique, IsArray, IsBoolean, IsEmail, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID,
+  Matches, Max, MaxLength, Min, MinLength, ValidateNested,
 } from 'class-validator';
 import { STYLIST_GENDERS, StylistGender } from '../../../database/entities/stylist.entity';
 import { VN_PHONE_MESSAGE, VN_PHONE_REGEX } from '../../../common/utils/phone.util';
@@ -112,4 +112,19 @@ export class CreateTimeOffDto {
 
   @IsOptional() @IsString() @MaxLength(255) reason?: string;
   @IsOptional() @IsBoolean() force?: boolean;
+}
+
+/** GET /shifts/coverage?from&to&minStaff — độ phủ ca theo ngày (Mentor S2 · mục 9). */
+export class CoverageQueryDto {
+  @Matches(DATE_RE, { message: 'Ngày bắt đầu phải theo định dạng yyyy-MM-dd' })
+  @IsCalendarDate({ message: 'Ngày bắt đầu không hợp lệ' })
+  from!: string;
+
+  @Matches(DATE_RE, { message: 'Ngày kết thúc phải theo định dạng yyyy-MM-dd' })
+  @IsCalendarDate({ message: 'Ngày kết thúc không hợp lệ' })
+  to!: string;
+
+  /** Số thợ tối thiểu phải có mặt ở mọi thời điểm mở cửa (mặc định 1). */
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(10)
+  minStaff?: number;
 }

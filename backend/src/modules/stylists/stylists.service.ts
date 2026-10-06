@@ -21,6 +21,7 @@ import {
   addDays, combine, dayOfWeek, DOW_LABELS, endOfDay, startOfDay, timeToMinutes, toTimeString, trimSeconds,
 } from '../../common/utils/time.util';
 import { findShiftOverlap, shiftDayText, shiftLabel, ShiftRange, shiftRangeText } from './shift-rules';
+import { computeDayCoverage, CoverageShift, CoverageTimeOff, DayCoverage, rankGapCandidates } from './coverage';
 import { WorkingHoursService } from '../working-hours/working-hours.service';
 import {
   CopyWeekDto, CreateShiftsDto, CreateStylistDto, CreateTimeOffDto, ShiftItemDto,
@@ -56,6 +57,35 @@ export interface ShiftView {
   breakEnd: string | null;
   note: string | null;
 }
+
+export interface CoverageDayView extends Omit<DayCoverage, 'gaps'> {
+  date: string;
+  dayText: string;
+  closedReason: string | null;
+  openTime: string | null;
+  closeTime: string | null;
+  staffCount: number;
+  gaps: {
+    startTime: string;
+    endTime: string;
+    minutes: number;
+    minCount: number;
+    candidates: { stylistId: string; fullName: string; weekMinutes: number }[];
+  }[];
+}
+
+export interface CoverageReport {
+  from: string;
+  to: string;
+  minStaff: number;
+  totalGapMinutes: number;
+  understaffedDays: number;
+  /** Tổng phút làm của từng thợ trong khoảng — để thấy chênh lệch phân bổ ca. */
+  workload: { stylistId: string; fullName: string; minutes: number }[];
+  days: CoverageDayView[];
+}
+
+const toHHmm = (m: number): string => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 
 @Injectable()
 export class StylistsService {
@@ -561,6 +591,88 @@ export class StylistsService {
     });
 
     return { created, skipped, overwritten };
+  }
+
+  // ---------------------------------------------------- ĐỘ PHỦ CA (Mentor S2 · mục 9)
+  /**
+   * Cảnh báo khung giờ mở cửa chưa có (đủ) thợ trực và gợi ý thợ rảnh nên xếp thêm, ưu tiên người ít giờ làm
+   * nhất trong khoảng để cân bằng phân bổ ca. Tối đa 31 ngày mỗi lần.
+   */
+  async coverage(from: string, to: string, minStaff = 1): Promise<CoverageReport> {
+    if (to < from) throw new BadRequestException(MSG.DATE_RANGE_INVALID);
+    const span = Math.round((new Date(`${to}T00:00:00Z`).getTime() - new Date(`${from}T00:00:00Z`).getTime()) / 86_400_000) + 1;
+    if (span > 31) throw new BadRequestException('Chỉ xem độ phủ ca tối đa 31 ngày mỗi lần');
+
+    const stylists = await this.stylistRepo.find({ where: { isActive: true }, order: { fullName: 'ASC' } });
+    const activeIds = new Set(stylists.map((x) => x.id));
+    const shifts = (await this.getShiftsBetween(from, to)).filter((x) => activeIds.has(x.stylistId));
+    const offs = (await this.getTimeOffBetween(from, to)).filter((x) => activeIds.has(x.stylistId));
+    const holidays = await this.workingHours.holidayDatesIn(from, to);
+    const holidayRows = await this.workingHours.listHolidays(from, to);
+    const hours = await this.workingHours.list();
+
+    const toCov = (x: StylistShift): CoverageShift => ({
+      stylistId: x.stylistId,
+      start: timeToMinutes(trimSeconds(x.startTime)),
+      end: timeToMinutes(trimSeconds(x.endTime)),
+      breakStart: x.breakStart ? timeToMinutes(trimSeconds(x.breakStart)) : null,
+      breakEnd: x.breakEnd ? timeToMinutes(trimSeconds(x.breakEnd)) : null,
+    });
+    const toOff = (x: StylistTimeOff): CoverageTimeOff => ({
+      stylistId: x.stylistId,
+      start: x.startTime ? timeToMinutes(trimSeconds(x.startTime)) : null,
+      end: x.endTime ? timeToMinutes(trimSeconds(x.endTime)) : null,
+    });
+    const weekMinutes = new Map<string, number>();
+    for (const x of shifts) {
+      const c = toCov(x);
+      const brk = c.breakStart != null && c.breakEnd != null ? c.breakEnd - c.breakStart : 0;
+      weekMinutes.set(x.stylistId, (weekMinutes.get(x.stylistId) ?? 0) + Math.max(0, c.end - c.start - brk));
+    }
+
+    const days: CoverageDayView[] = [];
+    for (let i = 0; i < span; i += 1) {
+      const date = addDays(from, i);
+      const wh = hours.find((h) => h.dayOfWeek === dayOfWeek(date));
+      const holiday = holidays.has(date) ? holidayRows.find((h) => h.startDate <= date && h.endDate >= date) : undefined;
+      const closedReason = holiday ? holiday.reason : !wh || wh.isClosed ? MSG.SALON_CLOSED_WEEKLY : null;
+      const dayShifts = shifts.filter((x) => String(x.workDate) === date).map(toCov);
+      const dayOffs = offs.filter((x) => String(x.offDate) === date).map(toOff);
+      const base = { date, dayText: shiftDayText(date), closedReason, staffCount: new Set(dayShifts.map((x) => x.stylistId)).size };
+      if (closedReason || !wh) {
+        days.push({
+          ...base, openTime: null, closeTime: null, openMinutes: 0, coveredMinutes: 0, coveragePercent: 100,
+          hourly: [], peakCount: 0, gaps: [],
+        });
+        continue;
+      }
+      const open = timeToMinutes(wh.openTime);
+      const close = timeToMinutes(wh.closeTime);
+      const cov = computeDayCoverage({ open, close, shifts: dayShifts, timeOff: dayOffs, minStaff });
+      days.push({
+        ...base,
+        ...cov,
+        openTime: wh.openTime,
+        closeTime: wh.closeTime,
+        gaps: cov.gaps.map((g) => ({
+          startTime: toHHmm(g.start),
+          endTime: toHHmm(g.end),
+          minutes: g.end - g.start,
+          minCount: g.minCount,
+          candidates: rankGapCandidates({
+            gap: g, stylists, shiftsToday: dayShifts, timeOffToday: dayOffs, weekMinutes,
+          }),
+        })),
+      });
+    }
+    return {
+      from, to, minStaff,
+      totalGapMinutes: days.reduce((sum, d) => sum + d.gaps.reduce((a, g) => a + g.minutes, 0), 0),
+      understaffedDays: days.filter((d) => d.gaps.length > 0).length,
+      workload: stylists.map((x) => ({ stylistId: x.id, fullName: x.fullName, minutes: weekMinutes.get(x.id) ?? 0 }))
+        .sort((a, b) => b.minutes - a.minutes),
+      days,
+    };
   }
 
   // -------------------------------------------------------------- TIME OFF

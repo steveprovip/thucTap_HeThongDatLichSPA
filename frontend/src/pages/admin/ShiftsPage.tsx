@@ -2,13 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CalendarPlus, ChevronLeft, ChevronRight, Copy, Plus, Search } from 'lucide-react';
 import { getErrorCode, getErrorDetails, getErrorMessage, shiftRequestsApi, stylistsApi, workingHoursApi } from '@/api';
-import type { Holiday, Shift, ShiftConflictAppointment, ShiftRequest, Stylist, TimeOff, WorkingHour } from '@/types';
+import type { CoverageReport, Holiday, Shift, ShiftConflictAppointment, ShiftRequest, Stylist, TimeOff, WorkingHour } from '@/types';
 import {
   Button, ConfirmDialog, Field, Input, Modal, SectionTitle, Select, Spinner, TimeSelect24,
 } from '@/components';
 import { addDaysISO, formatDate, formatDuration, startOfWeekISO, timeToMinutes, todayISO } from '@/utils/format';
 import { DayInfo, ShiftBoard } from './shifts/ShiftBoard';
 import { ShiftRequestsPanel } from './shifts/ShiftRequestsPanel';
+import { CoveragePanel } from './shifts/CoveragePanel';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 
@@ -29,6 +30,9 @@ export function ShiftsPage() {
   /** Mentor S2 · mục 6: lịch rảnh thợ tự đăng ký, chờ duyệt. */
   const [requests, setRequests] = useState<ShiftRequest[]>([]);
   const canSeeRequests = user?.role === 'owner' || user?.role === 'receptionist' || user?.role === 'admin';
+  /** Mentor S2 · mục 9: cảnh báo khung giờ chưa có thợ. */
+  const [coverage, setCoverage] = useState<CoverageReport | null>(null);
+  const [minStaff, setMinStaff] = useState(1);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [onlyScheduled, setOnlyScheduled] = useState(false);
@@ -107,6 +111,9 @@ export function ShiftsPage() {
       setRequests(canSeeRequests
         ? await shiftRequestsApi.list({ status: 'pending', from: weekStart, to }).catch(() => [] as ShiftRequest[])
         : []);
+      setCoverage(canSeeRequests
+        ? await stylistsApi.coverage({ from: weekStart, to, minStaff }).catch(() => null)
+        : null);
       if (!addStylist && sty.length) { setAddStylist(sty[0].id); setOffStylist(sty[0].id); }
     } catch (e) {
       toast.error(getErrorMessage(e));
@@ -114,7 +121,7 @@ export function ShiftsPage() {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [weekStart, toast]);
+  }, [weekStart, minStaff, toast]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -207,6 +214,10 @@ export function ShiftsPage() {
       </div>
 
       {!loading && (
+        <CoveragePanel report={coverage} minStaff={minStaff} onMinStaff={setMinStaff} canEdit={canEdit} onChanged={() => void load()} />
+      )}
+
+      {!loading && (
         <ShiftRequestsPanel requests={requests} canApprove={canEdit} onChanged={() => void load()} />
       )}
 
@@ -217,6 +228,7 @@ export function ShiftsPage() {
           shifts={shifts}
           timeOff={timeOff}
           pendingRequests={requests}
+          understaffedDates={new Set(coverage?.days.filter((d) => d.gaps.length).map((d) => d.date) ?? [])}
           today={todayISO()}
           canEdit={canEdit}
           canManageOff={canManageOff}

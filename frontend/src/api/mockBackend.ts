@@ -999,6 +999,48 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
       db.shifts.push({ ...shift, id: uid(), workDate: date }); created++;
     }); save(); return { created, skipped, overwritten };
   }
+  if (path === '/shifts/coverage') {
+    // Chế độ Demo: cùng thuật toán với máy chủ (backend/src/modules/stylists/coverage.ts), rút gọn
+    const minStaff = Math.max(1, Number(q.minStaff ?? 1));
+    const from = String(q.from); const to = String(q.to);
+    const hhmm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+    const active = db.stylists.filter(st => st.isActive);
+    const inRange = db.shifts.filter(sh => sh.workDate >= from && sh.workDate <= to && active.some(st => st.id === sh.stylistId));
+    const work = (sh: Shift) => minute(sh.endTime) - minute(sh.startTime) - (sh.breakStart && sh.breakEnd ? minute(sh.breakEnd) - minute(sh.breakStart) : 0);
+    const load = new Map<string, number>(); inRange.forEach(sh => load.set(sh.stylistId, (load.get(sh.stylistId) ?? 0) + work(sh)));
+    const days = [];
+    for (let d = from; d <= to; d = iso(new Date(new Date(`${d}T12:00:00`).getTime() + 86400000))) {
+      const wh = db.workingHours.find(h => h.dayOfWeek === new Date(`${d}T12:00:00`).getDay());
+      const holiday = db.holidays.find(h => h.startDate <= d && h.endDate >= d);
+      const dayShifts = inRange.filter(sh => sh.workDate === d);
+      const offs = db.timeOff.filter(t => t.offDate === d);
+      const base = { date: d, dayText: d, staffCount: new Set(dayShifts.map(sh => sh.stylistId)).size };
+      if (holiday || !wh || wh.isClosed) { days.push({ ...base, closedReason: holiday?.reason ?? 'Tiệm nghỉ theo lịch hằng tuần', openTime: null, closeTime: null,
+        openMinutes: 0, coveredMinutes: 0, coveragePercent: 100, peakCount: 0, hourly: [], gaps: [] }); continue; }
+      const open = minute(wh.openTime); const close = minute(wh.closeTime);
+      const gaps: { start: number; end: number; minCount: number }[] = []; let covered = 0;
+      for (let m = open; m < close; m += 15) {
+        const n = new Set(dayShifts.filter(sh => m >= minute(sh.startTime) && m < minute(sh.endTime) &&
+          !(sh.breakStart && sh.breakEnd && m >= minute(sh.breakStart) && m < minute(sh.breakEnd)) &&
+          !offs.some(o => o.stylistId === sh.stylistId && (!o.startTime || !o.endTime || (m >= minute(o.startTime) && m < minute(o.endTime)))))
+          .map(sh => sh.stylistId)).size;
+        if (n >= minStaff) { covered += 15; continue; }
+        const last = gaps[gaps.length - 1];
+        if (last && last.end === m) { last.end = m + 15; last.minCount = Math.min(last.minCount, n); } else gaps.push({ start: m, end: m + 15, minCount: n });
+      }
+      days.push({ ...base, closedReason: null, openTime: wh.openTime, closeTime: wh.closeTime, openMinutes: close - open, coveredMinutes: covered,
+        coveragePercent: Math.round(covered * 100 / Math.max(1, close - open)), peakCount: 0, hourly: [],
+        gaps: gaps.map(g => ({ startTime: hhmm(g.start), endTime: hhmm(g.end), minutes: g.end - g.start, minCount: g.minCount,
+          candidates: active.filter(st => !dayShifts.some(sh => sh.stylistId === st.id && minute(sh.startTime) < g.end && g.start < minute(sh.endTime)))
+            .filter(st => !offs.some(o => o.stylistId === st.id))
+            .map(st => ({ stylistId: st.id, fullName: st.fullName, weekMinutes: load.get(st.id) ?? 0 }))
+            .sort((a, b) => a.weekMinutes - b.weekMinutes).slice(0, 3) })) });
+    }
+    return { from, to, minStaff, totalGapMinutes: days.reduce((n, d) => n + d.gaps.reduce((a, g) => a + g.minutes, 0), 0),
+      understaffedDays: days.filter(d => d.gaps.length).length,
+      workload: active.map(st => ({ stylistId: st.id, fullName: st.fullName, minutes: load.get(st.id) ?? 0 })).sort((a, b) => b.minutes - a.minutes),
+      days };
+  }
   const shiftMatch = path.match(/^\/shifts\/([^/]+)$/);
   if (shiftMatch) {
     const shift = db.shifts.find(s => s.id === shiftMatch[1]) ?? bad('Không tìm thấy ca');
