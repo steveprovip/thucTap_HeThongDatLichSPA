@@ -1,6 +1,6 @@
 import { api, unwrap } from './client';
 import type {
-  Availability, BookingResult, PublicAppointment, PublicCatalogGroup, PublicStylist, Quote, SlotHold,
+  Availability, BookingResult, PublicAppointment, PublicCatalogGroup, PublicStylist, Quote, SalonInfo, SlotHold,
 } from '@/types';
 
 export interface CreateBookingPayload {
@@ -17,6 +17,11 @@ export interface CreateBookingPayload {
 }
 
 export const publicApi = {
+  /** Mentor S2 · mục 7: liên hệ, mạng xã hội, giờ mở cửa và đội ngũ chuyên viên cho chân trang. */
+  async salonInfo(): Promise<SalonInfo> {
+    return unwrap<SalonInfo>(await api.get('/public/salon-info'));
+  },
+
   async catalog(search?: string): Promise<PublicCatalogGroup[]> {
     return unwrap<PublicCatalogGroup[]>(
       await api.get('/public/catalog', { params: search ? { search } : undefined }),

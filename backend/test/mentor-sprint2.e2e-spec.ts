@@ -290,6 +290,20 @@ describe('Mentor Sprint 2', () => {
     });
   });
 
+  describe('Mục 7 — Chân trang: liên hệ, mạng xã hội, đội ngũ chuyên viên', () => {
+    it('GET /public/salon-info không cần đăng nhập, đủ thông tin, đội ngũ lấy từ hồ sơ thợ đang làm', async () => {
+      const res = await request(server).get('/api/public/salon-info').expect(200);
+      const info = res.body.data;
+      expect(info).toMatchObject({ name: expect.any(String), address: expect.any(String), hotline: expect.any(String) });
+      expect(info.zaloUrl).toMatch(/^https:\/\/zalo\.me\//);
+      expect(info.mapUrl).toContain('google.com/maps');
+      expect(info.openingHours).toHaveLength(7);
+      const [{ n }] = await ds.query('SELECT COUNT(*)::int AS n FROM stylists WHERE is_active');
+      expect(info.team).toHaveLength(n);
+      expect(JSON.stringify(info)).not.toMatch(/phone|email":"stylist/);
+    });
+  });
+
   describe('Mục 5 — AI sinh ngày lễ cả năm', () => {
     const YEAR = 2099;
     afterAll(async () => {

@@ -42,6 +42,13 @@ const configuration = () => ({
     salonName: process.env.SALON_NAME ?? 'Salon & Spa Hương Sen',
     salonAddress: process.env.SALON_ADDRESS ?? '128 Nguyễn Văn Cừ, Quận 5, TP. Hồ Chí Minh',
     salonHotline: process.env.SALON_HOTLINE ?? '028 3838 6868',
+    /** Mentor S2 · mục 7: thông tin liên hệ & mạng xã hội hiển thị ở chân trang công khai. */
+    salonEmail: process.env.SALON_EMAIL ?? 'lienhe@huongsen.vn',
+    salonFacebookUrl: process.env.SALON_FACEBOOK_URL ?? 'https://www.facebook.com/',
+    salonZalo: process.env.SALON_ZALO ?? '0909686868',
+    salonWebsiteUrl: process.env.SALON_WEBSITE_URL ?? '',
+    salonMapUrl: process.env.SALON_MAP_URL ?? '',
+    salonSlogan: process.env.SALON_SLOGAN ?? 'Chăm sóc tóc, da và tinh thần trong không gian tinh tế',
   },
   database: {
     // DATABASE_URL (Supabase / Neon / Render) hoặc DB_HOST… (Docker tại máy); xem config/db-connection.ts
