@@ -169,7 +169,7 @@ describe('Phiên đăng nhập sống sót qua khởi động lại API (cập n
   it('token cấp trước khi restart vẫn dùng được và làm mới được sau khi API khởi động lại', async () => {
     const app1 = await createTestApp();
     const tokens = await login(app1, ACCOUNTS.receptionist);
-    await app1.close(); // "tắt" API như lúc update_project.bat dừng dịch vụ
+    await app1.close(); // "tắt" API như lúc scripts\windows\update_project.bat dừng dịch vụ
 
     const app2 = await createTestApp(); // "bật" lại với cùng khoá JWT trong .env và cùng CSDL
     try {

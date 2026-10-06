@@ -5,7 +5,7 @@ Sinh báo cáo thực tập (.docx) cho dự án Hệ thống Đặt lịch Salo
     pip install python-docx
     python docs/tools/build_report_docx.py
 
-Kết quả: docs/Bao_Cao_Thuc_Tap_He_Thong_Dat_Lich_Salon_Spa.docx
+Kết quả: docs/reports/Bao_Cao_Thuc_Tap_He_Thong_Dat_Lich_Salon_Spa.docx
 Định dạng: A4, lề trên 2 cm – dưới 2 cm – trái 3 cm – phải 1.5 cm, Times New Roman 13, giãn dòng 1.3.
 Mở bằng Word -> chọn "Yes" khi được hỏi cập nhật trường để Mục lục có số trang.
 """
@@ -27,7 +27,7 @@ import report_data as D  # noqa: E402
 
 SCREENS = os.path.join(DOCS, "assets", "screens")
 DIAGRAMS = os.path.join(DOCS, "assets", "diagrams")
-OUT = os.path.join(DOCS, "Bao_Cao_Thuc_Tap_He_Thong_Dat_Lich_Salon_Spa.docx")
+OUT = os.path.join(DOCS, "reports", "Bao_Cao_Thuc_Tap_He_Thong_Dat_Lich_Salon_Spa.docx")
 
 FONT = "Times New Roman"
 BODY_PT = 13

@@ -5,7 +5,7 @@ import { DataSource } from 'typeorm';
 import { Public } from './common/decorators/public.decorator';
 
 /**
- * GET /health — dùng cho launcher (run_project.bat/.sh) và giám sát.
+ * GET /health — dùng cho launcher (scripts\windows\run_project.bat/.sh) và giám sát.
  *   200 { status: 'ok' }        : API chạy VÀ truy vấn được CSDL
  *   503 { status: 'degraded' }  : API chạy nhưng CSDL chưa sẵn sàng
  * Launcher chỉ mở trình duyệt khi nhận 200, nên không bao giờ mở giao diện khi API

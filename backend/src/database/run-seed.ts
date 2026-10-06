@@ -5,7 +5,7 @@
  * KHÔNG dùng cho máy đang vận hành thật: seed.sql đặt lại mật khẩu 8 tài khoản mẫu (Admin@123…) và sinh
  * lịch hẹn mẫu theo ngày hôm nay. Máy thật dùng `npm run migration:run` + `npm run bootstrap`.
  *
- * Lược đồ do migration quản lý (database/schema.sql chỉ là migration gốc, không còn được chạy trực tiếp),
+ * Lược đồ do migration quản lý (backend/database/schema.sql chỉ là migration gốc, không còn được chạy trực tiếp),
  * và seed.sql viết theo hướng chạy lại được, không nhân đôi bản ghi (S1-10).
  */
 import 'reflect-metadata';
@@ -37,7 +37,7 @@ async function main(): Promise<void> {
 
   const client = await connectWithRetry(conn);
   try {
-    console.log('> Nạp database/seed.sql ...');
+    console.log('> Nạp backend/database/seed.sql ...');
     client.on('notice', (n) => console.log(`  ${n.message}`));
     await client.query(readSeedSql());
     console.log('  Xong.');

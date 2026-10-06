@@ -44,7 +44,7 @@ MEMBERS = [
      "areas": {"be": "", "fe": "C", "test": "H", "doc": "", "demo": "H", "ops": ""}},
     {"name": "Nguyễn Thị Hương", "mssv": "", "role": "Tester",
      "task": "Soạn bộ Test Case từ DEMO-SCRIPT, chạy thử trên web và ghi Pass/Fail; phụ trách các ticket QA trên Jira",
-     "output": "docs/Test_Cases_Salon_Spa.xlsx",
+     "output": "docs/testing/Test_Cases_Salon_Spa.xlsx",
      "areas": {"be": "", "fe": "", "test": "C", "doc": "", "demo": "", "ops": ""}},
     {"name": "Dương Đức Mạnh", "mssv": "", "role": "Phân tích yêu cầu",
      "task": "Viết Chương 1–2: lý do chọn đề tài, khảo sát hiện trạng (sổ tay, Zalo), so sánh hệ thống mới với cách làm cũ",
@@ -60,7 +60,7 @@ MEMBERS = [
      "areas": {"be": "", "fe": "", "test": "", "doc": "H", "demo": "C", "ops": ""}},
     {"name": "Phạm Mậu Lực", "mssv": "", "role": "Dữ liệu mẫu & video demo",
      "task": "Soạn danh sách dịch vụ cắt – uốn – nhuộm kèm giá thực tế, ảnh thợ; quay video một luồng đặt lịch hoàn chỉnh",
-     "output": "database/seed-data-real.sql, video demo",
+     "output": "backend/database/seed-data-real.sql, video demo",
      "areas": {"be": "", "fe": "", "test": "", "doc": "", "demo": "H", "ops": "C"}},
 ]
 AREAS = [("be", "Backend & CSDL"), ("fe", "Frontend"), ("test", "Kiểm thử"),
@@ -119,7 +119,7 @@ STORIES = [
     ("S4-10", "EP-01", "Rà soát phân quyền bằng kiểm thử tự động + kịch bản demo"),
 ]
 
-# Nguồn: de_tai/3. Hệ thống đặt lịch Salon Spa.xlsx, sheet 4. Product Backlog và 5. Sprint Plan.
+# Nguồn: docs/requirements/3. Hệ thống đặt lịch Salon Spa.xlsx, sheet 4. Product Backlog và 5. Sprint Plan.
 STORY_POINTS = dict(zip([s[0] for s in STORIES], [
     5, 5, 5, 3, 5, 3, 5, 3, 3, 3,
     8, 3, 5, 3, 8, 3, 5, 5, 2,

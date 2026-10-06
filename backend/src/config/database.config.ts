@@ -5,7 +5,7 @@ import type { DbSsl } from './db-connection';
 
 /**
  * Cấu hình TypeORM.
- * synchronize LUÔN tắt: lược đồ do database/schema.sql quản lý để giữ được
+ * synchronize LUÔN tắt: lược đồ do backend/database/schema.sql quản lý để giữ được
  * các ràng buộc EXCLUDE / CHECK mà TypeORM không sinh ra được.
  */
 export const buildTypeOrmOptions = (config: ConfigService): TypeOrmModuleOptions => ({

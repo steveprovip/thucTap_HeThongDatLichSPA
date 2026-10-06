@@ -3,7 +3,7 @@
 Kịch bản viết sẵn theo từng bước, **mỗi bước ghi rõ tài khoản dùng**. Diễn tập trọn kịch bản
 ít nhất một lần trước buổi sprint review.
 
-Chuẩn bị: chạy `run_project.bat`, mở sẵn bốn tab —
+Chuẩn bị: chạy `scripts\windows\run_project.bat`, mở sẵn bốn tab —
 giao diện `http://localhost:5173`, hộp thư ảo `http://localhost:1080`,
 tài liệu API `http://localhost:3000/api/docs`, và một cửa sổ ẩn danh để đóng vai khách.
 

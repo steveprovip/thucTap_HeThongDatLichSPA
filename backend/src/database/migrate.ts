@@ -4,10 +4,10 @@
  *   npm run migration:run                  chạy các migration còn thiếu (có sao lưu tự động trước khi chạy)
  *   npm run migration:status               liệt kê migration đã chạy / còn chờ
  *   npm run migration:run -- --skip-backup bỏ sao lưu (chỉ dùng khi chắc chắn)
- *   npm run migration:run -- --backup=required   bắt buộc sao lưu được mới chạy (update_project.bat dùng chế độ này)
+ *   npm run migration:run -- --backup=required   bắt buộc sao lưu được mới chạy (scripts\windows\update_project.bat dùng chế độ này)
  *   npm run migration:run:prod             bản chạy từ thư mục dist (máy chủ production, không cần ts-node)
  *
- * NGUYÊN TẮC BẤT DI BẤT DỊCH: tệp này chỉ chạy migration (DDL). Nó KHÔNG BAO GIỜ chạy database/seed.sql,
+ * NGUYÊN TẮC BẤT DI BẤT DỊCH: tệp này chỉ chạy migration (DDL). Nó KHÔNG BAO GIỜ chạy backend/database/seed.sql,
  * KHÔNG xoá bảng, KHÔNG ghi đè dữ liệu đang có. seed.sql chỉ do `npm run seed` (máy phát triển) gọi.
  */
 import 'reflect-metadata';

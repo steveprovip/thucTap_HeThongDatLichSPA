@@ -3,10 +3,15 @@
 
 # Module Backend & Co so du lieu
 /backend/ @steveprovip
-/database/ @steveprovip
+/backend/database/ @steveprovip
 
 # Module Frontend
 /frontend/ @steveprovip
 
 # Tai lieu & Kich ban nghiem thu
 /docs/ @steveprovip
+
+# Ha tang trien khai, launcher va kich ban tu dong
+/deploy/ @steveprovip
+/scripts/ @steveprovip
+/HoYoSalon.bat @steveprovip

@@ -15,7 +15,7 @@ import { Client } from 'pg';
 import { describeDb, resolveDbConnection } from '../config/db-connection';
 import { connectWithRetry, hintFor, PgError } from './db-tools';
 
-/** Đúng danh sách trong database/seed.sql và README. */
+/** Đúng danh sách trong backend/database/seed.sql và README. */
 export const DEMO_ACCOUNTS: ReadonlyArray<{ email: string; password: string }> = [
   { email: 'admin@salon.vn', password: 'Admin@123' },
   { email: 'owner@salon.vn', password: 'Owner@123' },

@@ -1,20 +1,20 @@
 #!/usr/bin/env node
 /**
- * Trợ lý khởi động dùng chung cho run_project.bat (Windows) và run_project.sh (macOS/Linux).
+ * Trợ lý khởi động dùng chung cho HoYoSalon.bat (Launcher giao diện), scripts/windows/*.bat và scripts/unix/*.sh.
  * Viết bằng Node thuần (không cần gói ngoài) để hành vi GIỐNG HỆT nhau trên mọi máy.
  *
  *   node scripts/launcher.mjs start        TOÀN BỘ quy trình 1-click: .env -> Docker/PostgreSQL -> gói npm ->
  *                                          nạp CSDL -> chạy API + giao diện -> mở trình duyệt (dùng cho
- *                                          run_project.bat / run_project.sh)
+ *                                          scripts/windows/run_project.bat, scripts/unix/run_project.sh)
  *   node scripts/launcher.mjs check-node   Kiểm tra Node.js >= 20
  *   node scripts/launcher.mjs prepare      Tạo .env, cài/cập nhật node_modules, kiểm tra cổng 3000/5173
  *   node scripts/launcher.mjs run          Chạy API + giao diện dưới một TIẾN TRÌNH GIÁM SÁT duy nhất:
  *                                          chờ /health = 200 rồi mở trình duyệt, tự khởi động lại
  *                                          tiến trình bị sập, Ctrl+C dừng sạch cả cây tiến trình.
  *   node scripts/launcher.mjs open         (tương thích cũ) chờ sẵn sàng, mở trình duyệt rồi thoát
- *   node scripts/launcher.mjs serve        CHẾ ĐỘ MÁY CHỦ (start_server.bat): migration -> bootstrap -> build -> chạy bản
+ *   node scripts/launcher.mjs serve        CHẾ ĐỘ MÁY CHỦ (start_server.bat / Launcher): migration -> bootstrap -> build -> chạy bản
  *                                          production, NestJS phục vụ cả web lẫn API ở một cổng. KHÔNG nạp dữ liệu mẫu.
- *   node scripts/launcher.mjs update       CẬP NHẬT 1 CHẠM (update_project.bat): git pull -> gói npm -> build -> dừng ->
+ *   node scripts/launcher.mjs update       CẬP NHẬT 1 CHẠM (nút CẬP NHẬT của Launcher / update_project.bat): git pull -> gói npm -> build -> dừng ->
  *                                          sao lưu + migration -> chạy lại. Lỗi ở bước nào thì quay về bản cũ.
  *   node scripts/launcher.mjs tunnel       Mở Quick Tunnel của Cloudflare (HTTPS công khai, miễn phí, không cần tên miền) tới máy chủ này
  *   node scripts/launcher.mjs resume       Chạy lại bản máy chủ ĐÃ build sẵn (không migration, không build) - dùng nội bộ khi cập nhật
@@ -285,6 +285,13 @@ async function openWhenReady() {
 
 /* ------------------------------------------------------------ start (1-click) */
 const DB_CONTAINER = 'salon_postgres';
+/**
+ * docker-compose.yml nằm ở deploy/docker/ (từ v1.4.0). --project-directory = gốc dự án để:
+ *  - tên project (và tên volume salon_pgdata) GIỮ NGUYÊN như khi tệp còn ở gốc -> không "mất" dữ liệu CSDL cũ;
+ *  - biến trong .env ở gốc dự án (POSTGRES_PORT…) vẫn được đọc như trước.
+ */
+const COMPOSE_FILE = join(ROOT, 'deploy', 'docker', 'docker-compose.yml');
+const composeArgs = (...args) => ['compose', '--project-directory', ROOT, '-f', COMPOSE_FILE, ...args];
 const DOCKER_DOWNLOAD = 'https://www.docker.com/products/docker-desktop/';
 
 /** Địa chỉ PostgreSQL mà backend sẽ kết nối (biến môi trường thắng backend/.env, giống dotenv). */
@@ -379,7 +386,7 @@ async function ensureDatabase(step = '[3/6]') {
     err(`[LỖI] Máy chưa cài Docker và cũng không kết nối được PostgreSQL tại ${where}.`);
     err(`      Cách 1 (khuyên dùng): cài Docker Desktop tại ${DOCKER_DOWNLOAD} , bật lên rồi chạy lại.`);
     err('      Cách 2: tự cài PostgreSQL 16, tạo CSDL và tài khoản khớp backend/.env, rồi chạy lại với SALON_SKIP_DOCKER=1');
-    err('              (Windows cmd: set SALON_SKIP_DOCKER=1&& run_project.bat   |   macOS/Linux: SALON_SKIP_DOCKER=1 ./run_project.sh)');
+    err('              (Windows cmd: set SALON_SKIP_DOCKER=1&& scripts\\windows\\run_project.bat   |   macOS/Linux: SALON_SKIP_DOCKER=1 ./scripts/unix/run_project.sh)');
     return false;
   }
   log(`${step} Kiểm tra Docker ...`);
@@ -390,7 +397,7 @@ async function ensureDatabase(step = '[3/6]') {
     return false;
   }
   log('      Dựng PostgreSQL, PgAdmin và Maildev (lần đầu phải tải image, có thể mất vài phút) ...');
-  if (spawnSync('docker', ['compose', 'up', '-d'], { cwd: ROOT, stdio: 'inherit' }).status !== 0) {
+  if (spawnSync('docker', composeArgs('up', '-d'), { cwd: ROOT, stdio: 'inherit' }).status !== 0) {
     err('[LỖI] docker compose up thất bại. Nguyên nhân thường gặp:');
     err('      - Cổng 5432 / 5050 / 1080 đang bị chương trình khác chiếm (vd. PostgreSQL cài sẵn trên máy).');
     err('        Cách sửa: đặt POSTGRES_PORT=5433 trong .env và DB_PORT=5433 trong backend/.env rồi chạy lại.');
@@ -893,7 +900,7 @@ const printServerBanner = () => {
 ${lan.map((u) => `  Cùng Wi-Fi/LAN : ${u}   (laptop, điện thoại; Windows có thể hỏi cho phép Node.js qua tường lửa)`).join('\n') || '  (không thấy mạng LAN)'}
   Từ xa          : chạy đường hầm Cloudflare trỏ về ${SERVER_URL} (xem docs/TRIEN-KHAI.md, Phương án 2)
 
-  KHÔNG có dữ liệu mẫu: đăng nhập bằng tài khoản thật. Cập nhật phiên bản mới: update_project.bat
+  KHÔNG có dữ liệu mẫu: đăng nhập bằng tài khoản thật. Cập nhật phiên bản mới: nút CẬP NHẬT trong HoYoSalon.bat
   Nhấn Ctrl+C để dừng máy chủ.
 ============================================================
 `);
@@ -932,7 +939,7 @@ async function serve() {
   if (mig.noAdmin) {
     err('[LỖI] CSDL chưa có tài khoản nào nên không ai đăng nhập được. Máy chủ chưa khởi động.');
     err('      Mở backend\\.env, điền BOOTSTRAP_ADMIN_EMAIL và BOOTSTRAP_ADMIN_PASSWORD (>= 8 ký tự, có chữ và số, không dấu;');
-    err('      tránh ký tự #), lưu lại rồi chạy lại start_server.bat. Tài khoản quản trị đầu tiên sẽ được tạo tự động.');
+    err('      tránh ký tự #), lưu lại rồi chạy lại HoYoSalon.bat (hoặc scripts\\windows\\start_server.bat). Tài khoản quản trị đầu tiên sẽ được tạo tự động.');
     return 1;
   }
   if (needsBuild()) {
@@ -963,7 +970,7 @@ function stopCommand() {
 async function resume() {
   if (checkNode() !== 0) return 1;
   if (!existsSync(join(ROOT, 'backend', 'dist', 'main.js')) || !existsSync(join(ROOT, 'frontend', 'dist', 'index.html'))) {
-    err('[LỖI] Chưa có bản build. Chạy start_server.bat (sẽ build rồi chạy).');
+    err('[LỖI] Chưa có bản build. Chạy HoYoSalon.bat (sẽ build rồi chạy).');
     return 1;
   }
   ensureEnvFiles();
@@ -1038,7 +1045,7 @@ async function tunnel() {
     return 1;
   }
   if ((await httpStatus(HEALTH_URL)) !== 200) {
-    err(`[CẢNH BÁO] Máy chủ chưa chạy ở cổng ${API_PORT}. Hãy chạy start_server.bat trước; đường hầm vẫn mở nhưng người dùng sẽ gặp lỗi cho tới khi máy chủ lên.`);
+    err(`[CẢNH BÁO] Máy chủ chưa chạy ở cổng ${API_PORT}. Hãy chạy HoYoSalon.bat trước; đường hầm vẫn mở nhưng người dùng sẽ gặp lỗi cho tới khi máy chủ lên.`);
   }
   const args = ['tunnel', '--url', SERVER_URL];
   const allowed = process.env.CLOUDFLARED_ALLOWED_MAIL?.trim();
@@ -1094,7 +1101,7 @@ async function update() {
 
   log('[1/7] Kiểm tra Git ...');
   if (!gitAvailable()) {
-    err('[LỖI] Máy chưa cài Git. Tải tại https://git-scm.com/download/win , cài xong chạy lại update_project.bat.');
+    err('[LỖI] Máy chưa cài Git. Tải tại https://git-scm.com/download/win , cài xong bấm CẬP NHẬT lại trong HoYoSalon.bat.');
     return 1;
   }
   if (!existsSync(join(ROOT, '.git'))) {
@@ -1105,7 +1112,7 @@ async function update() {
   const branch = gitOut(['rev-parse', '--abbrev-ref', 'HEAD']);
   if (branch !== 'main') {
     err(`[LỖI] Máy đang ở nhánh "${branch}", cập nhật chỉ chạy trên nhánh main.`);
-    err('      Chạy: git checkout main   rồi thử lại update_project.bat');
+    err('      Chạy: git checkout main   rồi bấm CẬP NHẬT lại');
     return 1;
   }
   const real = dirtyFiles().filter((d) => !LOCKFILE.test(d.file));
@@ -1118,7 +1125,7 @@ async function update() {
   const state = readState();
   if (!state && (await portInUse(API_PORT))) {
     err(`[LỖI] Cổng ${API_PORT} đang có chương trình chạy mà launcher không quản lý (một cửa sổ cũ, hoặc chương trình khác).`);
-    err('      Đóng cửa sổ đang chạy hệ thống (Ctrl+C) rồi chạy lại update_project.bat. CHƯA có gì bị thay đổi.');
+    err('      Đóng cửa sổ đang chạy hệ thống (Ctrl+C) rồi bấm CẬP NHẬT lại. CHƯA có gì bị thay đổi.');
     return 1;
   }
 
@@ -1183,13 +1190,13 @@ async function updateApply() {
   const restartOld = async () => {
     if (!wasRunning || !stopped) return;
     if (mode === 'serve' && !existsSync(join(ROOT, 'backend', 'dist', 'main.js'))) {
-      err('      Không còn bản cũ để bật lại. Chạy start_server.bat để xem lỗi chi tiết.');
+      err('      Không còn bản cũ để bật lại. Chạy HoYoSalon.bat để xem lỗi chi tiết.');
       return;
     }
     log('      Bật lại BẢN CŨ để tiệm tiếp tục làm việc ...');
     startDetached(mode);
     const back = await waitHealthy(90);
-    err(back ? '      Đã bật lại bản cũ, tiệm làm việc bình thường.' : '      Bản cũ cũng chưa lên. Chạy start_server.bat để xem lỗi chi tiết.');
+    err(back ? '      Đã bật lại bản cũ, tiệm làm việc bình thường.' : '      Bản cũ cũng chưa lên. Chạy HoYoSalon.bat để xem lỗi chi tiết.');
   };
   const fail = async (...lines) => {
     for (const l of lines) err(l);
@@ -1246,7 +1253,7 @@ async function updateApply() {
 
   log('[7/7] Khởi động lại và kiểm tra ...');
   if (!startDetached(mode)) {
-    err('[CẢNH BÁO] Không tự mở được cửa sổ mới. Hãy chạy start_server.bat (hoặc run_project.bat) để bật hệ thống.');
+    err('[CẢNH BÁO] Không tự mở được cửa sổ mới. Hãy mở HoYoSalon.bat và bấm BẮT ĐẦU để bật hệ thống.');
     return 1;
   }
   const healthy = await waitHealthy(Number(process.env.UPDATE_HEALTH_TIMEOUT ?? 150));
@@ -1271,7 +1278,7 @@ async function updateApply() {
     if (swapped) await restorePrev(oldBuilt ? oldRev : '');
     return fail(
       `      CSDL đã được nâng cấp (chỉ thêm cấu trúc, bản cũ vẫn dùng được). ${mig.backupFile ? `Bản sao lưu trước đó: ${mig.backupFile}` : ''}`,
-      `      Nhật ký lỗi của bản mới: ${join('logs', 'server.log')} (nếu không có, chạy start_server.bat để xem trực tiếp). Gửi cho người lập trình.`,
+      `      Nhật ký lỗi của bản mới: ${join('logs', 'server.log')} (nếu không có, chạy HoYoSalon.bat để xem trực tiếp). Gửi cho người lập trình.`,
     );
   }
 

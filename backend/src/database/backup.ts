@@ -4,19 +4,19 @@
  * Thứ tự thử:
  *   1. pg_dump có sẵn trên máy (PATH);
  *   2. pg_dump bên trong container Docker `salon_postgres` (máy chạy Docker thường không cài sẵn pg_dump).
- * Tệp lưu ở backups/ cạnh thư mục database/ (đã nằm trong .gitignore), giữ lại 15 bản mới nhất.
+ * Tệp lưu ở backups/ tại gốc dự án (đã nằm trong .gitignore), giữ lại 15 bản mới nhất.
  */
 import { closeSync, existsSync, mkdirSync, openSync, readdirSync, statSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { spawnSync } from 'child_process';
 import { DbConnection } from '../config/db-connection';
-import { findSqlDir } from './sql-files';
+import { findProjectRoot } from './sql-files';
 
 export const KEEP_BACKUPS = 15;
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
 
 /** Mặc định: thư mục backups/ ở gốc dự án. Đổi bằng BACKUP_DIR (vd. ổ đĩa ngoài). */
-export const backupDir = (): string => process.env.BACKUP_DIR?.trim() || join(findSqlDir(), '..', 'backups');
+export const backupDir = (): string => process.env.BACKUP_DIR?.trim() || join(findProjectRoot(), 'backups');
 
 const stamp = (): string => {
   const d = new Date();
