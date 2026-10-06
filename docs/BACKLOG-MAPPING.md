@@ -99,12 +99,12 @@ Nguồn điểm: `de_tai/3. Hệ thống đặt lịch Salon Spa.xlsx`, sheet **
 
 Kết quả: 139/139 unit; 83/83 E2E trong 12 bộ trên PostgreSQL; 4/4 Demo; lint hai ứng dụng 0 lỗi / 0 cảnh báo; build Vite và typecheck backend đạt. Chạy lại bằng `docs/tools/test_qa.ps1`.
 
-**Phạm vi bằng chứng:** bảng ánh xạ 39 story không có nghĩa mọi dòng AC đã có assertion tự động. `lifecycle.e2e-spec.ts` trả về sớm nếu không có khung giờ trong cửa sổ check-in lúc chạy; kiểm định này đã gặp nhánh đó. AC vòng đời, email theo thời hạn, bố cục 360 px và các tình huống UI phải ghi Pass/Fail khi tester chạy `DEMO-SCRIPT.md` / runbook. Không coi kết quả tự động là biên bản PO ký nghiệm thu.
+**Phạm vi bằng chứng:** bảng ánh xạ 39 story không có nghĩa mọi dòng AC đã có assertion tự động. Đã sửa `lifecycle.e2e-spec.ts` để dùng dịch vụ seed / ca khả dụng và cố định đồng hồ tạo Date trong cửa sổ check-in; JWT và timer mạng vẫn chạy thật. Ca này chạy trọn đến thanh toán, đóng phiếu, đánh giá và đối chiếu doanh thu, không trả về sớm ngoài giờ. AC email theo thời hạn, bố cục 360 px và thao tác UI cần ghi Pass/Fail khi tester chạy `DEMO-SCRIPT.md` / runbook. Không coi kết quả tự động là biên bản PO ký nghiệm thu.
 
 ## Tổng kết
 
 | Epic | Story | Point | Trạng thái |
-|---|---|---|---|---|
+|---|---|---|---|
 | EP-01 Tài khoản và phân quyền | 7 | 27 | Hoàn thành |
 | EP-02 Dịch vụ, thợ và lịch làm việc | 6 | 27 | Hoàn thành |
 | EP-03 Đặt lịch công khai và tính khung giờ | 7 | 31 | Hoàn thành |
