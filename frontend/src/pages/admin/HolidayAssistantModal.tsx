@@ -25,7 +25,8 @@ export function HolidayAssistantModal({ open, onClose, onApplied }: {
 }) {
   const toast = useToast();
   const thisYear = new Date().getFullYear();
-  const [year, setYear] = useState(thisYear);
+  // Từ tháng 10 trở đi phần lớn ngày lễ năm nay đã qua -> mặc định chuẩn bị cho năm sau
+  const [year, setYear] = useState(new Date().getMonth() >= 9 ? thisYear + 1 : thisYear);
   const [items, setItems] = useState<HolidaySuggestion[]>([]);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);

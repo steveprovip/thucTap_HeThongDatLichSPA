@@ -70,6 +70,8 @@ export interface CoverageDayView extends Omit<DayCoverage, 'gaps'> {
     endTime: string;
     minutes: number;
     minCount: number;
+    /** Gợi ý cách xử lý khi khoảng trống do các thợ nghỉ giữa ca CÙNG LÚC (vd. cả tiệm nghỉ trưa 12:00–13:00). */
+    hint: string | null;
     candidates: { stylistId: string; fullName: string; weekMinutes: number }[];
   }[];
 }
@@ -654,15 +656,20 @@ export class StylistsService {
         ...cov,
         openTime: wh.openTime,
         closeTime: wh.closeTime,
-        gaps: cov.gaps.map((g) => ({
+        gaps: cov.gaps.map((g) => {
+          const onBreak = dayShifts.filter((x) => x.start <= g.start && x.end >= g.end
+            && x.breakStart != null && x.breakEnd != null && x.breakStart < g.end && g.start < x.breakEnd).length;
+          return {
           startTime: toHHmm(g.start),
           endTime: toHHmm(g.end),
           minutes: g.end - g.start,
           minCount: g.minCount,
+          hint: onBreak >= 2 ? `${onBreak} thợ nghỉ giữa ca cùng lúc — nên so le giờ nghỉ` : null,
           candidates: rankGapCandidates({
             gap: g, stylists, shiftsToday: dayShifts, timeOffToday: dayOffs, weekMinutes,
           }),
-        })),
+          };
+        }),
       });
     }
     return {

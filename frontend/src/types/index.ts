@@ -181,6 +181,7 @@ export interface CoverageGap {
   endTime: string;
   minutes: number;
   minCount: number;
+  hint?: string | null;
   candidates: { stylistId: string; fullName: string; weekMinutes: number }[];
 }
 export interface CoverageDay {
