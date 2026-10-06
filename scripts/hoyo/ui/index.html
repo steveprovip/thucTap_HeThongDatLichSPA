@@ -1,0 +1,541 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hương Sen Launcher</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M32 8c6 8 9 15 9 22s-4 13-9 18c-5-5-9-11-9-18s3-14 9-22z' fill='%23f6c453'/%3E%3Cpath d='M12 26c8 1 14 5 18 11 2 4 2 8 2 11-7-1-13-4-17-10-3-4-3-8-3-12zm40 0c0 4 0 8-3 12-4 6-10 9-17 10 0-3 0-7 2-11 4-6 10-10 18-11z' fill='%232dd4bf'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --gold: #f6c453; --gold-2: #ffdf80; --gold-ink: #3b2a05;
+    --teal: #2dd4bf; --violet: #a78bfa; --rose: #fb7185;
+    --ink: #f8fafc; --ink-soft: rgba(241,245,249,.78); --ink-muted: rgba(226,232,240,.55);
+    --glass: rgba(15, 23, 42, .46); --glass-strong: rgba(15, 23, 42, .72); --line: rgba(255,255,255,.12);
+    --radius: 18px;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: "Segoe UI", "SF Pro Text", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink); background: #0b1020; overflow: hidden; user-select: none;
+  }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  button:disabled { cursor: not-allowed; }
+  :focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+  /* ---------- Nền: tranh trừu tượng hoa sen về đêm (thuần CSS, không dùng ảnh ngoài) ---------- */
+  .scene { position: fixed; inset: 0; overflow: hidden; }
+  .scene::before {
+    content: ""; position: absolute; inset: -10%;
+    background:
+      radial-gradient(60% 50% at 78% 38%, rgba(45,212,191,.38), transparent 60%),
+      radial-gradient(45% 45% at 18% 78%, rgba(167,139,250,.35), transparent 60%),
+      radial-gradient(35% 35% at 62% 82%, rgba(251,113,133,.25), transparent 60%),
+      radial-gradient(40% 40% at 30% 18%, rgba(246,196,83,.18), transparent 60%),
+      linear-gradient(160deg, #081226 0%, #0f1b3a 45%, #1b1235 100%);
+    animation: drift 24s ease-in-out infinite alternate;
+  }
+  @keyframes drift { to { transform: translate3d(-2%, 1.5%, 0) scale(1.04); } }
+  .lotus {
+    position: absolute; right: 6%; top: 12%; width: min(46vw, 620px); aspect-ratio: 1; opacity: .9;
+    filter: drop-shadow(0 30px 80px rgba(45,212,191,.35));
+    animation: float 9s ease-in-out infinite;
+  }
+  @keyframes float { 50% { transform: translateY(-14px) rotate(-1deg); } }
+  .petal { position: absolute; width: 14px; height: 22px; border-radius: 80% 0 80% 0; opacity: .55;
+    background: linear-gradient(135deg, #ffd1dc, #f59fb8); animation: fall linear infinite; }
+  @keyframes fall { from { transform: translate3d(0,-10vh,0) rotate(0); } to { transform: translate3d(-18vw,110vh,0) rotate(540deg); } }
+  .vignette { position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(120% 90% at 50% 40%, transparent 55%, rgba(2,6,23,.75) 100%), linear-gradient(to top, rgba(2,6,23,.85), transparent 38%); }
+
+  /* ---------- Bố cục ---------- */
+  .app { position: relative; z-index: 1; height: 100%; display: grid; grid-template-rows: auto 1fr auto; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 18px 28px; }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand-mark { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center;
+    background: linear-gradient(135deg, rgba(45,212,191,.9), rgba(167,139,250,.9)); box-shadow: 0 8px 24px rgba(45,212,191,.35); }
+  .brand b { display: block; font-size: 15px; letter-spacing: .3px; }
+  .brand small { color: var(--ink-muted); font-size: 12px; }
+  .icons { display: flex; gap: 8px; }
+  .icon-btn { width: 40px; height: 40px; border-radius: 12px; border: 1px solid var(--line); background: var(--glass);
+    backdrop-filter: blur(14px); display: grid; place-items: center; transition: .2s; position: relative; }
+  .icon-btn:hover { background: rgba(255,255,255,.14); transform: translateY(-1px); }
+  .icon-btn .dot { position: absolute; top: 7px; right: 7px; width: 8px; height: 8px; border-radius: 50%; background: var(--rose); box-shadow: 0 0 0 3px rgba(251,113,133,.25); }
+
+  .hero { display: grid; grid-template-columns: minmax(320px, 520px) 1fr; align-items: end; padding: 0 28px 18px; gap: 24px; min-height: 0; }
+  .title h1 { margin: 0; font-size: clamp(30px, 4.2vw, 52px); line-height: 1.05; font-weight: 800; letter-spacing: -.5px;
+    text-shadow: 0 8px 40px rgba(0,0,0,.45); }
+  .title h1 span { background: linear-gradient(90deg, var(--gold-2), var(--gold), #f59e0b); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .title p { margin: 10px 0 14px; color: var(--ink-soft); max-width: 460px; line-height: 1.5; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { font-size: 12px; padding: 6px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--glass); backdrop-filter: blur(10px); color: var(--ink-soft); }
+
+  .news { margin-top: 18px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--glass); backdrop-filter: blur(18px);
+    padding: 14px 16px; max-width: 520px; }
+  .news h3 { margin: 0 0 8px; font-size: 13px; display: flex; justify-content: space-between; align-items: center; color: var(--gold-2); letter-spacing: .4px; text-transform: uppercase; }
+  .news ul { margin: 0; padding-left: 18px; color: var(--ink-soft); font-size: 13px; line-height: 1.6; }
+  .news li { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .link { background: none; border: 0; color: var(--teal); font-size: 12px; padding: 0; text-transform: none; letter-spacing: 0; }
+  .link:hover { text-decoration: underline; }
+
+  /* ---------- Thanh dưới: trạng thái + tiến trình + nút hành động ---------- */
+  .dock { display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: center; padding: 16px 28px 22px;
+    background: linear-gradient(to top, rgba(2,6,23,.6), transparent); }
+  .status { min-width: 0; }
+  .status-line { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--ink-soft); }
+  .led { width: 10px; height: 10px; border-radius: 50%; background: #64748b; flex: none; }
+  .led.on { background: #34d399; box-shadow: 0 0 0 4px rgba(52,211,153,.2); }
+  .led.busy { background: var(--gold); box-shadow: 0 0 0 4px rgba(246,196,83,.2); animation: pulse 1.2s infinite; }
+  .led.warn { background: var(--rose); box-shadow: 0 0 0 4px rgba(251,113,133,.2); }
+  @keyframes pulse { 50% { opacity: .45; } }
+  .progress { margin-top: 10px; height: 8px; border-radius: 999px; background: rgba(255,255,255,.1); overflow: hidden; display: none; }
+  .progress.show { display: block; }
+  .bar { height: 100%; width: 0; border-radius: inherit; background: linear-gradient(90deg, var(--teal), var(--gold)); transition: width .6s ease;
+    position: relative; overflow: hidden; }
+  .bar::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.45), transparent); animation: shine 1.6s infinite; }
+  @keyframes shine { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+  .progress-meta { display: none; justify-content: space-between; margin-top: 6px; font-size: 12px; color: var(--ink-muted); gap: 12px; }
+  .progress-meta.show { display: flex; }
+  .progress-meta span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .actions { display: flex; align-items: center; gap: 10px; }
+  .hero-btn { position: relative; min-width: 248px; height: 68px; border: 0; border-radius: 16px; padding: 0 28px;
+    background: linear-gradient(180deg, var(--gold-2), var(--gold) 55%, #e6a91d); color: var(--gold-ink);
+    font-size: 22px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase;
+    box-shadow: 0 10px 30px rgba(246,196,83,.35), inset 0 1px 0 rgba(255,255,255,.6), inset 0 -3px 0 rgba(0,0,0,.12);
+    transition: transform .15s, box-shadow .2s, filter .2s; display: flex; align-items: center; justify-content: center; gap: 12px; }
+  .hero-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 16px 40px rgba(246,196,83,.45), inset 0 1px 0 rgba(255,255,255,.6); }
+  .hero-btn:active:not(:disabled) { transform: translateY(0); }
+  .hero-btn:disabled { filter: grayscale(.35) brightness(.85); }
+  .hero-btn small { display: block; font-size: 11px; letter-spacing: .5px; font-weight: 700; opacity: .75; text-transform: none; }
+  .hero-btn .tag { position: absolute; top: -10px; right: 14px; background: var(--rose); color: #fff; font-size: 11px; font-weight: 800;
+    letter-spacing: .5px; padding: 3px 8px; border-radius: 999px; box-shadow: 0 6px 16px rgba(251,113,133,.45); }
+  .hero-btn.running { background: linear-gradient(180deg, #6ee7b7, #34d399 55%, #10b981); color: #052e1f; box-shadow: 0 10px 30px rgba(52,211,153,.35); }
+  .side-btn { height: 68px; width: 56px; border-radius: 16px; border: 1px solid var(--line); background: var(--glass); backdrop-filter: blur(14px);
+    display: grid; place-items: center; transition: .2s; }
+  .side-btn:hover { background: rgba(255,255,255,.14); }
+  .menu { position: absolute; bottom: 92px; right: 28px; width: 260px; border-radius: 14px; border: 1px solid var(--line); background: var(--glass-strong);
+    backdrop-filter: blur(20px); padding: 6px; display: none; box-shadow: 0 20px 50px rgba(0,0,0,.45); }
+  .menu.show { display: block; }
+  .menu button { width: 100%; text-align: left; border: 0; background: none; padding: 10px 12px; border-radius: 10px; font-size: 14px; display: flex; gap: 10px; align-items: center; }
+  .menu button:hover { background: rgba(255,255,255,.1); }
+
+  /* ---------- Modal Thông tin & Chẩn đoán ---------- */
+  .overlay { position: fixed; inset: 0; z-index: 20; background: rgba(2,6,23,.55); backdrop-filter: blur(6px); display: none; align-items: center; justify-content: center; padding: 24px; }
+  .overlay.show { display: flex; }
+  .modal { width: min(980px, 100%); height: min(620px, 100%); display: grid; grid-template-columns: 220px 1fr; border-radius: 22px; overflow: hidden;
+    border: 1px solid var(--line); background: rgba(15,23,42,.82); backdrop-filter: blur(26px); box-shadow: 0 40px 100px rgba(0,0,0,.55); user-select: text; }
+  .modal nav { background: rgba(255,255,255,.04); border-right: 1px solid var(--line); padding: 18px 10px; display: flex; flex-direction: column; gap: 4px; }
+  .modal nav h2 { font-size: 15px; margin: 4px 10px 12px; }
+  .tab { border: 0; background: none; text-align: left; padding: 10px 12px; border-radius: 10px; font-size: 14px; color: var(--ink-soft); display: flex; gap: 10px; align-items: center; }
+  .tab:hover { background: rgba(255,255,255,.07); }
+  .tab.active { background: linear-gradient(90deg, rgba(246,196,83,.22), rgba(246,196,83,.05)); color: var(--gold-2); font-weight: 600; }
+  .panel { padding: 20px 24px; overflow: auto; position: relative; }
+  .panel h3 { margin: 0 0 4px; font-size: 18px; }
+  .panel .sub { color: var(--ink-muted); font-size: 13px; margin: 0 0 16px; }
+  .close { position: absolute; top: 14px; right: 14px; width: 34px; height: 34px; border-radius: 10px; border: 1px solid var(--line); background: rgba(255,255,255,.06); }
+  .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; }
+  .card { border: 1px solid var(--line); background: rgba(255,255,255,.05); border-radius: 14px; padding: 12px 14px; }
+  .card .k { font-size: 12px; color: var(--ink-muted); }
+  .card .v { font-size: 15px; font-weight: 600; margin-top: 2px; word-break: break-word; }
+  .big-version { font-size: 34px; font-weight: 800; background: linear-gradient(90deg, var(--gold-2), var(--gold)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .btn { border: 1px solid var(--line); background: rgba(255,255,255,.08); border-radius: 10px; padding: 9px 14px; font-size: 13px; font-weight: 600; display: inline-flex; gap: 8px; align-items: center; }
+  .btn:hover { background: rgba(255,255,255,.15); }
+  .btn.gold { background: linear-gradient(180deg, var(--gold-2), var(--gold)); color: var(--gold-ink); border-color: transparent; }
+  .btn.danger { border-color: rgba(251,113,133,.5); color: #fecdd3; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; padding: 3px; gap: 3px; background: rgba(255,255,255,.04); flex-wrap: wrap; }
+  .seg button { border: 0; background: none; padding: 6px 12px; border-radius: 8px; font-size: 13px; color: var(--ink-soft); }
+  .seg button.active { background: rgba(246,196,83,.2); color: var(--gold-2); font-weight: 600; }
+  pre.log { margin: 0; height: calc(min(620px, 100vh - 48px) - 230px); min-height: 220px; overflow: auto; border-radius: 12px; border: 1px solid var(--line); background: #020617; color: #cbd5e1;
+    font: 12px/1.5 "Cascadia Mono", Consolas, "SFMono-Regular", Menlo, monospace; padding: 12px; white-space: pre-wrap; word-break: break-word; }
+  .release { border-left: 2px solid rgba(246,196,83,.5); padding: 2px 0 10px 14px; margin-bottom: 8px; }
+  .release h4 { margin: 0; font-size: 15px; display: flex; gap: 8px; align-items: baseline; }
+  .release h4 small { color: var(--ink-muted); font-weight: 400; }
+  .release h5 { margin: 8px 0 4px; font-size: 12px; color: var(--teal); text-transform: uppercase; letter-spacing: .5px; }
+  .release ul { margin: 0; padding-left: 18px; color: var(--ink-soft); font-size: 13px; line-height: 1.55; }
+  .badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--ink-soft); }
+  .badge.ok { border-color: rgba(52,211,153,.5); color: #a7f3d0; } .badge.warn { border-color: rgba(251,113,133,.5); color: #fecdd3; }
+  label.opt { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); margin-bottom: 8px; cursor: pointer; }
+  label.opt input { margin-top: 3px; accent-color: #f6c453; }
+  label.opt small { display: block; color: var(--ink-muted); font-size: 12px; }
+  .toasts { position: fixed; top: 18px; left: 50%; transform: translateX(-50%); z-index: 40; display: flex; flex-direction: column; gap: 8px; }
+  .toast { padding: 10px 16px; border-radius: 12px; background: var(--glass-strong); border: 1px solid var(--line); backdrop-filter: blur(16px); font-size: 14px; box-shadow: 0 12px 30px rgba(0,0,0,.4); animation: in .25s ease; }
+  .toast.err { border-color: rgba(251,113,133,.6); } .toast.ok { border-color: rgba(52,211,153,.6); }
+  @keyframes in { from { opacity: 0; transform: translateY(-6px); } }
+  @media (max-width: 860px) {
+    .hero { grid-template-columns: 1fr; } .lotus { opacity: .35; }
+    .dock { grid-template-columns: 1fr; } .hero-btn { min-width: 0; flex: 1; }
+    .modal { grid-template-columns: 1fr; grid-template-rows: auto 1fr; height: 100%; } .modal nav { flex-direction: row; overflow-x: auto; } .modal nav h2 { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="scene" aria-hidden="true">
+  <svg class="lotus" viewBox="0 0 400 400">
+    <defs>
+      <linearGradient id="p1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fde68a"/><stop offset="1" stop-color="#f59e0b" stop-opacity=".2"/></linearGradient>
+      <linearGradient id="p2" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5eead4"/><stop offset="1" stop-color="#0d9488" stop-opacity=".15"/></linearGradient>
+      <linearGradient id="p3" x1="1" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c4b5fd"/><stop offset="1" stop-color="#7c3aed" stop-opacity=".15"/></linearGradient>
+      <radialGradient id="glow"><stop offset="0" stop-color="#fef3c7" stop-opacity=".9"/><stop offset="1" stop-color="#fef3c7" stop-opacity="0"/></radialGradient>
+    </defs>
+    <circle cx="200" cy="215" r="150" fill="url(#glow)" opacity=".35"/>
+    <path d="M200 70c34 46 52 88 52 126s-20 72-52 100c-32-28-52-62-52-100s18-80 52-126z" fill="url(#p1)" opacity=".95"/>
+    <path d="M70 160c50 6 88 30 112 66 14 22 18 46 18 70-44-6-80-26-104-60-18-26-26-50-26-76z" fill="url(#p2)" opacity=".9"/>
+    <path d="M330 160c0 26-8 50-26 76-24 34-60 54-104 60 0-24 4-48 18-70 24-36 62-60 112-66z" fill="url(#p3)" opacity=".9"/>
+    <path d="M40 250c40-6 84 4 120 30 18 13 30 28 40 36-46 12-92 6-126-14-16-10-28-28-34-52z" fill="url(#p2)" opacity=".55"/>
+    <path d="M360 250c-6 24-18 42-34 52-34 20-80 26-126 14 10-8 22-23 40-36 36-26 80-36 120-30z" fill="url(#p3)" opacity=".55"/>
+    <ellipse cx="200" cy="330" rx="150" ry="16" fill="#5eead4" opacity=".12"/>
+  </svg>
+  <div id="petals"></div>
+</div>
+<div class="vignette"></div>
+
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">
+        <svg width="22" height="22" viewBox="0 0 64 64"><path d="M32 8c6 8 9 15 9 22s-4 13-9 18c-5-5-9-11-9-18s3-14 9-22z" fill="#fff"/><path d="M12 26c8 1 14 5 18 11 2 4 2 8 2 11-7-1-13-4-17-10-3-4-3-8-3-12zm40 0c0 4 0 8-3 12-4 6-10 9-17 10 0-3 0-7 2-11 4-6 10-10 18-11z" fill="#fff" opacity=".8"/></svg>
+      </div>
+      <div><b>Hương Sen Launcher</b><small id="brandSub">Hệ thống đặt lịch Salon · Spa</small></div>
+    </div>
+    <div class="icons">
+      <button class="icon-btn" id="btnNews" title="Có gì mới" aria-label="Xem nhật ký cập nhật"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><span class="dot" id="newsDot" hidden></span></button>
+      <button class="icon-btn" id="btnFolder" title="Mở thư mục dự án" aria-label="Mở thư mục dự án"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9l-.8-1.2A2 2 0 0 0 7.9 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg></button>
+      <button class="icon-btn" id="btnSettings" title="Thông tin & Chẩn đoán" aria-label="Mở Thông tin và Chẩn đoán"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button>
+    </div>
+  </header>
+
+  <main class="hero">
+    <section class="title">
+      <h1>Hương Sen<br><span>Salon &amp; Spa</span></h1>
+      <p>Đặt lịch online · xếp ca thông minh · thanh toán VietQR · báo cáo doanh thu. Một nút để khởi động toàn bộ hệ thống.</p>
+      <div class="chips"><span class="chip" id="chipVersion">v…</span><span class="chip" id="chipMode">Chế độ…</span><span class="chip" id="chipBranch">Nhánh…</span></div>
+      <div class="news">
+        <h3><span id="newsTitle">Có gì mới</span><button class="link" id="newsMore">Xem log cập nhật →</button></h3>
+        <ul id="newsList"><li>Đang tải…</li></ul>
+      </div>
+    </section>
+    <div></div>
+  </main>
+
+  <footer class="dock">
+    <div class="status">
+      <div class="status-line"><span class="led" id="led"></span><span id="statusText">Đang kiểm tra hệ thống…</span></div>
+      <div class="progress" id="progress"><div class="bar" id="bar"></div></div>
+      <div class="progress-meta" id="progressMeta"><span id="stepText"></span><span id="pctText"></span></div>
+    </div>
+    <div class="actions">
+      <button class="side-btn" id="btnMore" title="Tuỳ chọn khác" aria-label="Tuỳ chọn khác" aria-haspopup="menu">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
+      </button>
+      <button class="hero-btn" id="hero"><span id="heroLabel">BẮT ĐẦU</span></button>
+    </div>
+    <div class="menu" id="menu" role="menu">
+      <button role="menuitem" data-act="check">Kiểm tra phiên bản mới nhất</button>
+      <button role="menuitem" data-act="open-app">Mở ứng dụng trong trình duyệt</button>
+      <button role="menuitem" data-act="logs">Xem log Client / Server</button>
+      <button role="menuitem" data-act="mail">Hộp thư thử nghiệm (Maildev)</button>
+      <button role="menuitem" data-act="docs">Tài liệu API (Swagger)</button>
+      <button role="menuitem" data-act="force-update">Cập nhật lại (build lại bản hiện tại)</button>
+      <button role="menuitem" data-act="stop">Dừng hệ thống</button>
+    </div>
+  </footer>
+</div>
+
+<div class="overlay" id="overlay" role="dialog" aria-modal="true" aria-label="Thông tin và Chẩn đoán">
+  <div class="modal">
+    <nav>
+      <h2>Thông tin &amp; Chẩn đoán</h2>
+      <button class="tab active" data-tab="version">Thông tin phiên bản</button>
+      <button class="tab" data-tab="changelog">Nhật ký cập nhật</button>
+      <button class="tab" data-tab="logs">Log Client / Server</button>
+      <button class="tab" data-tab="device">Chẩn đoán thiết bị</button>
+      <button class="tab" data-tab="settings">Cài đặt</button>
+    </nav>
+    <div class="panel" id="panel"></div>
+  </div>
+</div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script>
+'use strict';
+const TOKEN = '__LAUNCHER_TOKEN__';
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const api = async (path, opts = {}) => {
+  const res = await fetch(path, { ...opts, headers: { 'X-Launcher-Token': TOKEN, 'Content-Type': 'application/json', ...(opts.headers || {}) } });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.message || `Lỗi ${res.status}`);
+  return body;
+};
+const post = (path, body = {}) => api(path, { method: 'POST', body: JSON.stringify(body) });
+const toast = (msg, kind = '') => {
+  const el = document.createElement('div');
+  el.className = `toast ${kind}`; el.textContent = msg; $('toasts').appendChild(el);
+  setTimeout(() => el.remove(), 4200);
+};
+const copy = async (text) => {
+  try { await navigator.clipboard.writeText(text); }
+  catch { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
+  toast('Đã sao chép vào bộ nhớ tạm', 'ok');
+};
+
+// Cánh hoa rơi nhẹ
+(() => {
+  const box = $('petals');
+  for (let i = 0; i < 14; i += 1) {
+    const p = document.createElement('span');
+    p.className = 'petal';
+    p.style.left = `${Math.random() * 110}%`;
+    p.style.animationDuration = `${14 + Math.random() * 16}s`;
+    p.style.animationDelay = `${-Math.random() * 30}s`;
+    p.style.transform = `scale(${0.5 + Math.random() * 0.8})`;
+    box.appendChild(p);
+  }
+})();
+
+let state = null;
+let changelog = [];
+let lastCheck = null;
+const MODE_LABEL = { dev: 'Phát triển · dữ liệu mẫu', serve: 'Máy chủ cửa hàng' };
+
+function render() {
+  if (!state) return;
+  const { app, version, task, settings } = state;
+  const v = { ...version, ...(lastCheck || {}) };
+  $('chipVersion').textContent = `${v.current}${v.commit ? ` · ${v.commit}` : ''}`;
+  $('chipMode').textContent = MODE_LABEL[settings.mode];
+  $('chipBranch').textContent = `Nhánh ${v.branch || '—'}`;
+  $('brandSub').textContent = `Phiên bản ${v.current}`;
+
+  const busy = task && task.running;
+  const hero = $('hero');
+  const led = $('led');
+  hero.classList.remove('running');
+  hero.querySelector('.tag')?.remove();
+  hero.disabled = false;
+  let label = 'BẮT ĐẦU';
+  let status = 'Sẵn sàng khởi động. Nhấn BẮT ĐẦU để chạy toàn bộ hệ thống.';
+  led.className = 'led';
+
+  if (busy) {
+    label = `${task.kind === 'update' ? 'ĐANG CẬP NHẬT' : 'ĐANG KHỞI ĐỘNG'}<small>${Math.round(task.percent)}%</small>`;
+    hero.disabled = true;
+    status = task.kind === 'update' ? 'Đang cập nhật phiên bản mới — dữ liệu khách được sao lưu trước khi đổi cấu trúc.' : 'Đang khởi động Docker, CSDL, API và giao diện…';
+    led.className = 'led busy';
+  } else if (app.running) {
+    label = 'MỞ ỨNG DỤNG<small>Đang chạy</small>';
+    hero.classList.add('running');
+    status = `Hệ thống đang chạy (${MODE_LABEL[app.mode]}) tại ${app.url}`;
+    led.className = 'led on';
+  } else if (v.updateAvailable) {
+    label = `CẬP NHẬT<small>${esc(v.latest || 'bản mới')}${v.behind ? ` · ${v.behind} thay đổi` : ''}</small>`;
+    status = `Có phiên bản mới ${v.latest || ''}. Nhấn CẬP NHẬT để tải mã, build và chạy migration tự động.`;
+    led.className = 'led warn';
+    const tag = document.createElement('span'); tag.className = 'tag'; tag.textContent = 'MỚI'; hero.appendChild(tag);
+  }
+  if (task && !task.running && task.error && !app.running) {
+    status = `Lỗi: ${task.error}`;
+    led.className = 'led warn';
+  }
+  $('heroLabel').innerHTML = label;
+  $('statusText').textContent = status;
+
+  $('progress').classList.toggle('show', !!(task && (task.running || task.error)));
+  $('progressMeta').classList.toggle('show', !!(task && (task.running || task.error)));
+  if (task) {
+    $('bar').style.width = `${Math.max(2, Math.min(100, task.percent))}%`;
+    $('stepText').textContent = task.error && !task.running ? task.error : (task.step || task.lines.at(-1) || '');
+    $('pctText').textContent = `${Math.round(task.percent)}%${task.running ? ` · ${Math.round((Date.now() - task.startedAt) / 1000)} giây` : ''}`;
+  }
+}
+
+async function refresh() {
+  try { state = await api('/api/state'); render(); }
+  catch { $('statusText').textContent = 'Mất kết nối tới Launcher. Chạy lại HoYoSalon.bat.'; $('led').className = 'led warn'; }
+}
+
+async function checkUpdate(silent = false) {
+  try {
+    if (!silent) toast('Đang kiểm tra phiên bản mới nhất…');
+    lastCheck = await post('/api/check-update');
+    render();
+    if (!silent) {
+      if (!lastCheck.remoteReachable) toast('Không kết nối được kho mã (GitHub). Kiểm tra Internet.', 'err');
+      else toast(lastCheck.updateAvailable ? `Có phiên bản mới ${lastCheck.latest}` : `Bạn đang dùng bản mới nhất (${lastCheck.current})`, lastCheck.updateAvailable ? '' : 'ok');
+    }
+    if (document.querySelector('.tab.active')?.dataset.tab === 'version' && $('overlay').classList.contains('show')) showTab('version');
+  } catch (e) { if (!silent) toast(e.message, 'err'); }
+}
+
+$('hero').addEventListener('click', async () => {
+  if (!state) return;
+  const v = { ...state.version, ...(lastCheck || {}) };
+  try {
+    if (state.app.running) { await post('/api/open', { target: 'app' }); return; }
+    if (v.updateAvailable) {
+      if (!confirm(`Cập nhật lên ${v.latest || 'phiên bản mới'}?\n\nLauncher sẽ: tải mã mới → cài gói → build → dừng hệ thống → SAO LƯU CSDL → migration → chạy lại. Lỗi ở bước nào sẽ tự quay về bản cũ.`)) return;
+      await post('/api/update');
+      toast('Bắt đầu cập nhật…');
+    } else {
+      await post('/api/start');
+      toast('Đang khởi động hệ thống…');
+    }
+  } catch (e) { toast(e.message, 'err'); }
+  refresh();
+});
+
+// Menu phụ
+$('btnMore').addEventListener('click', (e) => { e.stopPropagation(); $('menu').classList.toggle('show'); });
+document.addEventListener('click', () => $('menu').classList.remove('show'));
+$('menu').addEventListener('click', async (e) => {
+  const act = e.target.closest('button')?.dataset.act;
+  if (!act) return;
+  try {
+    if (act === 'check') await checkUpdate();
+    if (act === 'open-app') await post('/api/open', { target: 'app' });
+    if (act === 'mail') await post('/api/open', { target: 'mail' });
+    if (act === 'docs') await post('/api/open', { target: 'docs' });
+    if (act === 'logs') openModal('logs');
+    if (act === 'force-update' && confirm('Build lại và chạy lại bản hiện tại (sao lưu CSDL trước khi migration)?')) { await post('/api/update', { force: true }); toast('Bắt đầu cập nhật lại…'); }
+    if (act === 'stop' && confirm('Dừng toàn bộ hệ thống? Khách sẽ không truy cập được cho tới khi bấm BẮT ĐẦU lại.')) {
+      const r = await post('/api/stop'); toast(r.stopped ? 'Đã dừng hệ thống' : (r.output || 'Không có hệ thống nào đang chạy'), r.stopped ? 'ok' : '');
+    }
+  } catch (err) { toast(err.message, 'err'); }
+  refresh();
+});
+$('btnFolder').addEventListener('click', () => post('/api/open', { target: 'folder' }));
+$('btnSettings').addEventListener('click', () => openModal('version'));
+$('btnNews').addEventListener('click', () => openModal('changelog'));
+$('newsMore').addEventListener('click', () => openModal('changelog'));
+
+// ---------------- Modal ----------------
+let logTimer = null;
+let logSource = 'server';
+function openModal(tab) { $('overlay').classList.add('show'); showTab(tab); }
+function closeModal() { $('overlay').classList.remove('show'); clearInterval(logTimer); }
+$('overlay').addEventListener('click', (e) => { if (e.target.id === 'overlay') closeModal(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
+document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => showTab(t.dataset.tab)));
+
+const closeBtn = '<button class="close" aria-label="Đóng" onclick="closeModal()">✕</button>';
+
+async function showTab(tab) {
+  clearInterval(logTimer);
+  document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === tab));
+  const panel = $('panel');
+  const v = { ...(state?.version || {}), ...(lastCheck || {}) };
+  if (tab === 'version') {
+    panel.innerHTML = `${closeBtn}<h3>Thông tin phiên bản</h3><p class="sub">Phiên bản đang chạy trên máy này và trạng thái kết nối kho mã.</p>
+      <div class="big-version">${esc(v.current || '—')}</div>
+      <div class="grid2" style="margin-top:12px">
+        <div class="card"><div class="k">Mã commit</div><div class="v">${esc(v.commit || '—')}</div></div>
+        <div class="card"><div class="k">Nhánh</div><div class="v">${esc(v.branch || '—')}</div></div>
+        <div class="card"><div class="k">Phiên bản mới nhất trên kho mã</div><div class="v">${esc(v.latest || 'chưa kiểm tra')}</div></div>
+        <div class="card"><div class="k">Kết nối kho mã</div><div class="v">${lastCheck ? (lastCheck.remoteReachable ? `<span class="badge ok">Đã kết nối (${esc(lastCheck.source)})</span>` : '<span class="badge warn">Không kết nối được</span>') : 'chưa kiểm tra'}</div></div>
+        <div class="card"><div class="k">Trạng thái</div><div class="v">${v.updateAvailable ? `<span class="badge warn">Có bản mới ${esc(v.latest || '')}</span>` : lastCheck ? '<span class="badge ok">Đang là bản mới nhất</span>' : '—'}</div></div>
+        <div class="card"><div class="k">Kiểm tra lần cuối</div><div class="v">${lastCheck ? new Date(lastCheck.checkedAt).toLocaleString('vi-VN') : '—'}</div></div>
+      </div>
+      <div class="row"><button class="btn gold" id="vCheck">Kiểm tra phiên bản mới nhất</button><button class="btn" id="vLog">Xem log cập nhật</button>${v.updateAvailable ? '<button class="btn" id="vUpdate">Cập nhật ngay</button>' : ''}</div>
+      ${v.branch && v.branch !== 'main' ? `<p class="sub">Lưu ý: cập nhật 1 chạm chỉ chạy trên nhánh <b>main</b> (máy đang ở nhánh ${esc(v.branch)}).</p>` : ''}`;
+    $('vCheck').onclick = () => checkUpdate();
+    $('vLog').onclick = () => showTab('changelog');
+    if ($('vUpdate')) $('vUpdate').onclick = () => { closeModal(); $('hero').click(); };
+  }
+  if (tab === 'changelog') {
+    if (!changelog.length) changelog = await api('/api/changelog').catch(() => []);
+    panel.innerHTML = `${closeBtn}<h3>Nhật ký cập nhật</h3><p class="sub">Các tính năng mới và bản sửa lỗi theo từng phiên bản (CHANGELOG.md).</p>
+      ${changelog.map((r) => `<div class="release"><h4>${esc(r.version)} <small>${esc(r.date || '')}</small>${r.version === v.current ? ' <span class="badge ok">Đang dùng</span>' : ''}</h4>
+        ${r.sections.map((s) => `<h5>${esc(s.title)}</h5><ul>${s.items.map((i) => `<li>${esc(i)}</li>`).join('')}</ul>`).join('')}</div>`).join('') || '<p class="sub">Chưa có CHANGELOG.md.</p>'}`;
+  }
+  if (tab === 'logs') {
+    const sources = [['client', 'Client (Giao diện)'], ['server', 'Server (API)'], ['database', 'CSDL PostgreSQL'], ['update', 'Cập nhật'], ['launcher', 'Launcher']];
+    panel.innerHTML = `${closeBtn}<h3>Log Client / Server</h3><p class="sub">Nhật ký chạy trực tiếp, tự làm mới mỗi 3 giây.</p>
+      <div class="row" style="margin-top:0"><div class="seg" id="logSeg">${sources.map(([k, l]) => `<button data-src="${k}" class="${k === logSource ? 'active' : ''}">${l}</button>`).join('')}</div></div>
+      <pre class="log" id="logBox">Đang tải…</pre>
+      <div class="row"><button class="btn" id="lRefresh">Làm mới</button><button class="btn" id="lCopy">Sao chép</button><button class="btn gold" id="lExport">Tải log lên / Xuất system_logs.zip</button><button class="btn" id="lFolder">Mở thư mục logs</button></div>`;
+    const load = async () => {
+      const box = $('logBox'); if (!box) return;
+      const atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 30;
+      try { const r = await api(`/api/logs?source=${logSource}&lines=500`); box.textContent = r.text || '(Chưa có nhật ký — bấm BẮT ĐẦU để chạy hệ thống)'; }
+      catch (e) { box.textContent = e.message; }
+      if (atBottom) box.scrollTop = box.scrollHeight;
+    };
+    $('logSeg').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; logSource = b.dataset.src; document.querySelectorAll('#logSeg button').forEach((x) => x.classList.toggle('active', x === b)); $('logBox').textContent = 'Đang tải…'; load().then(() => { $('logBox').scrollTop = 1e9; }); };
+    $('lRefresh').onclick = load;
+    $('lCopy').onclick = () => copy($('logBox').textContent);
+    $('lExport').onclick = exportLogs;
+    $('lFolder').onclick = () => post('/api/open', { target: 'logs' });
+    await load(); $('logBox').scrollTop = 1e9;
+    logTimer = setInterval(load, 3000);
+  }
+  if (tab === 'device') {
+    panel.innerHTML = `${closeBtn}<h3>Chẩn đoán thiết bị</h3><p class="sub">Cấu hình máy, phần mềm và trạng thái cổng — gửi kèm khi cần hỗ trợ kỹ thuật.</p><div id="devBox"><p class="sub">Đang thu thập…</p></div>`;
+    try {
+      const { info, text } = await api('/api/device-info');
+      $('devBox').innerHTML = `<div class="grid2">
+        ${[['Hệ điều hành', info.os], ['Máy', `${info.hostname} · ${info.cpu}`], ['Bộ nhớ', info.memory], ['Múi giờ', info.timezone],
+           ['Node.js', `${info.node} · npm ${info.npm || '?'}`], ['Git', info.git || 'chưa cài'], ['Docker', `${info.docker} · engine ${info.dockerEngine}`],
+           ['Ứng dụng', info.appStatus]].map(([k, val]) => `<div class="card"><div class="k">${k}</div><div class="v">${esc(val)}</div></div>`).join('')}
+        </div>
+        <div class="card" style="margin-top:10px"><div class="k">Cổng</div><div class="v" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">${info.ports.map((p) => `<span class="badge ${p.open ? 'ok' : ''}">${p.port} ${esc(p.name)} · ${p.open ? 'mở' : 'đóng'}</span>`).join('')}</div></div>
+        <div class="card" style="margin-top:10px"><div class="k">Container</div><div class="v">${esc(info.containers.join(' | ') || 'Không có container salon_*')}</div></div>
+        <div class="row"><button class="btn gold" id="dCopy">Sao chép thông tin thiết bị</button><button class="btn" id="dExport">Xuất gói chẩn đoán system_logs.zip</button></div>`;
+      $('dCopy').onclick = () => copy(text);
+      $('dExport').onclick = exportLogs;
+    } catch (e) { $('devBox').innerHTML = `<p class="sub">${esc(e.message)}</p>`; }
+  }
+  if (tab === 'settings') {
+    const s = state?.settings || {};
+    panel.innerHTML = `${closeBtn}<h3>Cài đặt</h3><p class="sub">Áp dụng cho lần bấm BẮT ĐẦU kế tiếp.</p>
+      <label class="opt"><input type="radio" name="mode" value="dev" ${s.mode === 'dev' ? 'checked' : ''}><span><b>Phát triển · trình diễn</b><small>Vite + NestJS theo dõi mã nguồn, nạp dữ liệu mẫu. Dành cho máy lập trình / bảo vệ đồ án.</small></span></label>
+      <label class="opt"><input type="radio" name="mode" value="serve" ${s.mode === 'serve' ? 'checked' : ''}><span><b>Máy chủ cửa hàng</b><small>Bản production một cổng 3000, chạy migration, KHÔNG nạp dữ liệu mẫu, giữ nguyên dữ liệu khách.</small></span></label>
+      <label class="opt"><input type="checkbox" id="sAuto" ${s.autoCheck !== false ? 'checked' : ''}><span><b>Tự kiểm tra bản mới khi mở Launcher</b><small>Cần Internet tới GitHub.</small></span></label>
+      <label class="opt"><input type="checkbox" id="sOpen" ${s.openOnReady !== false ? 'checked' : ''}><span><b>Tự mở trình duyệt khi hệ thống sẵn sàng</b></span></label>
+      <div class="row"><button class="btn" data-open="mail">Maildev</button><button class="btn" data-open="pgadmin">PgAdmin</button><button class="btn" data-open="docs">Swagger API</button><button class="btn danger" id="sStop">Dừng hệ thống</button></div>`;
+    panel.querySelectorAll('input[name=mode]').forEach((r) => r.onchange = async () => { state.settings = await post('/api/settings', { mode: r.value }); render(); toast(`Chế độ: ${MODE_LABEL[r.value]}`, 'ok'); });
+    $('sAuto').onchange = async (e) => { state.settings = await post('/api/settings', { autoCheck: e.target.checked }); };
+    $('sOpen').onchange = async (e) => { state.settings = await post('/api/settings', { openOnReady: e.target.checked }); };
+    panel.querySelectorAll('[data-open]').forEach((b) => b.onclick = () => post('/api/open', { target: b.dataset.open }));
+    $('sStop').onclick = async () => { if (!confirm('Dừng toàn bộ hệ thống?')) return; const r = await post('/api/stop'); toast(r.stopped ? 'Đã dừng hệ thống' : (r.output || 'Không có hệ thống nào đang chạy')); refresh(); };
+  }
+}
+window.closeModal = closeModal;
+
+async function exportLogs() {
+  try {
+    toast('Đang đóng gói nhật ký…');
+    const res = await fetch('/api/logs/export', { headers: { 'X-Launcher-Token': TOKEN } });
+    if (!res.ok) throw new Error('Không xuất được gói nhật ký');
+    const blob = await res.blob();
+    const name = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') || '')?.[1] || 'system_logs.zip';
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    toast(`Đã xuất ${name} (bí mật trong .env đã được ẩn). Gửi tệp này cho kỹ thuật viên.`, 'ok');
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+async function loadNews() {
+  changelog = await api('/api/changelog').catch(() => []);
+  const first = changelog[0];
+  if (!first) { $('newsList').innerHTML = '<li>Chưa có nhật ký cập nhật.</li>'; return; }
+  $('newsTitle').textContent = `Có gì mới · ${first.version}`;
+  // Mỗi mục chỉ lấy phần tiêu đề (trước dấu ":") để vừa một dòng; bấm "Xem log cập nhật" để đọc đầy đủ
+  $('newsList').innerHTML = first.sections.flatMap((s) => s.items).slice(0, 5)
+    .map((i) => `<li title="${esc(i)}">${esc(i.split(/: /)[0])}</li>`).join('');
+  const seen = (() => { try { return localStorage.getItem('launcher.seenVersion'); } catch { return null; } })();
+  $('newsDot').hidden = seen === first.version;
+  $('btnNews').addEventListener('click', () => { try { localStorage.setItem('launcher.seenVersion', first.version); } catch { /* bỏ qua */ } $('newsDot').hidden = true; }, { once: true });
+}
+
+(async () => {
+  await refresh();
+  await loadNews();
+  if (state?.settings?.autoCheck !== false) checkUpdate(true);
+  setInterval(refresh, 1500);
+})();
+</script>
+</body>
+</html>

@@ -36,7 +36,10 @@
     "test:ai:e2e:headed": "e2e run --headed",
     "test:ai:e2e:deterministic": "e2e run tests/01_public_booking_flow.e2e.ts tests/02_auth_and_roles.e2e.ts",
     "test:ai:e2e:explore": "e2e explore \"Kham pha toan bo he thong Salon Spa va tim loi\"",
-    "docs:report": "python docs/tools/build_report_docx.py && python docs/tools/build_slides_pptx.py"
+    "docs:report": "python docs/tools/build_report_docx.py && python docs/tools/build_slides_pptx.py",
+    "test:scripts": "node --test scripts/lib/test/*.test.mjs",
+    "test:frontend": "npm run test --prefix frontend",
+    "check:scripts": "node --check scripts/launcher.mjs && node --check scripts/hoyo/launcher-ui.mjs && node --check scripts/update.mjs && node --check scripts/backup.mjs"
   },
   "devDependencies": {
     "@ai-sdk/anthropic": "^4.0.72",
