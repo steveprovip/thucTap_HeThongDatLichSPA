@@ -159,6 +159,17 @@
   label.opt { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); margin-bottom: 8px; cursor: pointer; }
   label.opt input { margin-top: 3px; accent-color: #f6c453; }
   label.opt small { display: block; color: var(--ink-muted); font-size: 12px; }
+  .form { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; }
+  .form h4 { grid-column: 1 / -1; margin: 10px 0 0; font-size: 13px; color: var(--gold-2); letter-spacing: .02em; }
+  .form label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--ink-soft); }
+  .form label.wide { grid-column: 1 / -1; }
+  .form input, .form select { font: inherit; font-size: 13px; color: var(--ink); background: rgba(255,255,255,.06); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+  .form select option { color: #0f172a; }
+  .form input:focus, .form select:focus { outline: 2px solid var(--gold); outline-offset: 0; }
+  .form .err { color: #fda4af; font-size: 11px; min-height: 0; }
+  .form small.hint { color: var(--ink-muted); font-size: 11px; }
+  .setup-cta { position: fixed; left: 28px; bottom: 96px; max-width: 520px; display: none; gap: 12px; align-items: center; padding: 12px 14px; border-radius: 14px; border: 1px solid rgba(246,196,83,.45); background: rgba(59,42,5,.55); backdrop-filter: blur(14px); font-size: 13px; }
+  .setup-cta.show { display: flex; }
   .toasts { position: fixed; top: 18px; left: 50%; transform: translateX(-50%); z-index: 40; display: flex; flex-direction: column; gap: 8px; }
   .toast { padding: 10px 16px; border-radius: 12px; background: var(--glass-strong); border: 1px solid var(--line); backdrop-filter: blur(16px); font-size: 14px; box-shadow: 0 12px 30px rgba(0,0,0,.4); animation: in .25s ease; }
   .toast.err { border-color: rgba(251,113,133,.6); } .toast.ok { border-color: rgba(52,211,153,.6); }
@@ -238,6 +249,9 @@
       <button role="menuitem" data-act="logs">Xem log Client / Server</button>
       <button role="menuitem" data-act="mail">Hộp thư thử nghiệm (Maildev)</button>
       <button role="menuitem" data-act="docs">Tài liệu API (Swagger)</button>
+      <button role="menuitem" data-act="shop">Thiết lập cửa hàng (ngân hàng, thông tin tiệm, email)</button>
+      <button role="menuitem" data-act="backup">Sao lưu dữ liệu ngay</button>
+      <button role="menuitem" data-act="backups">Mở thư mục sao lưu</button>
       <button role="menuitem" data-act="force-update">Cập nhật lại (build lại bản hiện tại)</button>
       <button role="menuitem" data-act="stop">Dừng hệ thống</button>
     </div>
@@ -252,10 +266,15 @@
       <button class="tab" data-tab="changelog">Nhật ký cập nhật</button>
       <button class="tab" data-tab="logs">Log Client / Server</button>
       <button class="tab" data-tab="device">Chẩn đoán thiết bị</button>
+      <button class="tab" data-tab="shop">Thiết lập cửa hàng</button>
       <button class="tab" data-tab="settings">Cài đặt</button>
     </nav>
     <div class="panel" id="panel"></div>
   </div>
+</div>
+<div class="setup-cta" id="setupCta" role="status">
+  <span><b>Lần đầu dùng?</b> Nhập tên tiệm, tài khoản ngân hàng nhận VietQR và email gửi khách — 2 phút, không cần sửa tệp cấu hình.</span>
+  <button class="btn gold" id="setupGo">Thiết lập cửa hàng</button>
 </div>
 <div class="toasts" id="toasts" aria-live="polite"></div>
 
@@ -328,9 +347,12 @@ function render() {
   led.className = 'led';
 
   if (busy) {
-    label = `${task.kind === 'update' ? 'ĐANG CẬP NHẬT' : 'ĐANG KHỞI ĐỘNG'}<small>${Math.round(task.percent)}%</small>`;
+    label = `${{ update: 'ĐANG CẬP NHẬT', backup: 'ĐANG SAO LƯU' }[task.kind] || 'ĐANG KHỞI ĐỘNG'}<small>${Math.round(task.percent)}%</small>`;
     hero.disabled = true;
-    status = task.kind === 'update' ? 'Đang cập nhật: sao lưu CSDL → tải mã → cài gói → build → migration → chạy lại.' : 'Đang khởi động Docker, CSDL, API và giao diện…';
+    status = {
+      update: 'Đang cập nhật: sao lưu CSDL → tải mã → cài gói → build → migration → chạy lại.',
+      backup: 'Đang sao lưu dữ liệu vào thư mục backups…',
+    }[task.kind] || 'Đang khởi động Docker, CSDL, API và giao diện…';
     led.className = 'led busy';
   } else if (v.canUpdate) {
     // Bản mới được ưu tiên hơn "MỞ ỨNG DỤNG": máy tiệm thường chạy suốt ngày, nếu không sẽ không bao giờ thấy nút cập nhật
@@ -439,6 +461,9 @@ $('menu').addEventListener('click', async (e) => {
     if (act === 'mail') await post('/api/open', { target: 'mail' });
     if (act === 'docs') await post('/api/open', { target: 'docs' });
     if (act === 'logs') openModal('logs');
+    if (act === 'shop') openModal('shop');
+    if (act === 'backups') await post('/api/open', { target: 'backups' });
+    if (act === 'backup') { await post('/api/backup'); toast('Đang sao lưu dữ liệu…'); }
     if (act === 'force-update' && confirm('Build lại và chạy lại bản hiện tại (sao lưu CSDL trước khi migration)?')) { await post('/api/update', { force: true }); toast('Bắt đầu cập nhật lại…'); }
     if (act === 'stop' && confirm('Dừng toàn bộ hệ thống? Khách sẽ không truy cập được cho tới khi bấm BẮT ĐẦU lại.')) {
       const r = await post('/api/stop'); toast(r.stopped ? 'Đã dừng hệ thống' : (r.output || 'Không có hệ thống nào đang chạy'), r.stopped ? 'ok' : '');
@@ -527,6 +552,70 @@ async function showTab(tab) {
       $('dExport').onclick = exportLogs;
     } catch (e) { $('devBox').innerHTML = `<p class="sub">${esc(e.message)}</p>`; }
   }
+  if (tab === 'shop') {
+    const cfg = await api('/api/shop-config').catch((e) => { toast(e.message, 'err'); return null; });
+    if (!cfg) return;
+    const val = (k) => esc(cfg.values[k] || '');
+    const field = (k, label, opts = {}) => `<label class="${opts.wide ? 'wide' : ''}">${label}
+        <input id="f_${k}" name="${k}" type="${opts.type || 'text'}" value="${opts.type === 'password' ? '' : val(k)}" placeholder="${esc(opts.ph || '')}" autocomplete="off">
+        ${opts.hint ? `<small class="hint">${opts.hint}</small>` : ''}<span class="err" data-err="${k}"></span></label>`;
+    const known = cfg.banks.some((b) => b.bin === cfg.values.BANK_BIN);
+    panel.innerHTML = `${closeBtn}<h3>Thiết lập cửa hàng</h3>
+      <p class="sub">Launcher ghi vào backend/.env thay bạn (bản cũ lưu ở backend/.env.bak). Ô mật khẩu để trống = giữ nguyên.</p>
+      <form class="form" id="shopForm" autocomplete="off">
+        <h4>Thông tin tiệm (hiện trên trang đặt lịch, email và phiếu in)</h4>
+        ${field('SALON_NAME', 'Tên tiệm *', { wide: true })}
+        ${field('SALON_ADDRESS', 'Địa chỉ *', { wide: true })}
+        ${field('SALON_HOTLINE', 'Hotline *', { ph: '028 3838 6868' })}
+        ${field('SALON_EMAIL', 'Email liên hệ', { ph: 'lienhe@tiemcuaban.vn' })}
+        ${field('SALON_FACEBOOK_URL', 'Trang Facebook', { ph: 'https://www.facebook.com/…' })}
+        ${field('SALON_ZALO', 'Zalo (số điện thoại)', { ph: '0909 686 868' })}
+        <h4>Tài khoản nhận chuyển khoản VietQR</h4>
+        <label>Ngân hàng
+          <select id="f_BANK_BIN" name="BANK_BIN">
+            <option value="">— Chọn ngân hàng —</option>
+            ${cfg.banks.map((b) => `<option value="${b.bin}" ${b.bin === cfg.values.BANK_BIN ? 'selected' : ''}>${esc(b.name)} (${b.bin})</option>`).join('')}
+            ${cfg.values.BANK_BIN && !known ? `<option value="${val('BANK_BIN')}" selected>Mã BIN ${val('BANK_BIN')}</option>` : ''}
+          </select><span class="err" data-err="BANK_BIN"></span></label>
+        ${field('BANK_ACCOUNT_NO', 'Số tài khoản', { ph: '1023456789' })}
+        ${field('BANK_ACCOUNT_NAME', 'Tên chủ tài khoản', { wide: true, ph: 'NGUYEN THI HUONG', hint: 'Tự chuyển sang chữ in hoa không dấu như trên app ngân hàng.' })}
+        <h4>Email gửi xác nhận cho khách (Gmail)</h4>
+        ${field('SMTP_USER', 'Gmail gửi thư', { ph: 'tiemcuaban@gmail.com' })}
+        ${field('SMTP_PASSWORD', `Mật khẩu ứng dụng Gmail ${cfg.hasSmtpPassword ? '(đã có)' : ''}`, { type: 'password', ph: 'xxxx xxxx xxxx xxxx', hint: 'Google > Bảo mật > Xác minh 2 bước > Mật khẩu ứng dụng. KHÔNG dùng mật khẩu đăng nhập Gmail.' })}
+        <h4>Tài khoản quản trị đầu tiên (chỉ dùng khi hệ thống chưa có tài khoản nào)</h4>
+        ${field('BOOTSTRAP_ADMIN_EMAIL', 'Email đăng nhập', { ph: 'chutiem@gmail.com' })}
+        ${field('BOOTSTRAP_ADMIN_PASSWORD', `Mật khẩu ${cfg.hasAdminPassword ? '(đã có)' : ''}`, { type: 'password', hint: 'Từ 8 ký tự, có chữ và số, không dấu. Lần đăng nhập đầu sẽ được yêu cầu đổi mật khẩu.' })}
+      </form>
+      <label class="opt" style="margin-top:12px"><input type="checkbox" id="shopServe" ${cfg.mode === 'serve' ? 'checked' : ''}><span><b>Dùng chế độ Máy chủ cửa hàng</b><small>Bản chính thức cho tiệm: KHÔNG nạp dữ liệu mẫu, giữ nguyên dữ liệu khách, sao lưu tự động 02:00 mỗi ngày.</small></span></label>
+      <div class="row"><button class="btn gold" id="shopSave">Lưu thiết lập</button><button class="btn" data-open-shop="backups">Mở thư mục sao lưu</button></div>`;
+    panel.querySelector('[data-open-shop]').onclick = () => post('/api/open', { target: 'backups' });
+    $('shopSave').onclick = async () => {
+      const values = {};
+      $('shopForm').querySelectorAll('input, select').forEach((el) => { values[el.name] = el.value; });
+      panel.querySelectorAll('[data-err]').forEach((el) => { el.textContent = ''; });
+      try {
+        const r = await post('/api/shop-config', { values, mode: $('shopServe').checked ? 'serve' : 'dev' });
+        if (!r.ok) {
+          Object.entries(r.errors).forEach(([k, m]) => { const el = panel.querySelector(`[data-err="${k}"]`); if (el) el.textContent = m; });
+          panel.querySelector('.err:not(:empty)')?.previousElementSibling?.focus?.();
+          toast('Vui lòng sửa các ô được đánh dấu', 'err');
+          return;
+        }
+        $('setupCta').classList.remove('show');
+        state.settings = { ...state.settings, mode: $('shopServe').checked ? 'serve' : 'dev' };
+        if (r.restartNeeded && confirm('Đã lưu. Hệ thống đang chạy cần khởi động lại để áp dụng (khoảng 1 phút, khách đang mở trang sẽ thấy gián đoạn ngắn). Khởi động lại ngay?')) {
+          await post('/api/restart');
+          autoClose = false;
+          toast('Đang khởi động lại để áp dụng thiết lập…');
+          closeModal();
+        } else {
+          toast(r.changed ? 'Đã lưu thiết lập cửa hàng' : 'Không có thay đổi', 'ok');
+        }
+        refresh();
+      } catch (e) { toast(e.message, 'err'); }
+    };
+    return;
+  }
   if (tab === 'settings') {
     const s = state?.settings || {};
     panel.innerHTML = `${closeBtn}<h3>Cài đặt</h3><p class="sub">Áp dụng cho lần bấm BẮT ĐẦU kế tiếp.</p>
@@ -535,11 +624,16 @@ async function showTab(tab) {
       <label class="opt"><input type="checkbox" id="sAuto" ${s.autoCheck !== false ? 'checked' : ''}><span><b>Tự kiểm tra bản mới khi mở Launcher</b><small>Cần Internet tới GitHub.</small></span></label>
       <label class="opt"><input type="checkbox" id="sOpen" ${s.openOnReady !== false ? 'checked' : ''}><span><b>Tự mở trình duyệt khi hệ thống sẵn sàng</b></span></label>
       <label class="opt"><input type="checkbox" id="sClose" ${s.closeOnReady !== false ? 'checked' : ''}><span><b>Tự thu gọn Launcher khi đã mở ứng dụng</b><small>Hệ thống vẫn chạy nền. Mở lại Launcher bằng biểu tượng Hương Sen Salon trên màn hình.</small></span></label>
+      ${s.canAutoStart ? `<label class="opt"><input type="checkbox" id="sBoot" ${s.autoStartWindows ? 'checked' : ''}><span><b>Tự bật hệ thống khi mở máy</b><small>Đăng nhập Windows là hệ thống tự chạy và mở trang làm việc — nhân viên không cần bấm gì. Nên tắt chế độ ngủ của máy quầy.</small></span></label>` : ''}
       <div class="row"><button class="btn" data-open="mail">Maildev</button><button class="btn" data-open="pgadmin">PgAdmin</button><button class="btn" data-open="docs">Swagger API</button><button class="btn danger" id="sStop">Dừng hệ thống</button></div>`;
     panel.querySelectorAll('input[name=mode]').forEach((r) => r.onchange = async () => { state.settings = await post('/api/settings', { mode: r.value }); render(); toast(`Chế độ: ${MODE_LABEL[r.value]}`, 'ok'); });
     $('sAuto').onchange = async (e) => { state.settings = await post('/api/settings', { autoCheck: e.target.checked }); };
     $('sOpen').onchange = async (e) => { state.settings = await post('/api/settings', { openOnReady: e.target.checked }); };
     $('sClose').onchange = async (e) => { state.settings = await post('/api/settings', { closeOnReady: e.target.checked }); };
+    if ($('sBoot')) $('sBoot').onchange = async (e) => {
+      try { state.settings = await post('/api/settings', { autoStartWindows: e.target.checked }); toast(e.target.checked ? 'Đã bật tự khởi động cùng Windows' : 'Đã tắt tự khởi động', 'ok'); }
+      catch (err) { e.target.checked = !e.target.checked; toast(err.message, 'err'); }
+    };
     panel.querySelectorAll('[data-open]').forEach((b) => b.onclick = () => post('/api/open', { target: b.dataset.open }));
     $('sStop').onclick = async () => { if (!confirm('Dừng toàn bộ hệ thống?')) return; const r = await post('/api/stop'); toast(r.stopped ? 'Đã dừng hệ thống' : (r.output || 'Không có hệ thống nào đang chạy')); refresh(); };
   }
@@ -577,6 +671,9 @@ async function loadNews() {
   await loadNews();
   if (state?.settings?.autoCheck !== false) checkUpdate(true);
   setInterval(refresh, 1500);
+  // Máy tiệm chưa thiết lập (chưa có tài khoản nhận VietQR) -> nhắc ngay trên màn hình chính
+  api('/api/shop-config').then((c) => { if (!c.configured && c.mode === 'serve') $('setupCta').classList.add('show'); }).catch(() => undefined);
+  $('setupGo').onclick = () => openModal('shop');
   // Launcher để mở lâu (máy quầy): kiểm tra lại bản mới mỗi 30 phút
   setInterval(() => { if (state?.settings?.autoCheck !== false && !(state?.task?.running)) checkUpdate(true); }, 30 * 60_000);
 })();
