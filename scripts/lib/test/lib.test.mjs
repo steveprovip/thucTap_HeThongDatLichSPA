@@ -98,3 +98,45 @@ test('kiểm tra bản mới qua thẻ trên origin: báo CẬP NHẬT trên mai
   assert.equal(offline.remoteReachable, false);
   assert.equal(offline.latest, null);
 });
+
+test('Thiết lập cửa hàng: ghi đúng khoá vào .env, giữ nguyên dòng khác, không lộ mật khẩu', async () => {
+  const { buildShopUpdates, parseEnv, readShopConfig, toBankName, upsertEnv } = await import('../shop-config.mjs');
+  const env = [
+    '# Cấu hình', 'PORT=3000', 'SALON_NAME=Salon & Spa Hương Sen', 'JWT_ACCESS_SECRET=bi_mat', 'SMTP_HOST=localhost',
+    'SMTP_PASSWORD=cu123', '#BOOTSTRAP_ADMIN_EMAIL=', '#BOOTSTRAP_ADMIN_PASSWORD=', '',
+  ].join('\r\n');
+
+  const bad = buildShopUpdates({ SALON_NAME: '', SALON_HOTLINE: 'abc', BANK_BIN: '970436', BANK_ACCOUNT_NO: '' }, env);
+  assert.equal(bad.errors.SALON_NAME, 'Bắt buộc');
+  assert.ok(bad.errors.SALON_HOTLINE);
+  assert.equal(bad.errors.BANK_ACCOUNT_NO, 'Cần cả ngân hàng và số tài khoản');
+
+  const { errors, updates } = buildShopUpdates({
+    SALON_NAME: 'Tiệm #1 Hoa Sen', SALON_ADDRESS: '1 Lê Lợi', SALON_HOTLINE: '0909 123 456',
+    BANK_BIN: '970436', BANK_ACCOUNT_NO: '1023 4567 89', BANK_ACCOUNT_NAME: 'Nguyễn Thị Hương',
+    SMTP_USER: 'tiem@gmail.com', SMTP_PASSWORD: '', BOOTSTRAP_ADMIN_EMAIL: 'chu@tiem.vn', BOOTSTRAP_ADMIN_PASSWORD: 'MatKhau123',
+  }, env);
+  assert.deepEqual(errors, {});
+  assert.equal(updates.BANK_ACCOUNT_NO, '1023456789');
+  assert.equal(updates.BANK_ACCOUNT_NAME, 'NGUYEN THI HUONG');
+  assert.equal(updates.SMTP_HOST, 'smtp.gmail.com');
+  assert.ok(!('SMTP_PASSWORD' in updates), 'ô mật khẩu trống = giữ mật khẩu cũ');
+  assert.equal(updates.MAIL_FROM_NAME, 'Tiệm #1 Hoa Sen');
+
+  const out = upsertEnv(env, updates);
+  assert.ok(out.includes('\r\n'), 'giữ kiểu xuống dòng Windows');
+  const parsed = parseEnv(out);
+  assert.equal(parsed.SALON_NAME, 'Tiệm #1 Hoa Sen', 'giá trị có # được đặt trong nháy kép');
+  assert.equal(parsed.JWT_ACCESS_SECRET, 'bi_mat');
+  assert.equal(parsed.SMTP_PASSWORD, 'cu123');
+  assert.equal(parsed.BOOTSTRAP_ADMIN_EMAIL, 'chu@tiem.vn', 'dòng mẫu #KEY= được bỏ ghi chú');
+  assert.equal(parsed.BANK_BIN, '970436', 'khoá chưa có được thêm vào cuối');
+  assert.equal(out.match(/^SALON_NAME=/gm).length, 1);
+
+  const view = readShopConfig(out);
+  assert.equal(view.values.SALON_NAME, 'Tiệm #1 Hoa Sen');
+  assert.ok(!('SMTP_PASSWORD' in view.values) && !('BOOTSTRAP_ADMIN_PASSWORD' in view.values));
+  assert.equal(view.hasSmtpPassword, true);
+  assert.equal(view.gmailConfigured, true);
+  assert.equal(toBankName('Đặng Văn Ân'), 'DANG VAN AN');
+});

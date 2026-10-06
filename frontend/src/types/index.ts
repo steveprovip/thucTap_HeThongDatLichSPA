@@ -302,6 +302,8 @@ export interface SalonInfo {
   zaloUrl: string | null;
   websiteUrl: string | null;
   mapUrl: string;
+  /** Tài khoản nhận chuyển khoản VietQR, cấu hình lúc chạy (null = chưa cấu hình). */
+  bank: { bin: string; accountNo: string; accountName: string } | null;
   openingHours: { dayOfWeek: number; dayLabel: string; isClosed: boolean; openTime: string; closeTime: string }[];
   team: { id: string; fullName: string; avatarUrl: string | null; gender: StylistGender | null; specialty: string | null; bio: string | null; avgRating: number | null }[];
 }

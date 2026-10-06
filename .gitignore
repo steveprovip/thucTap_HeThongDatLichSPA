@@ -4,6 +4,7 @@ build/
 coverage/
 .env
 .env.local
+.env.bak
 *.log
 .DS_Store
 backend/uploads/*

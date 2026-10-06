@@ -1322,11 +1322,28 @@ async function updateApply() {
   return 0;
 }
 
+/** Sao lưu CSDL NGAY (Launcher > Sao lưu dữ liệu ngay): tệp nén ở backups/, giữ các bản mới nhất. */
+async function backupNow() {
+  if (checkNode() !== 0) return 1;
+  ensureEnvFiles();
+  log('[1/2] Kết nối cơ sở dữ liệu ...');
+  if (!(await ensureDatabase('     -'))) return 1;
+  log('[2/2] Sao lưu dữ liệu ...');
+  const built = existsSync(join(ROOT, 'backend', 'dist', 'database', 'backup-cli.js'));
+  const r = await backendScript(built ? 'backup:prod' : 'backup', ['--label=thu_cong']);
+  if (!r.ok) {
+    err('[LỖI] Sao lưu thất bại. Xuất nhật ký (Thông tin & Chẩn đoán > Xuất system_logs.zip) và gửi cho kỹ thuật viên.');
+    return 1;
+  }
+  log('SAO LƯU XONG. Nên chép thư mục backups sang USB hoặc ổ đám mây mỗi tuần.');
+  return 0;
+}
+
 /* ------------------------------------------------------------------------ main */
 const cmd = process.argv[2];
 const handlers = {
   start, 'check-node': checkNode, prepare, open: openWhenReady, run,
-  serve, resume, tunnel, stop: stopCommand, update, 'update-apply': updateApply,
+  serve, resume, tunnel, stop: stopCommand, update, 'update-apply': updateApply, backup: backupNow,
 };
 if (!handlers[cmd]) {
   err(`Cách dùng: node scripts/launcher.mjs <${Object.keys(handlers).join('|')}>`);

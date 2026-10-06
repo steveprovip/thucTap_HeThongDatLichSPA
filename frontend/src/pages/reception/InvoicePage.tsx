@@ -6,6 +6,7 @@ import type { Appointment, Invoice, PaymentMethod } from '@/types';
 import { Button, Card, ConfirmDialog, Field, Input, SectionTitle, Spinner, StatusBadge, VietQrCode } from '@/components';
 import { formatNumber, formatVnd, parseNumber } from '@/utils/format';
 import { useToast } from '@/contexts/ToastContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { SALON } from '@/utils/constants';
 
 interface Line {
@@ -31,6 +32,10 @@ export function InvoicePage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
+  /** S4-01: phiếu đã đóng chỉ sửa bằng PHIẾU ĐIỀU CHỈNH có lý do (Chủ tiệm). */
+  const [adjusting, setAdjusting] = useState(false);
+  const [adjustReason, setAdjustReason] = useState('');
+  const { user } = useAuth();
 
   const subtotal = lines.reduce((s, l) => s + l.unitPrice * l.quantity, 0);
   const total = Math.max(0, subtotal - discount);
@@ -38,6 +43,7 @@ export function InvoicePage() {
   const unsaved = !!invoice && (invoice.subtotal !== subtotal || invoice.discountAmount !== discount
     || (invoice.voucherCode ?? '') !== voucherCode.trim());
   const locked = invoice?.status === 'closed' || invoice?.status === 'adjusted';
+  const editLocked = locked && !adjusting;
   /** Nội dung CK = mã phiếu (ASCII, không gạch nối) → khớp 1-1 với ghi chú đối soát. */
   const transferRef = invoice ? invoice.code.replace(/[^0-9A-Za-z]/g, '').toUpperCase() : '';
 
@@ -128,6 +134,23 @@ export function InvoicePage() {
     }
   };
 
+  const submitAdjust = async () => {
+    if (!invoice) return;
+    if (!adjustReason.trim()) return toast.warning('Nhập lý do điều chỉnh (bắt buộc, được lưu vào nhật ký)');
+    setBusy(true);
+    try {
+      const adjusted = await invoicesApi.adjust(invoice.id, adjustReason.trim(), lines, voucherCode.trim() || null);
+      toast.success(`Đã lập phiếu điều chỉnh ${adjusted.code} — doanh thu tính theo phiếu mới`);
+      setAdjusting(false);
+      setAdjustReason('');
+      await load();
+    } catch (e) {
+      toast.error(getErrorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (loading) return <Spinner />;
   if (!appointment) return <p className="text-sm text-ink-muted">Không tìm thấy lịch hẹn.</p>;
 
@@ -164,7 +187,7 @@ export function InvoicePage() {
       <Card className="p-4">
         <div className="mb-2 flex items-center justify-between">
           <h3 className="text-sm font-bold">Dòng dịch vụ</h3>
-          {!locked && (
+          {!editLocked && (
             <Button size="sm" variant="outline" icon={<Plus size={14} />}
                     onClick={() => setLines((l) => [...l, { name: '', unitPrice: 0, quantity: 1 }])}>
               Thêm dòng phát sinh
@@ -177,26 +200,26 @@ export function InvoicePage() {
             <div key={idx} className="grid grid-cols-12 items-end gap-2">
               <div className="col-span-12 sm:col-span-6">
                 <Input
-                  value={l.name} disabled={locked} placeholder="Tên dịch vụ"
+                  value={l.name} disabled={editLocked} placeholder="Tên dịch vụ"
                   onChange={(e) => setLines((list) => list.map((x, i) => i === idx ? { ...x, name: e.target.value } : x))}
                 />
               </div>
               <div className="col-span-5 sm:col-span-3">
                 <Input
-                  value={formatNumber(l.unitPrice)} disabled={locked} inputMode="numeric"
+                  value={formatNumber(l.unitPrice)} disabled={editLocked} inputMode="numeric"
                   onChange={(e) => setLines((list) => list.map((x, i) =>
                     i === idx ? { ...x, unitPrice: parseNumber(e.target.value) } : x))}
                 />
               </div>
               <div className="col-span-4 sm:col-span-2">
                 <Input
-                  type="number" min={1} max={20} value={l.quantity} disabled={locked}
+                  type="number" min={1} max={20} value={l.quantity} disabled={editLocked}
                   onChange={(e) => setLines((list) => list.map((x, i) =>
                     i === idx ? { ...x, quantity: Math.max(1, Number(e.target.value) || 1) } : x))}
                 />
               </div>
               <div className="col-span-3 sm:col-span-1 flex justify-end">
-                {!locked && (
+                {!editLocked && (
                   <button className="rounded-lg p-2 text-red-600 hover:bg-red-50" aria-label="Xoá dòng"
                           onClick={() => setLines((list) => list.filter((_, i) => i !== idx))}>
                     <Trash2 size={16} />
@@ -210,10 +233,10 @@ export function InvoicePage() {
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <Field label="Mã giảm giá" hint="Mỗi phiếu chỉ áp được một mã">
             <div className="flex gap-2">
-              <Input value={voucherCode} disabled={locked}
+              <Input value={voucherCode} disabled={editLocked}
                      onChange={(e) => setVoucherCode(e.target.value.toUpperCase())}
                      placeholder="VD: NGAYTHUONG10" />
-              <Button variant="outline" onClick={applyVoucher} disabled={locked}>Áp dụng</Button>
+              <Button variant="outline" onClick={applyVoucher} disabled={editLocked}>Áp dụng</Button>
             </div>
           </Field>
           <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 text-sm">
@@ -284,6 +307,29 @@ export function InvoicePage() {
             Hình thức: {invoice?.paymentMethod === 'cash' ? 'Tiền mặt' : 'Chuyển khoản'}
             {invoice?.transferNote ? ` (${invoice.transferNote})` : ''}
           </p>
+          {invoice?.adjustReason && (
+            <p className="mt-1 text-sm text-ink-soft">Phiếu điều chỉnh — lý do: {invoice.adjustReason}</p>
+          )}
+          {invoice?.status === 'closed' && user?.role === 'owner' && (adjusting ? (
+            <div className="mt-3 space-y-2 rounded-xl border border-amber-200 bg-amber-50/60 p-3">
+              <p className="text-sm text-amber-900">
+                Sửa các dòng dịch vụ / mã giảm giá ở trên rồi lưu. Phiếu cũ được giữ nguyên để đối chiếu,
+                báo cáo doanh thu tính theo phiếu điều chỉnh.
+              </p>
+              <Field label="Lý do điều chỉnh" required>
+                <Input value={adjustReason} maxLength={255} onChange={(e) => setAdjustReason(e.target.value)}
+                       placeholder="VD: Thu nhầm giá dịch vụ, khách được tặng thêm…" />
+              </Field>
+              <div className="flex flex-wrap gap-2">
+                <Button loading={busy} onClick={submitAdjust}>Lưu phiếu điều chỉnh</Button>
+                <Button variant="ghost" disabled={busy} onClick={() => { setAdjusting(false); void load(); }}>Huỷ</Button>
+              </div>
+            </div>
+          ) : (
+            <Button className="mt-3" size="sm" variant="outline" onClick={() => setAdjusting(true)}>
+              Lập phiếu điều chỉnh
+            </Button>
+          ))}
         </Card>
       )}
 

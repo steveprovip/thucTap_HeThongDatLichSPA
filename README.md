@@ -20,10 +20,13 @@ Cửa sổ Launcher (nền tối kính mờ, phong cách game launcher) mở ra:
 | **BẮT ĐẦU** | Chạy toàn bộ: Docker → PostgreSQL → gói npm → migration (+ dữ liệu mẫu ở chế độ phát triển) → API + giao diện, thanh tiến trình theo từng bước; khi `GET http://127.0.0.1:3000/health` = 200 thì **tự mở trình duyệt vào ứng dụng và cửa sổ Launcher tự thu gọn** (đếm 3 giây, tắt được trong Cài đặt) |
 | **CẬP NHẬT (vX.Y.Z)** + huy hiệu **MỚI** | Launcher tự kiểm tra thẻ trên `origin` (`git ls-remote`, dự phòng GitHub Releases API) khi mở và mỗi 30 phút; có bản mới thì nút chính đổi thành CẬP NHẬT (kể cả khi hệ thống đang chạy). Một chạm: **sao lưu CSDL** → `git pull --ff-only` → cài gói → build → migration → chạy lại → mở ứng dụng; không tải tệp zip, lỗi ở bước nào tự quay về bản cũ. Chỉ nhánh `main` được tự cập nhật |
 | **MỞ ỨNG DỤNG** | Hệ thống đang chạy: mở trang |
+| ⋯ **Thiết lập cửa hàng** | Biểu mẫu cho chủ tiệm: tên tiệm, địa chỉ, hotline, **ngân hàng + số tài khoản VietQR**, Gmail gửi thư (mật khẩu ứng dụng), tài khoản quản trị đầu tiên → Launcher ghi `backend/.env` (giữ `.env.bak`), áp dụng bằng nút khởi động lại. Máy nhánh `main` mặc định *Máy chủ cửa hàng* |
+| ⋯ **Sao lưu dữ liệu ngay** / **Mở thư mục sao lưu** | Ngoài sao lưu tự động 02:00 hằng ngày (bù khi máy bật lại) và trước mỗi lần cập nhật |
 | ⚙ **Thông tin & Chẩn đoán** | Phiên bản + trạng thái kết nối kho mã, **Kiểm tra phiên bản mới nhất**, **Nhật ký cập nhật** (CHANGELOG), **Log Client / Server / CSDL** trực tiếp, **Xuất `system_logs.zip`** (đã ẩn mật khẩu), **Sao chép thông tin thiết bị** (OS, Node, Docker, cổng) |
 | Cài đặt | Chế độ *Phát triển · dữ liệu mẫu* hoặc *Máy chủ cửa hàng* (production, một cổng 3000, không nạp dữ liệu mẫu) |
 
 Launcher chỉ lắng nghe `127.0.0.1`, mọi API của nó cần mã phiên ngẫu nhiên; đóng cửa sổ Launcher **không** tắt hệ thống Salon.
+Bàn giao cho tiệm (không cần IT): [`docs/guides/BAN-GIAO-CHU-TIEM.md`](docs/guides/BAN-GIAO-CHU-TIEM.md).
 Các lệnh cũ vẫn dùng được: `scripts\windows\run_project.bat` · `scripts/unix/run_project.sh` (chi tiết bên dưới).
 
 ### Lệnh dòng lệnh (không dùng Launcher)
@@ -232,7 +235,8 @@ npm run lint             # ESLint cho cả hai phía
 | Bộ | Lệnh | Nội dung |
 |---|---|---|
 | Đơn vị backend | `npm test` | 168 ca: bộ tính khung giờ, âm lịch & ngày lễ, độ phủ ca, trợ lý xếp lịch, DTO, quy tắc ca… |
-| Đơn vị frontend + Launcher | `npm run test:frontend` · `npm run test:scripts` | Luật bản Demo; semver, CHANGELOG, ZIP, ẩn bí mật |
+| Đơn vị frontend + Launcher | `npm run test:frontend` · `npm run test:scripts` | Luật bản Demo; semver, CHANGELOG, ZIP, ẩn bí mật, kiểm tra bản mới qua thẻ trên origin, ghi `.env` của Thiết lập cửa hàng |
+| Bất biến nghiệp vụ | `npm run test:e2e` | Giữ chỗ không lách kỹ năng / lưới 15 phút, trả lượt khi thua cuộc tranh, huỷ ↔ xác nhận đồng thời, dời lịch vào chỗ giữ, nghỉ theo giờ, phiếu đã đóng bất biến ở CSDL (`docs/testing/AUDIT-5-BAT-BIEN-2026-10-06.md`) |
 | Góp ý Mentor Sprint 2 | `npm run test:e2e` | Đăng ký ca → duyệt, giữ chỗ 10 phút (10 khách tranh 1 khung), email xác nhận, AI ngày lễ, độ phủ ca, trợ lý xếp lịch, chân trang |
 | Phân quyền | `npm run test:e2e` | Đối chiếu 17 endpoint × 4 vai trò, khoá 15 phút sau 5 lần sai |
 | Chống đặt trùng | `npm run test:e2e` | 20 yêu cầu đồng thời → đúng 1 thành công |

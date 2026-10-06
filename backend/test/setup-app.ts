@@ -1,5 +1,6 @@
 process.env.TZ = 'Asia/Ho_Chi_Minh';
 process.env.MAIL_WORKER_ENABLED = process.env.MAIL_WORKER_ENABLED ?? 'false';
+process.env.BACKUP_DAILY = process.env.BACKUP_DAILY ?? 'off';
 process.env.BOOKING_IP_LIMIT_PER_HOUR = process.env.BOOKING_IP_LIMIT_PER_HOUR ?? '1000';
 process.env.LOOKUP_IP_LIMIT_PER_HOUR = process.env.LOOKUP_IP_LIMIT_PER_HOUR ?? '1000';
 
