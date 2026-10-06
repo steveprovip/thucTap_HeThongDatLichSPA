@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarOff, Copy, Plus, RotateCcw, Save, Trash2 } from 'lucide-react';
+import { CalendarOff, Copy, Plus, RotateCcw, Save, Sparkles, Trash2 } from 'lucide-react';
+import { HolidayAssistantModal } from './HolidayAssistantModal';
 import { getErrorMessage, workingHoursApi } from '@/api';
 import type { Holiday, WorkingHour } from '@/types';
 import {
@@ -51,6 +52,7 @@ export function WorkingHoursPage() {
   const [hWarning, setHWarning] = useState<HolidayWarning | null>(null);
   const [hSaving, setHSaving] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<Holiday | null>(null);
+  const [assistantOpen, setAssistantOpen] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -236,9 +238,15 @@ export function WorkingHoursPage() {
         title="Ngày nghỉ của tiệm"
         description="Trong ngày nghỉ, mọi khung giờ trống trên trang đặt lịch đều bị ẩn."
         action={canEdit && (
-          <Button size="sm" variant="outline" icon={<Plus size={15} />} onClick={openHoliday}>Khai báo ngày nghỉ</Button>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" icon={<Sparkles size={15} />} onClick={() => setAssistantOpen(true)}>
+              AI sinh ngày lễ cả năm
+            </Button>
+            <Button size="sm" variant="outline" icon={<Plus size={15} />} onClick={openHoliday}>Khai báo ngày nghỉ</Button>
+          </div>
         )}
       />
+      <HolidayAssistantModal open={assistantOpen} onClose={() => setAssistantOpen(false)} onApplied={() => void load()} />
 
       {holidays.length === 0 ? (
         <Card className="p-6 text-center text-sm text-ink-muted">

@@ -44,3 +44,23 @@ export class CreateHolidayDto {
   @IsOptional() @IsBoolean()
   force?: boolean;
 }
+
+export class HolidaySuggestionQueryDto {
+  @Type(() => Number)
+  @IsInt({ message: 'Năm không hợp lệ' }) @Min(2000, { message: 'Năm phải từ 2000' }) @Max(2100, { message: 'Năm phải trước 2100' })
+  year!: number;
+}
+
+export class GenerateHolidaysDto {
+  @Type(() => Number)
+  @IsInt({ message: 'Năm không hợp lệ' }) @Min(2000, { message: 'Năm phải từ 2000' }) @Max(2100, { message: 'Năm phải trước 2100' })
+  year!: number;
+
+  /** Chỉ áp dụng các ngày lễ được chọn (khoá trả về từ /holidays/suggestions). Bỏ trống = tất cả. */
+  @IsOptional() @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) @MaxLength(60, { each: true })
+  keys?: string[];
+
+  /** true = vẫn tạo ngày lễ đang có lịch hẹn của khách (chủ tiệm đã xem và chấp nhận xử lý các lịch đó). */
+  @IsOptional() @IsBoolean()
+  force?: boolean;
+}

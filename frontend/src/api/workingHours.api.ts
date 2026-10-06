@@ -1,5 +1,5 @@
 import { api, unwrap } from './client';
-import type { Holiday, WorkingHour } from '@/types';
+import type { GenerateHolidaysResult, Holiday, HolidaySuggestion, WorkingHour } from '@/types';
 
 export const workingHoursApi = {
   async list(): Promise<WorkingHour[]> {
@@ -15,6 +15,13 @@ export const workingHoursApi = {
     return unwrap<Holiday | { warning: string; affected: number; codes: string[] }>(
       await api.post('/holidays', payload),
     );
+  },
+  /** Trợ lý sinh ngày lễ: đề xuất toàn bộ ngày lễ quốc gia của một năm (đã đối chiếu lịch hẹn khách). */
+  async holidaySuggestions(year: number): Promise<HolidaySuggestion[]> {
+    return unwrap<HolidaySuggestion[]>(await api.get('/holidays/suggestions', { params: { year } }));
+  },
+  async generateHolidays(payload: { year: number; keys?: string[]; force?: boolean }): Promise<GenerateHolidaysResult> {
+    return unwrap<GenerateHolidaysResult>(await api.post('/holidays/generate', payload));
   },
   async removeHoliday(id: string): Promise<void> {
     await api.delete(`/holidays/${id}`);

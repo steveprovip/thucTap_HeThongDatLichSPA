@@ -175,6 +175,28 @@ export interface Holiday {
   reason: string;
 }
 
+/** Mentor S2 · mục 5: ngày lễ quốc gia do trợ lý đề xuất, đã đối chiếu dữ liệu tiệm. */
+export interface HolidaySuggestion {
+  key: string;
+  name: string;
+  startDate: string;
+  endDate: string;
+  days: number;
+  calendar: 'solar' | 'lunar';
+  rule: string;
+  note: string | null;
+  status: 'ready' | 'exists' | 'conflict' | 'past';
+  existingReason: string | null;
+  affectedAppointments: number;
+  affectedCodes: string[];
+}
+
+export interface GenerateHolidaysResult {
+  year: number;
+  created: { key: string; id: string; name: string; startDate: string; endDate: string }[];
+  skipped: { key: string; name: string; reason: string }[];
+}
+
 // ----------------------------------------------------------- Đặt lịch
 export interface Slot {
   time: string;

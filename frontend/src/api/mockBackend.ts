@@ -1070,6 +1070,48 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
     record('create', 'salon_holiday', 'Khai báo ngày nghỉ của tiệm', holiday.id, { ...p });
     return holiday;
   }
+  if (path === '/holidays/suggestions' || path === '/holidays/generate') {
+    // Chế độ Demo: bảng âm lịch tính sẵn (máy chủ thật tính bằng thuật toán thiên văn, mọi năm 2000–2100)
+    const year = Number(path.endsWith('generate') ? p.year : q.year);
+    const LUNAR: Record<number, [string, string]> = {
+      2025: ['2025-01-29', '2025-04-07'], 2026: ['2026-02-17', '2026-04-26'], 2027: ['2027-02-06', '2027-04-16'],
+      2028: ['2028-01-26', '2028-04-04'], 2029: ['2029-02-13', '2029-04-23'], 2030: ['2030-02-02', '2030-04-12'],
+    };
+    if (!LUNAR[year]) bad('Chế độ Demo chỉ hỗ trợ năm 2025–2030');
+    const shift = (d: string, n: number) => { const x = new Date(`${d}T00:00:00Z`); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
+    const [tet, hung] = LUNAR[year];
+    const base = [
+      ['tet-duong-lich', 'Tết Dương lịch', `${year}-01-01`, `${year}-01-01`, 'solar', '01/01 dương lịch'],
+      ['tet-nguyen-dan', `Tết Nguyên Đán ${year}`, shift(tet, -1), shift(tet, 3), 'lunar', 'Ngày cuối năm âm lịch đến mùng 4 Tết'],
+      ['gio-to-hung-vuong', 'Giỗ Tổ Hùng Vương', hung, hung, 'lunar', '10/3 âm lịch'],
+      ['giai-phong-mien-nam', 'Ngày Giải phóng miền Nam, thống nhất đất nước', `${year}-04-30`, `${year}-04-30`, 'solar', '30/04 dương lịch'],
+      ['quoc-te-lao-dong', 'Ngày Quốc tế Lao động', `${year}-05-01`, `${year}-05-01`, 'solar', '01/05 dương lịch'],
+      ['quoc-khanh', 'Quốc khánh', `${year}-09-01`, `${year}-09-02`, 'solar', '02/09 và 01 ngày liền kề'],
+      ...(year >= 2026 ? [['van-hoa-viet-nam', 'Ngày Văn hoá Việt Nam', `${year}-11-24`, `${year}-11-24`, 'solar', '24/11 dương lịch']] : []),
+    ];
+    const today = new Date().toLocaleDateString('en-CA');
+    const list = base.map(([k, name, startDate, endDate, calendar, rule]) => {
+      const existing = db.holidays.find(h => h.startDate <= endDate && h.endDate >= startDate);
+      const affected = db.appointments.filter(a => a.date >= startDate && a.date <= endDate && ACTIVE_STATUSES.includes(a.status));
+      return { key: `${year}-${k}`, name, startDate, endDate, calendar, rule, note: null,
+        days: Math.round((Date.parse(endDate) - Date.parse(startDate)) / 86400000) + 1,
+        status: endDate < today ? 'past' : existing ? 'exists' : affected.length ? 'conflict' : 'ready',
+        existingReason: existing?.reason ?? null, affectedAppointments: affected.length, affectedCodes: affected.map(a => a.code) };
+    });
+    if (path.endsWith('suggestions')) return list;
+    const keys = Array.isArray(p.keys) && p.keys.length ? new Set(p.keys as string[]) : null;
+    const created: { key: string; id: string; name: string; startDate: string; endDate: string }[] = [];
+    const skipped: { key: string; name: string; reason: string }[] = [];
+    for (const h of list) {
+      if (keys && !keys.has(h.key)) continue;
+      if (h.status === 'past' || h.status === 'exists' || (h.status === 'conflict' && !p.force)) {
+        skipped.push({ key: h.key, name: h.name, reason: h.status }); continue;
+      }
+      const holiday: Holiday = { id: uid(), startDate: h.startDate, endDate: h.endDate, reason: h.name };
+      db.holidays.push(holiday); created.push({ key: h.key, id: holiday.id, name: h.name, startDate: h.startDate, endDate: h.endDate });
+    }
+    save(); return { year, created, skipped };
+  }
   if (path.startsWith('/holidays/') && method === 'delete') {
     db.holidays = db.holidays.filter(h => h.id !== path.split('/')[2]); save(); return {};
   }
