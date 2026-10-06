@@ -143,7 +143,10 @@ describe('Hồi quy lỗi QA (EP-01 → EP-03)', () => {
     expect(del.status).toBe(409);
     expect(del.body.message).toContain('phiếu tính tiền');
 
+    // Phiếu đã đóng được CSDL bảo vệ (trigger) -> tạm tắt trigger chỉ để dọn dòng dữ liệu giả của chính bài kiểm thử
+    await ds.query('ALTER TABLE invoice_items DISABLE TRIGGER trg_invoice_items_protect_closed');
     await ds.query('DELETE FROM invoice_items WHERE service_id = $1', [serviceId]);
+    await ds.query('ALTER TABLE invoice_items ENABLE TRIGGER trg_invoice_items_protect_closed');
     await ds.query('DELETE FROM services WHERE id = $1', [serviceId]);
   }, 60000);
 

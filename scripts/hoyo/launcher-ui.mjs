@@ -16,13 +16,15 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import {
-  closeSync, createWriteStream, existsSync, mkdirSync, openSync, readFileSync, readSync, renameSync, statSync, writeFileSync,
+  closeSync, copyFileSync, createWriteStream, existsSync, mkdirSync, openSync, readFileSync, readSync, renameSync, rmSync,
+  statSync, writeFileSync,
 } from 'node:fs';
 import http from 'node:http';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkForUpdate, localVersion, readChangelog } from '../lib/version.mjs';
 import { buildLogBundle, deviceInfo, deviceInfoText, tailFile } from '../lib/diagnostics.mjs';
+import { BANKS, buildShopUpdates, readShopConfig, upsertEnv } from '../lib/shop-config.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..');
@@ -31,13 +33,23 @@ const UI_FILE = join(HERE, 'ui', 'index.html');
 const LOGS = join(ROOT, 'logs');
 const SETTINGS_FILE = join(ROOT, '.salon-launcher.json');
 const RUN_STATE = join(ROOT, '.salon-run.json');
+const BACKEND_ENV = join(ROOT, 'backend', '.env');
+/** Máy tiệm cài từ nhánh main -> mặc định chế độ "Máy chủ cửa hàng" (bản production, KHÔNG nạp dữ liệu mẫu). */
+const DEFAULT_MODE = localVersion(ROOT).branch === 'main' ? 'serve' : 'dev';
 const PORT = Number(process.env.SALON_LAUNCHER_PORT ?? 47321);
 const TOKEN = randomBytes(24).toString('hex');
 const IS_WIN = process.platform === 'win32';
 const API_PORT = 3000;
 const WEB_PORT = 5173;
 const IDLE_EXIT_MS = Number(process.env.SALON_LAUNCHER_IDLE_MS ?? 120_000);
+/** Tự kiểm tra bản mới định kỳ khi Launcher đang mở (mặc định 30 phút). */
+const AUTO_CHECK_MS = Number(process.env.SALON_LAUNCHER_CHECK_MS ?? 30 * 60_000);
 const SIGNATURE = 'salon-hoyo-launcher';
+/** Chạy từ thư mục Khởi động của Windows: tự BẮT ĐẦU, không mở cửa sổ Launcher. */
+const AUTOSTART = process.argv.includes('--autostart');
+const STARTUP_FILE = IS_WIN && process.env.APPDATA
+  ? join(process.env.APPDATA, 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup', 'Huong Sen Salon.vbs')
+  : null;
 
 mkdirSync(LOGS, { recursive: true });
 
@@ -46,10 +58,28 @@ const readJson = (file, fallback) => { try { return JSON.parse(readFileSync(file
 const settings = () => {
   const s = readJson(SETTINGS_FILE, {});
   const runMode = readJson(RUN_STATE, null)?.mode;
-  const mode = s.mode === 'serve' || s.mode === 'dev' ? s.mode : runMode === 'serve' ? 'serve' : 'dev';
-  return { mode, autoCheck: s.autoCheck !== false, openOnReady: s.openOnReady !== false };
+  const mode = s.mode === 'serve' || s.mode === 'dev' ? s.mode : runMode === 'serve' || runMode === 'dev' ? runMode : DEFAULT_MODE;
+  return {
+    mode, autoCheck: s.autoCheck !== false, openOnReady: s.openOnReady !== false, closeOnReady: s.closeOnReady !== false,
+    autoStartWindows: !!STARTUP_FILE && existsSync(STARTUP_FILE), canAutoStart: !!STARTUP_FILE,
+  };
 };
-const saveSettings = (patch) => writeFileSync(SETTINGS_FILE, JSON.stringify({ ...settings(), ...patch }, null, 2));
+const saveSettings = (patch) => {
+  // autoStartWindows / canAutoStart suy ra từ hệ thống, không lưu vào tệp cài đặt
+  const { autoStartWindows: _a, canAutoStart: _c, ...persist } = { ...settings(), ...patch };
+  writeFileSync(SETTINGS_FILE, JSON.stringify(persist, null, 2));
+};
+
+/** Bật / tắt "tự chạy hệ thống khi mở máy": một tệp .vbs nhỏ trong thư mục Startup gọi HoYoSalon.vbs --autostart. */
+function setAutoStartWindows(on) {
+  if (!STARTUP_FILE) throw Object.assign(new Error('Chỉ hỗ trợ trên Windows'), { status: 400 });
+  if (!on) { rmSync(STARTUP_FILE, { force: true }); return; }
+  const vbs = join(ROOT, 'scripts', 'windows', 'HoYoSalon.vbs');
+  const text = `' Huong Sen Salon - tu khoi dong he thong khi dang nhap Windows (tat trong Launcher > Cai dat)\r\n`
+    + `CreateObject("WScript.Shell").Run "wscript.exe //nologo ""${vbs}"" --autostart --no-shortcut", 0, False\r\n`;
+  // UTF-16 LE có BOM: đường dẫn thư mục có dấu tiếng Việt vẫn đúng
+  writeFileSync(STARTUP_FILE, Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(text, 'utf16le')]));
+}
 
 const httpStatus = (url, timeoutMs = 2000) => new Promise((resolve) => {
   const req = http.get(url, { timeout: timeoutMs }, (res) => { res.resume(); resolve(res.statusCode ?? 0); });
@@ -83,7 +113,7 @@ let latestCheck = null;
 const STEP_RE = /^\[(\d)\/(\d)\]\s*(.*)$/;
 const rotate = (file) => { try { if (existsSync(file) && statSync(file).size > 5 * 1024 * 1024) renameSync(file, `${file}.1`); } catch { /* bỏ qua */ } };
 
-function runTask(kind, args, { percentOf, readyCheck } = {}) {
+function runTask(kind, args, { percentOf, readyCheck, onSuccess } = {}) {
   if (task?.running) throw Object.assign(new Error('Launcher đang bận một tác vụ khác'), { status: 409 });
   const logFile = join(LOGS, kind === 'start' ? 'app.log' : `${kind}.log`);
   rotate(logFile);
@@ -99,7 +129,7 @@ function runTask(kind, args, { percentOf, readyCheck } = {}) {
       const m = STEP_RE.exec(line.trim());
       if (m && percentOf) { t.percent = Math.max(t.percent, percentOf(Number(m[1]), Number(m[2]))); t.step = m[3] || t.step; }
       if (/^\[LỖI\]/.test(line.trim())) t.error = line.trim().replace(/^\[LỖI\]\s*/, '');
-      if (/HỆ THỐNG ĐÃ SẴN SÀNG|CẬP NHẬT XONG|Đã là phiên bản mới nhất|MÁY CHỦ ĐÃ SẴN SÀNG/i.test(line)) {
+      if (/HỆ THỐNG ĐÃ SẴN SÀNG|CẬP NHẬT XONG|SAO LƯU XONG|Đã là phiên bản mới nhất|MÁY CHỦ ĐÃ SẴN SÀNG/i.test(line)) {
         t.percent = 100; t.step = line.trim(); t.done = true;
       }
     }
@@ -147,7 +177,7 @@ function runTask(kind, args, { percentOf, readyCheck } = {}) {
   child.on('exit', (code) => {
     t.running = false;
     t.exitCode = code ?? 0;
-    if (code === 0 && kind !== 'start') { t.percent = 100; t.done = true; }
+    if (code === 0 && kind !== 'start') { t.percent = 100; t.done = true; onSuccess?.(); }
     if (code !== 0 && !t.error) t.error = `Tác vụ dừng với mã ${code}. Xem nhật ký để biết chi tiết.`;
     out?.end();
   });
@@ -167,6 +197,16 @@ function runTask(kind, args, { percentOf, readyCheck } = {}) {
     }, 1500);
   }
   return t;
+}
+
+function startApp() {
+  const mode = settings().mode;
+  // dev: launcher "start" (Docker + dữ liệu mẫu + Vite/NestJS watch); serve: bản production, không nạp dữ liệu mẫu
+  runTask('start', [mode === 'serve' ? 'serve' : 'start'], {
+    percentOf: (k, n) => Math.round((k / n) * (mode === 'serve' ? 60 : 85)),
+    readyCheck: (ready) => { if (settings().openOnReady) openUrl(ready.url); },
+  });
+  return { started: true, mode };
 }
 
 // ------------------------------------------------------------------ mở cửa sổ
@@ -233,8 +273,12 @@ const readBody = (req) => new Promise((resolve) => {
 });
 const okHost = (host = '') => /^(127\.0\.0\.1|localhost)(:\d+)?$/i.test(host);
 
+let checking = null; // gộp các lần kiểm tra trùng nhau (tự động + người dùng bấm) -> chỉ một lệnh git fetch chạy
 async function versionInfo(fetchRemote) {
-  if (fetchRemote) latestCheck = await checkForUpdate(ROOT, { fetchRemote: true });
+  if (fetchRemote) {
+    checking ??= checkForUpdate(ROOT, { fetchRemote: true }).finally(() => { checking = null; });
+    latestCheck = await checking;
+  }
   const local = localVersion(ROOT);
   return { ...local, ...(latestCheck ?? {}), current: local.current, commit: local.commit, branch: local.branch };
 }
@@ -254,19 +298,46 @@ const routes = {
     if (body.mode === 'dev' || body.mode === 'serve') patch.mode = body.mode;
     if (typeof body.autoCheck === 'boolean') patch.autoCheck = body.autoCheck;
     if (typeof body.openOnReady === 'boolean') patch.openOnReady = body.openOnReady;
+    if (typeof body.closeOnReady === 'boolean') patch.closeOnReady = body.closeOnReady;
+    if (typeof body.autoStartWindows === 'boolean') setAutoStartWindows(body.autoStartWindows);
     saveSettings(patch);
     return settings();
   },
   'POST /api/start': async () => {
     const st = await appStatus();
     if (st.running) { openUrl(st.url); return { alreadyRunning: true, url: st.url }; }
-    const mode = settings().mode;
-    // dev: launcher "start" (Docker + dữ liệu mẫu + Vite/NestJS watch); serve: bản production, không nạp dữ liệu mẫu
-    runTask('start', [mode === 'serve' ? 'serve' : 'start'], {
-      percentOf: (k, n) => Math.round((k / n) * (mode === 'serve' ? 60 : 85)),
-      readyCheck: (ready) => { if (settings().openOnReady) openUrl(ready.url); },
-    });
-    return { started: true, mode };
+    return startApp();
+  },
+  /** Áp dụng Thiết lập cửa hàng: máy chủ chỉ đọc backend/.env lúc khởi động -> dừng rồi bật lại. */
+  'POST /api/restart': async () => {
+    if (task?.running) throw Object.assign(new Error('Launcher đang bận một tác vụ khác'), { status: 409 });
+    spawnSync(process.execPath, [LAUNCHER, 'stop'], { cwd: ROOT, encoding: 'utf8', timeout: 60000, windowsHide: true });
+    task = null;
+    return startApp();
+  },
+  'POST /api/backup': async () => {
+    runTask('backup', ['backup'], { percentOf: (k, n) => Math.round((k / n) * 90) });
+    return { started: true };
+  },
+  'GET /api/shop-config': async () => {
+    const text = existsSync(BACKEND_ENV) ? readFileSync(BACKEND_ENV, 'utf8') : '';
+    const cfg = readShopConfig(text);
+    return { ...cfg, banks: BANKS, configured: !!(cfg.values.BANK_BIN && cfg.values.BANK_ACCOUNT_NO), mode: settings().mode };
+  },
+  'POST /api/shop-config': async (body) => {
+    const example = join(ROOT, 'backend', '.env.example');
+    if (!existsSync(BACKEND_ENV) && existsSync(example)) copyFileSync(example, BACKEND_ENV);
+    const text = existsSync(BACKEND_ENV) ? readFileSync(BACKEND_ENV, 'utf8') : '';
+    const { errors, updates } = buildShopUpdates(body.values ?? {}, text);
+    if (Object.keys(errors).length) return { ok: false, errors };
+    if (Object.keys(updates).length) {
+      writeFileSync(`${BACKEND_ENV}.bak`, text); // bản trước khi sửa, phòng khi cần khôi phục tay
+      writeFileSync(BACKEND_ENV, upsertEnv(text, updates));
+    }
+    if (body.mode === 'serve' || body.mode === 'dev') saveSettings({ mode: body.mode });
+    note(`Thiết lập cửa hàng: cập nhật ${Object.keys(updates).filter((k) => !/PASSWORD/.test(k)).join(', ') || 'không đổi'}`);
+    const st = await appStatus();
+    return { ok: true, changed: Object.keys(updates).length, restartNeeded: st.running && Object.keys(updates).length > 0 };
   },
   'POST /api/stop': async () => {
     const r = spawnSync(process.execPath, [LAUNCHER, 'stop'], { cwd: ROOT, encoding: 'utf8', timeout: 60000, windowsHide: true });
@@ -274,12 +345,30 @@ const routes = {
     return { stopped: r.status === 0, output: `${r.stdout}${r.stderr}`.trim() };
   },
   'POST /api/update': async (body) => {
-    runTask('update', ['update', ...(body.force ? ['--force'] : [])], { percentOf: (k, n) => Math.round((k / n) * 95) });
+    runTask('update', ['update', ...(body.force ? ['--force'] : [])], {
+      percentOf: (k, n) => Math.round((k / n) * 95),
+      // Cập nhật xong hệ thống đã tự chạy lại -> mở thẳng ứng dụng (như bấm BẮT ĐẦU)
+      onSuccess: async () => {
+        latestCheck = null;
+        const st = await appStatus();
+        if (st.running && settings().openOnReady) openUrl(st.url);
+      },
+    });
     return { started: true };
   },
   'GET /api/task': async () => task,
+  /** Cửa sổ Launcher tự đóng sau khi hệ thống sẵn sàng -> thoát máy chủ Launcher luôn, không chờ 2 phút. */
+  'POST /api/bye': async () => {
+    setTimeout(() => {
+      if (task?.running && task.kind !== 'start') return; // đang cập nhật: để vòng kiểm tra rảnh tự thoát sau
+      note('Cửa sổ Launcher đã thu gọn sau khi hệ thống sẵn sàng — thoát. Hệ thống Salon vẫn chạy nền.');
+      process.exit(0);
+    }, 4000).unref();
+    return { ok: true };
+  },
   'POST /api/open': async (body) => {
     const st = await appStatus();
+    if (body.target === 'backups') { mkdirSync(join(ROOT, 'backups'), { recursive: true }); openUrl(join(ROOT, 'backups')); return { ok: true }; }
     const target = { app: st.url, mail: 'http://localhost:1080', pgadmin: 'http://localhost:5050', docs: `http://localhost:${API_PORT}/api/docs` }[body.target];
     if (body.target === 'logs') openUrl(LOGS);
     else if (body.target === 'folder') openUrl(ROOT);
@@ -346,7 +435,7 @@ const server = http.createServer(async (req, res) => {
 const launcherLog = createWriteStream(join(LOGS, 'launcher-ui.log'), { flags: 'a' });
 const note = (msg) => { const line = `[${new Date().toISOString()}] ${msg}`; launcherLog.write(`${line}\n`); process.stdout.write(`${msg}\n`); };
 const uiUrl = `http://127.0.0.1:${PORT}/`;
-const wantOpen = !process.argv.includes('--no-open');
+const wantOpen = !process.argv.includes('--no-open') && !AUTOSTART;
 
 server.on('error', async (e) => {
   if (e.code === 'EADDRINUSE') {
@@ -370,11 +459,25 @@ server.on('error', async (e) => {
 server.listen(PORT, '127.0.0.1', () => {
   note(`HoYoSalon Launcher đang chạy tại ${uiUrl} (đóng cửa sổ này hoặc để tự thoát khi không còn ai dùng).`);
   if (wantOpen) openUrl(uiUrl, { appWindow: true });
+  // Kiểm tra bản mới ngay khi mở (chạy nền, không chặn giao diện) và lặp lại định kỳ
+  const autoCheck = () => {
+    if (!settings().autoCheck || task?.running) return;
+    versionInfo(true).then((v) => { if (v.updateAvailable) note(`Có phiên bản mới ${v.latest ?? ''} (${v.behind} thay đổi).`); }).catch(() => undefined);
+  };
+  autoCheck();
+  setInterval(autoCheck, AUTO_CHECK_MS).unref();
+  if (AUTOSTART) {
+    appStatus().then((st) => {
+      if (st.running) { note('Tự khởi động: hệ thống đã chạy sẵn.'); return; }
+      note('Tự khởi động cùng Windows: BẮT ĐẦU hệ thống.');
+      startApp();
+    }).catch((e) => note(`[LỖI] Tự khởi động: ${e.message}`));
+  }
 });
 
 // Tự thoát khi không còn cửa sổ Launcher (giao diện gọi /api/state mỗi 1,5 giây). Hệ thống Salon vẫn chạy tiếp.
 setInterval(() => {
-  if (task?.running && task.kind !== 'start') return;
+  if (task?.running && (task.kind !== 'start' || AUTOSTART)) return;
   if (Date.now() - lastSeen > IDLE_EXIT_MS) {
     note('Không còn cửa sổ Launcher nào mở — thoát. Hệ thống Salon (nếu đang chạy) vẫn hoạt động.');
     process.exit(0);

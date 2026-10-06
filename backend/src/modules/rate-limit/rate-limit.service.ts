@@ -10,7 +10,7 @@ export interface RateLimitResult {
 }
 
 /**
- * Bộ đếm tần suất theo cửa sổ trượt 1 giờ, lưu trong CSDL để nhiều tiến trình
+ * Bộ đếm tần suất theo cửa sổ cố định (mặc định 1 giờ, mở cửa sổ mới khi cửa sổ cũ hết hạn), lưu trong CSDL để nhiều tiến trình
  * backend cùng dùng chung (chống spam đặt lịch S2-07, tra cứu S2-09, gửi lại
  * liên kết đặt lại mật khẩu S1-04).
  */
@@ -61,6 +61,15 @@ export class RateLimitService {
       await this.repo.update({ scope, identifier }, { blockedUntil });
     }
     return { allowed, remaining: Math.max(0, limit - row.hit_count), blockedUntil };
+  }
+
+  /** Trả lại một lượt đã tính (thao tác thất bại không do người dùng, ví dụ thua cuộc tranh khung giờ). */
+  async refund(scope: string, identifier: string): Promise<void> {
+    await this.repo.query(
+      `UPDATE rate_limits SET hit_count = GREATEST(hit_count - 1, 0), updated_at = now()
+        WHERE scope = $1 AND identifier = $2 AND (blocked_until IS NULL OR blocked_until <= now())`,
+      [scope, identifier],
+    );
   }
 
   /** Xoá bộ đếm khi thao tác thành công (ví dụ tra cứu đúng mã). */

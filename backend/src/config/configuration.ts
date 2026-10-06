@@ -49,6 +49,11 @@ const configuration = () => ({
     salonWebsiteUrl: process.env.SALON_WEBSITE_URL ?? '',
     salonMapUrl: process.env.SALON_MAP_URL ?? '',
     salonSlogan: process.env.SALON_SLOGAN ?? 'Chăm sóc tóc, da và tinh thần trong không gian tinh tế',
+    // Tài khoản nhận chuyển khoản VietQR — đọc lúc CHẠY (Launcher > Thiết lập cửa hàng ghi vào đây), không cần build lại
+    // giao diện như VITE_BANK_* cũ. Mã BIN NAPAS 6 số, ví dụ 970436 = Vietcombank.
+    bankBin: process.env.BANK_BIN ?? '',
+    bankAccountNo: process.env.BANK_ACCOUNT_NO ?? '',
+    bankAccountName: process.env.BANK_ACCOUNT_NAME ?? '',
   },
   database: {
     // DATABASE_URL (Supabase / Neon / Render) hoặc DB_HOST… (Docker tại máy); xem config/db-connection.ts

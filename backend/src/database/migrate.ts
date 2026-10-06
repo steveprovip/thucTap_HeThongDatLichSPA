@@ -49,7 +49,10 @@ interface Inspection {
 
 /** Đối chiếu migration trong mã nguồn với bảng `migrations` (trống nếu CSDL mới tinh). */
 async function inspect(ds: DataSource): Promise<Inspection> {
-  const all = ds.migrations.map((m) => m.name ?? m.constructor.name).sort();
+  // Thứ tự CHẠY THẬT của TypeORM là theo mốc thời gian ở cuối tên (không theo bảng chữ cái):
+  // ProtectFinancialHistory1791417600000 chạy SAU SlotHolds1791331300000 dù chữ "P" đứng trước "S"
+  const stamp = (n: string): number => Number(/(\d{13})$/.exec(n)?.[1] ?? 0);
+  const all = ds.migrations.map((m) => m.name ?? m.constructor.name).sort((a, b) => stamp(a) - stamp(b) || a.localeCompare(b));
   const exists = await ds.query(`SELECT to_regclass('public.migrations') AS t`);
   const executed: string[] = exists[0].t
     ? (await ds.query('SELECT name FROM migrations ORDER BY id')).map((r: { name: string }) => r.name)

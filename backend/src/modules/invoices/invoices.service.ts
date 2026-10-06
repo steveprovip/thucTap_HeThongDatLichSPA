@@ -2,7 +2,7 @@ import {
   BadRequestException, ConflictException, Injectable, NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import { Invoice, InvoiceStatus, PaymentMethod } from '../../database/entities/invoice.entity';
 import { InvoiceItem } from '../../database/entities/invoice-item.entity';
 import { Voucher, DiscountType } from '../../database/entities/voucher.entity';
@@ -216,6 +216,16 @@ export class InvoicesService {
     return invoice ? this.toView(invoice) : null;
   }
 
+  /** Khoá dòng phiếu (FOR UPDATE) và bảo đảm phiếu còn sửa được; trả về trạng thái hiện tại trong CSDL. */
+  private async lockOpenInvoice(manager: EntityManager, id: string): Promise<InvoiceStatus> {
+    const rows: { status: InvoiceStatus }[] = await manager.query('SELECT status FROM invoices WHERE id = $1 FOR UPDATE', [id]);
+    if (!rows.length) throw new NotFoundException(MSG.INVOICE_NOT_FOUND);
+    if (rows[0].status === InvoiceStatus.CLOSED || rows[0].status === InvoiceStatus.ADJUSTED) {
+      throw new ConflictException(MSG.INVOICE_CLOSED);
+    }
+    return rows[0].status;
+  }
+
   /** Sửa dòng dịch vụ / áp mã giảm giá khi phiếu còn ở trạng thái nháp. */
   async update(id: string, dto: UpdateInvoiceDto): Promise<InvoiceView> {
     const invoice = await this.repo.findOne({ where: { id } });
@@ -228,6 +238,9 @@ export class InvoicesService {
     const { voucher, discount } = await this.resolveVoucher(dto.voucherCode, subtotal);
 
     await this.dataSource.transaction(async (manager) => {
+      // Khoá dòng phiếu + đọc lại trạng thái TRONG giao dịch: "Đóng phiếu" chạy song song không thể bị lượt sửa này
+      // kéo phiếu đã đóng về nháp (kiểm tra ở trên chỉ là đọc trước, không giữ khoá)
+      invoice.status = await this.lockOpenInvoice(manager, id);
       await manager.delete(InvoiceItem, { invoiceId: id });
       await manager.save(lines.map((l) => manager.create(InvoiceItem, { ...l, invoiceId: id })));
       invoice.subtotal = subtotal;
@@ -260,7 +273,10 @@ export class InvoicesService {
     invoice.transferNote = dto.paymentMethod === PaymentMethod.TRANSFER ? dto.transferNote!.trim() : null;
     invoice.status = InvoiceStatus.PAID;
     invoice.paidAt = new Date();
-    await this.repo.save(invoice);
+    await this.dataSource.transaction(async (manager) => {
+      await this.lockOpenInvoice(manager, id);
+      await manager.save(Invoice, invoice);
+    });
     return this.toView(invoice);
   }
 
@@ -338,8 +354,10 @@ export class InvoicesService {
         }),
       );
       await manager.save(lines.map((l) => manager.create(InvoiceItem, { ...l, invoiceId: invoice.id })));
+      // Có điều kiện: hai lượt "Lập phiếu điều chỉnh" cùng lúc chỉ một lượt thành công (lượt kia huỷ cả giao dịch)
+      const res = await manager.update(Invoice, { id: origin.id, status: InvoiceStatus.CLOSED }, { status: InvoiceStatus.ADJUSTED });
+      if (!res.affected) throw new ConflictException('Phiếu này vừa được điều chỉnh bởi người khác. Tải lại để xem phiếu mới nhất');
       origin.status = InvoiceStatus.ADJUSTED;
-      await manager.save(Invoice, origin);
       return invoice;
     });
 

@@ -32,6 +32,7 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 import { AuditLogInterceptor } from './common/interceptors/audit-log.interceptor';
 import { RealtimeInterceptor } from './modules/events/realtime.interceptor';
+import { MaintenanceModule } from './modules/maintenance/maintenance.module';
 
 @Module({
   imports: [
@@ -61,6 +62,7 @@ import { RealtimeInterceptor } from './modules/events/realtime.interceptor';
     InvoicesModule,
     AnalyticsModule,
     EventsModule,
+    MaintenanceModule,
   ],
   controllers: [HealthController],
   providers: [

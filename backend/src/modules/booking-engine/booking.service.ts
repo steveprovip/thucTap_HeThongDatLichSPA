@@ -29,6 +29,7 @@ import { RateLimitService } from '../rate-limit/rate-limit.service';
 import { CreateBookingDto } from './dto/booking.dto';
 import { mapPublicAppointment } from './appointment.mapper';
 import { SlotHoldService } from './slot-hold.service';
+import { saveAppointmentGuarded } from './appointment-guard';
 
 export interface BookingResult {
   code: string;
@@ -50,6 +51,26 @@ const SERIALIZATION_ERRORS = new Set(['40001', '40P01']);
 
 /** Số lần tự phân lại sang thợ khác khi thợ vừa chọn bị giành mất khung giờ (QA-15). */
 const MAX_AUTO_REASSIGN = 5;
+
+/**
+ * 409 do THUA CUỘC TRANH khung giờ khách vừa thấy còn trống (người khác vừa chốt / đang giữ chỗ / xung đột khoá).
+ * Lượt này được trả lại vào hạn mức đặt lịch theo IP; các 409 khác (vd. giờ không còn thợ nào) vẫn bị tính.
+ */
+class SlotRaceLostException extends ConflictException {}
+
+/** Tham số đặt lịch dùng chung cho trang công khai (online) và tạo lịch tại quầy (walk-in). */
+interface CreateBookingParams {
+  dto: CreateBookingDto;
+  ip: string;
+  source: AppointmentSource;
+  actorId?: string | null;
+  actorName?: string | null;
+  /** Lễ tân tạo lịch tại quầy được bỏ qua ràng buộc đặt trước 60 phút (S3-07). */
+  ignoreLeadTime?: boolean;
+  /** Lịch tại quầy vào thẳng trạng thái Đã xác nhận. */
+  autoConfirm?: boolean;
+  skipRateLimit?: boolean;
+}
 
 /** QA-18 / QA-20: vượt hạn mức trả 429 Too Many Requests kèm Retry-After, không dùng 400/403. */
 const tooManyRequests = (
@@ -115,27 +136,28 @@ export class BookingService {
    *   3. Ràng buộc EXCLUDE trên bảng appointments ở tầng CSDL — chốt chặn cuối
    *      cùng, đúng cả khi có tiến trình khác ghi thẳng vào cơ sở dữ liệu.
    */
-  async createBooking(params: {
-    dto: CreateBookingDto;
-    ip: string;
-    source: AppointmentSource;
-    actorId?: string | null;
-    actorName?: string | null;
-    /** Lễ tân tạo lịch tại quầy được bỏ qua ràng buộc đặt trước 60 phút (S3-07). */
-    ignoreLeadTime?: boolean;
-    /** Lịch tại quầy vào thẳng trạng thái Đã xác nhận. */
-    autoConfirm?: boolean;
-    skipRateLimit?: boolean;
-  }): Promise<BookingResult> {
-    const { dto, ip } = params;
-    const now = new Date();
-
-    // ----- 1. Chống spam theo IP (S2-07)
+  async createBooking(params: CreateBookingParams): Promise<BookingResult> {
+    // ----- 1. Chống spam theo IP (S2-07): tối đa N lượt đặt / IP / giờ
+    let charged = false;
     if (!params.skipRateLimit) {
       const limit = this.config.get<number>('security.bookingIpLimitPerHour')!;
-      const rl = await this.rateLimit.hit('booking_ip', ip, limit, 60);
+      const rl = await this.rateLimit.hit('booking_ip', params.ip, limit, 60);
       if (!rl.allowed) throw tooManyRequests(MSG.BOOKING_RATE_LIMITED, 3600);
+      charged = true;
     }
+    try {
+      return await this.createBookingUnmetered(params);
+    } catch (e) {
+      // Thua cuộc tranh khung giờ không phải lỗi của khách -> trả lại lượt, nếu không khách chọn lại 2-3 lần là bị
+      // chặn 1 giờ. Lỗi dữ liệu (400) và 409 khác (giờ không còn thợ nào) vẫn bị tính để chống dò / spam.
+      if (charged && e instanceof SlotRaceLostException) await this.rateLimit.refund('booking_ip', params.ip).catch(() => undefined);
+      throw e;
+    }
+  }
+
+  private async createBookingUnmetered(params: CreateBookingParams): Promise<BookingResult> {
+    const { dto } = params;
+    const now = new Date();
 
     // ----- 2. Dịch vụ và tổng thời lượng
     const services = await this.availability.loadServices(dto.serviceIds);
@@ -180,9 +202,21 @@ export class BookingService {
     const ownHold = hold && hold.startAt.getTime() === startAt.getTime() && hold.endAt.getTime() === endAt.getTime()
       && (!dto.stylistId || dto.stylistId === hold.stylistId) ? hold : null;
     const holdToken = ownHold?.token;
-    let stylistId: string;
+    let stylistId = '';
     if (!dto.stylistId && ownHold) {
-      stylistId = ownHold.stylistId;
+      // Chỗ giữ chỉ lưu thợ + giờ, KHÔNG lưu dịch vụ: vẫn kiểm tra kỹ năng và khung giờ (ca, giờ nghỉ, ngày nghỉ phát sinh
+      // sau khi giữ chỗ) như mọi đường đặt khác; không đạt thì để bộ tự phân thợ chọn thợ khác.
+      const skill = await this.stylists.canDoAll(ownHold.stylistId, dto.serviceIds);
+      const verdict = skill.ok
+        ? await this.availability.checkSlot({
+          date: dto.date, time: dto.time, stylistId: ownHold.stylistId, totalDuration,
+          ignoreLeadTime: params.ignoreLeadTime, now, holdToken,
+        })
+        : 'invalid';
+      if (verdict === 'ok') stylistId = ownHold.stylistId;
+    }
+    if (stylistId) {
+      // đã chọn được thợ của chỗ giữ
     } else if (dto.stylistId) {
       stylistId = dto.stylistId;
       const stylist = await this.stylistRepo.findOne({ where: { id: stylistId } });
@@ -197,8 +231,8 @@ export class BookingService {
         date: dto.date, time: dto.time, stylistId, totalDuration, ignoreLeadTime: params.ignoreLeadTime, now, holdToken,
       });
       if (verdict === 'invalid') throw new BadRequestException(MSG.SLOT_INVALID);
-      if (verdict === 'taken') throw new ConflictException(MSG.SLOT_TAKEN);
-      if (verdict === 'held') throw new ConflictException({ message: MSG.SLOT_HELD, code: ERROR_CODES.SLOT_HELD });
+      if (verdict === 'taken') throw new SlotRaceLostException(MSG.SLOT_TAKEN);
+      if (verdict === 'held') throw new SlotRaceLostException({ message: MSG.SLOT_HELD, code: ERROR_CODES.SLOT_HELD });
     } else {
       const auto = await this.availability.pickAutoStylist({
         date: dto.date, time: dto.time, serviceIds: dto.serviceIds,
@@ -243,8 +277,8 @@ export class BookingService {
           this.logger.warn(`Xung đột tuần tự hoá khi đặt lịch, thử lại lần ${attempt + 1}`);
           continue;
         }
-        if (code === '23P01') throw new ConflictException(MSG.SLOT_TAKEN);
-        if (code && SERIALIZATION_ERRORS.has(code)) throw new ConflictException(MSG.SLOT_TAKEN);
+        if (code === '23P01') throw new SlotRaceLostException(MSG.SLOT_TAKEN);
+        if (code && SERIALIZATION_ERRORS.has(code)) throw new SlotRaceLostException(MSG.SLOT_TAKEN);
         throw e;
       }
     }
@@ -262,10 +296,10 @@ export class BookingService {
       // Kiểm tra lại khung giờ NGAY TRONG khoá — dữ liệu đọc ở đây không thể bị
       // một giao dịch khác chen ngang.
       const stillFree = await this.isRangeFree(manager, stylistId, startAt, endAt);
-      if (!stillFree) throw new ConflictException(MSG.SLOT_TAKEN);
+      if (!stillFree) throw new SlotRaceLostException(MSG.SLOT_TAKEN);
       // Mentor S2 · mục 11: khung giờ đang được KHÁCH KHÁC giữ chỗ (chưa hết hạn) thì không ai khác chốt được
       if (await SlotHoldService.heldByOthers(manager, stylistId, startAt, endAt, ctx.holdToken)) {
-        throw new ConflictException({ message: MSG.SLOT_HELD, code: ERROR_CODES.SLOT_HELD });
+        throw new SlotRaceLostException({ message: MSG.SLOT_HELD, code: ERROR_CODES.SLOT_HELD });
       }
 
       // QA-17: đếm lại số lịch chưa hoàn tất của SĐT NGAY TRONG giao dịch SERIALIZABLE. Bước kiểm tra trước đó
@@ -593,11 +627,12 @@ export class BookingService {
       throw new BadRequestException(MSG.CANCEL_TOO_LATE(cutoff));
     }
 
+    const prev = appt.status;
     appt.status = AppointmentStatus.CANCELLED;
     appt.cancelledAt = new Date();
     appt.cancelledByLabel = 'Khách hàng';
     appt.cancelReason = reason?.slice(0, 255) ?? 'Khách tự huỷ qua trang tra cứu';
-    await this.apptRepo.save(appt);
+    await saveAppointmentGuarded(this.dataSource, appt, [prev]);
 
     await this.mail.cancelPendingFor(appt.id, [EmailKind.BOOKING_REMINDER]);
     await this.customers.refreshCounters(appt.customerId);

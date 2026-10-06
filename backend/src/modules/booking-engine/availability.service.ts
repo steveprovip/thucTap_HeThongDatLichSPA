@@ -285,10 +285,12 @@ export class AvailabilityService {
     excludeAppointmentId?: string;
     holdToken?: string;
     now?: Date;
+    /** Dời / chuyển lịch ĐÃ ĐẶT: dùng thời lượng chốt trên lịch hẹn, không lấy thời lượng dịch vụ hiện hành (S1-05). */
+    totalDurationOverride?: number;
   }): Promise<AvailabilityResult> {
     if (!isValidDateString(params.date)) throw new BadRequestException('Ngày không hợp lệ');
     const services = await this.loadServices(params.serviceIds);
-    const totalDuration = services.reduce((sum, s) => sum + s.durationMinutes, 0);
+    const totalDuration = params.totalDurationOverride ?? services.reduce((sum, s) => sum + s.durationMinutes, 0);
     const estimatedTotal = services.reduce((sum, s) => sum + s.price, 0);
 
     const holiday = await this.workingHours.isHoliday(params.date);

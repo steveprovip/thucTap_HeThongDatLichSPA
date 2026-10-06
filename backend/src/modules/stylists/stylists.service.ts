@@ -458,6 +458,17 @@ export class StylistsService {
         `Ca mới không bao trọn ${broken.length} lịch hẹn đang có: ${broken.map((b) => b.code).join(', ')}`,
       );
     }
+    // Giờ nghỉ giữa ca mới không được đè lên lịch hẹn đã đặt
+    if (merged.breakStart && merged.breakEnd) {
+      const bStart = combine(merged.workDate, merged.breakStart);
+      const bEnd = combine(merged.workDate, merged.breakEnd);
+      const hit = inside.filter((a) => a.startAt < bEnd && a.endAt > bStart);
+      if (hit.length) {
+        throw new ConflictException(
+          `Giờ nghỉ ${merged.breakStart}–${merged.breakEnd} đè lên ${hit.length} lịch hẹn đang có: ${hit.map((b) => b.code).join(', ')}`,
+        );
+      }
+    }
 
     shift.startTime = merged.startTime;
     shift.endTime = merged.endTime;
@@ -707,7 +718,8 @@ export class StylistsService {
     const qb = this.apptRepo.createQueryBuilder('a')
       .where('a.stylist_id = :sid', { sid: stylistId })
       .andWhere('a.status IN (:...st)', { st: ACTIVE_STATUSES })
-      .andWhere('a.start_at >= :from AND a.start_at <= :to', {
+      // Lịch CHỒNG LÊN khoảng nghỉ (không chỉ lịch BẮT ĐẦU trong khoảng): lịch 09:00–11:00 bị nghỉ 10:00–12:00 cắt ngang
+      .andWhere('a.start_at < :to AND a.end_at > :from', {
         from: dto.startTime ? combine(dto.offDate, dto.startTime) : startOfDay(dto.offDate),
         to: dto.endTime ? combine(dto.offDate, dto.endTime) : endOfDay(dto.offDate),
       });

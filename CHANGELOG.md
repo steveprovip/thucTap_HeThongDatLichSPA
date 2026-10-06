@@ -1,7 +1,29 @@
 # Nhật ký cập nhật
 
 Định dạng theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), phiên bản theo [Semantic Versioning](https://semver.org/lang/vi/).
-Launcher (`HoYoSalon.bat`) đọc tệp này cho mục **Có gì mới** và **Nhật ký cập nhật**.
+Launcher (biểu tượng Hương Sen Salon / `HoYoSalon.bat`) đọc tệp này cho mục **Có gì mới** và **Nhật ký cập nhật**.
+
+## [1.5.0] - 2026-10-06
+
+### Launcher: 1 chạm như game
+- Không còn cửa sổ đen: biểu tượng **Hương Sen Salon** trên màn hình mở Launcher chạy ẩn (HoYoSalon.vbs); lỗi hiện bằng hộp thoại.
+- Hệ thống sẵn sàng (`/health` = 200) thì tự mở ứng dụng và Launcher tự thu gọn sau 3 giây.
+- Tự kiểm tra bản mới khi mở và mỗi 30 phút; nút **CẬP NHẬT (vX.Y.Z)** kèm nhãn **MỚI**, kể cả khi hệ thống đang chạy.
+- Cập nhật 1 chạm: sao lưu CSDL → git pull → cài gói → build → migration → chạy lại → mở ứng dụng; lỗi tự quay về bản cũ.
+- **Thiết lập cửa hàng**: nhập tên tiệm, hotline, ngân hàng nhận VietQR, Gmail gửi thư, tài khoản quản trị đầu tiên — không sửa tệp .env.
+- **Sao lưu dữ liệu ngay**, **Mở thư mục sao lưu**, **Tự bật hệ thống khi mở máy**; máy tiệm (nhánh main) mặc định chế độ Máy chủ cửa hàng.
+
+### Vận hành tiệm
+- Mã VietQR và thông tin tiệm đọc lúc chạy từ máy chủ: đổi tài khoản ngân hàng / tên tiệm không cần build lại.
+- Chủ tiệm lập **phiếu điều chỉnh** cho phiếu đã đóng (sửa dòng, ghi lý do; phiếu cũ giữ để đối chiếu).
+- Tự sao lưu CSDL lúc 02:00 mỗi ngày, sao lưu bù khi máy bật lại sau đêm tắt máy.
+
+### Rà soát 5 bất biến theo tệp yêu cầu
+- Giữ chỗ không còn dùng được để đặt dịch vụ thợ không làm được; giữ chỗ phải đúng lưới 15 phút.
+- Dời lịch / chuyển hàng loạt ghi trong giao dịch có khoá; đổi trạng thái đồng thời không làm lịch đã huỷ "sống lại".
+- Thua cuộc tranh khung giờ không bị trừ hạn mức 5 lượt đặt / giờ.
+- Ngày nghỉ theo giờ cắt ngang lịch hẹn được cảnh báo; giờ nghỉ giữa ca không đè lên lịch đã đặt.
+- Phiếu đã đóng bất biến ở tầng CSDL (trigger); hai lượt điều chỉnh cùng lúc chỉ một lượt thành công.
 
 ## [1.4.0] - 2026-10-06
 

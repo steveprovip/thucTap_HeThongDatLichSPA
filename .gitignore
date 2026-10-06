@@ -4,6 +4,7 @@ build/
 coverage/
 .env
 .env.local
+.env.bak
 *.log
 .DS_Store
 backend/uploads/*
@@ -24,3 +25,4 @@ logs/
 .e2e/
 # Trạng thái và nhật ký của HoYoSalon Launcher
 .salon-launcher.json
+.salon-shortcut

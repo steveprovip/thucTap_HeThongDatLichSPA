@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CalendarCheck, Clock, Globe, Mail, MapPin, MessageCircle, Phone, Search, Star, ThumbsUp } from 'lucide-react';
-import { publicApi } from '@/api';
+import { loadSalonInfo } from '@/utils/salonInfo';
 import type { SalonInfo } from '@/types';
 import { StylistAvatar } from '@/components';
 import { DOW_ORDER, SALON } from '@/utils/constants';
@@ -27,7 +27,7 @@ export function SiteFooter() {
   const [info, setInfo] = useState<SalonInfo | null>(null);
   useEffect(() => {
     let alive = true;
-    publicApi.salonInfo().then((d) => { if (alive) setInfo(d); }).catch(() => undefined);
+    loadSalonInfo().then((d) => { if (alive) setInfo(d); }).catch(() => undefined);
     return () => { alive = false; };
   }, []);
 
