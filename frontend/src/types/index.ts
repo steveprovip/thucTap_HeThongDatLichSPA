@@ -290,6 +290,28 @@ export interface Quote {
   note: string;
 }
 
+/** Mentor S2 · mục 4: Trợ lý AI xếp lịch cho nhân viên. */
+export interface SmartSlot {
+  date: string;
+  time: string;
+  endTime: string;
+  stylistId: string;
+  stylistName: string;
+  score: number;
+  reasons: string[];
+}
+export interface SmartSlotsResult {
+  fromDate: string;
+  days: number;
+  totalDurationMinutes: number;
+  suggestions: SmartSlot[];
+  windows: {
+    date: string;
+    closedReason: string | null;
+    stylists: { stylistId: string; stylistName: string; loadMinutes: number; free: { start: string; end: string }[] }[];
+  }[];
+}
+
 /** Mentor S2 · mục 11: chỗ đang tạm giữ trong lúc khách điền thông tin. */
 export interface SlotHold {
   holdToken: string;

@@ -726,6 +726,33 @@ function handle(method: string, path: string, p: Record<string, unknown>, q: Rec
   if (path === '/public/stylists') return db.stylists.filter(s => s.isActive &&
     String(q.serviceIds ?? '').split(',').filter(Boolean).every(id => s.serviceIds.includes(id)))
     .map(({ id, fullName, avatarUrl, gender, bio, avgRating }) => ({ id, fullName, avatarUrl, gender, bio, avgRating }));
+  if (path === '/appointments/smart-slots') {
+    // Chế độ Demo: lấy khung trống của bộ tính khung giờ demo, ưu tiên sớm + thợ ít lịch (máy chủ thật chấm điểm đầy đủ)
+    const ids = String(q.serviceIds ?? '').split(',');
+    const days = Math.min(7, Math.max(1, Number(q.days ?? 3)));
+    const duration = db.services.filter(sv => ids.includes(sv.id)).reduce((n, sv) => n + sv.durationMinutes, 0);
+    const hm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+    const suggestions: { date: string; time: string; endTime: string; stylistId: string; stylistName: string; score: number; reasons: string[] }[] = [];
+    const windows: { date: string; closedReason: string | null; stylists: never[] }[] = [];
+    for (let i = 0; i < days; i++) {
+      const date = iso(new Date(new Date(`${String(q.date)}T12:00:00`).getTime() + i * 86400000));
+      const av = availability(date, ids) as { slots: { time: string; stylistIds: string[] }[] };
+      windows.push({ date, closedReason: null, stylists: [] });
+      const used = new Map<string, number>();
+      for (const slot of av.slots) {
+        for (const sid of slot.stylistIds) {
+          if ((used.get(sid) ?? 0) >= 1) continue;
+          used.set(sid, 1);
+          const load = db.appointments.filter(a => a.date === date && a.stylist.id === sid && ACTIVE_STATUSES.includes(a.status)).length;
+          suggestions.push({ date, time: slot.time, endTime: hm(minute(slot.time) + duration), stylistId: sid,
+            stylistName: db.stylists.find(st => st.id === sid)?.fullName ?? '', score: Math.round(100 - i * 12 - load * 3),
+            reasons: [i === 0 ? 'Khung sớm nhất trong ngày' : 'Ngày gần nhất còn chỗ', load ? `Thợ đang có ${load} lịch` : 'Thợ chưa có lịch nào trong ngày'] });
+        }
+      }
+    }
+    return { fromDate: q.date, days, totalDurationMinutes: duration, windows,
+      suggestions: suggestions.sort((a, b) => b.score - a.score).slice(0, Number(q.limit ?? 6)) };
+  }
   if (path === '/public/availability' || path === '/appointments/availability')
     return availability(String(q.date), String(q.serviceIds ?? '').split(','), q.stylistId ? String(q.stylistId) : undefined,
       q.excludeAppointmentId ? String(q.excludeAppointmentId) : undefined);

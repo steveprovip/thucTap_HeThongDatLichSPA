@@ -16,3 +16,4 @@ export * from './CustomerMetrics';
 export * from './LiveStatus';
 export * from './UpdateBanner';
 export * from './TimeSelect24';
+export * from './SmartSlotAssistant';
