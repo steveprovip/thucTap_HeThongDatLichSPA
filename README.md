@@ -9,19 +9,24 @@ xem bảng đối chiếu tại [`docs/BACKLOG-MAPPING.md`](docs/BACKLOG-MAPPING
 
 ---
 
-## Chạy dự án bằng MỘT lệnh
+## Chạy dự án bằng MỘT cú nhấp — HoYoSalon Launcher
 
-**Windows**
+**Windows:** nhấp đúp **`HoYoSalon.bat`** ở thư mục gốc. **macOS / Linux:** `npm run launcher`.
 
-```bat
-scripts\windows\run_project.bat
-```
+Cửa sổ Launcher (nền tối kính mờ, phong cách game launcher) mở ra:
 
-**macOS / Linux**
+| Nút / mục | Việc làm |
+|---|---|
+| **BẮT ĐẦU** | Chạy toàn bộ: Docker → PostgreSQL → gói npm → migration (+ dữ liệu mẫu ở chế độ phát triển) → API + giao diện, thanh tiến trình theo từng bước, tự mở ứng dụng khi `/health` = 200 |
+| **CẬP NHẬT vX.Y.Z** | Hiện khi GitHub có thẻ phiên bản mới (hoặc `main` có commit mới): tải mã → cài gói → build → **sao lưu CSDL** → migration → chạy lại; lỗi ở bước nào tự quay về bản cũ |
+| **MỞ ỨNG DỤNG** | Hệ thống đang chạy: mở trang |
+| ⚙ **Thông tin & Chẩn đoán** | Phiên bản + trạng thái kết nối kho mã, **Kiểm tra phiên bản mới nhất**, **Nhật ký cập nhật** (CHANGELOG), **Log Client / Server / CSDL** trực tiếp, **Xuất `system_logs.zip`** (đã ẩn mật khẩu), **Sao chép thông tin thiết bị** (OS, Node, Docker, cổng) |
+| Cài đặt | Chế độ *Phát triển · dữ liệu mẫu* hoặc *Máy chủ cửa hàng* (production, một cổng 3000, không nạp dữ liệu mẫu) |
 
-```bash
-./scripts/unix/run_project.sh
-```
+Launcher chỉ lắng nghe `127.0.0.1`, mọi API của nó cần mã phiên ngẫu nhiên; đóng cửa sổ Launcher **không** tắt hệ thống Salon.
+Các lệnh cũ vẫn dùng được: `scripts\windows\run_project.bat` · `scripts/unix/run_project.sh` (chi tiết bên dưới).
+
+### Lệnh dòng lệnh (không dùng Launcher)
 
 Máy mới clone chỉ cần **bật Docker Desktop** rồi nhấp đúp `scripts\windows\run_project.bat` (hoặc chạy `./scripts/unix/run_project.sh`), không phải làm gì thêm. Hai tệp này chỉ kiểm tra Node.js ≥ 20 rồi giao cho `scripts/launcher.mjs start` (dùng chung mọi hệ điều hành), lần lượt:
 
@@ -182,6 +187,7 @@ bản production, NestJS phục vụ cả giao diện lẫn API ở **một cổ
 
 | Việc | Windows | macOS / Linux |
 |---|---|---|
+| **Launcher (khuyên dùng)** | `HoYoSalon.bat` → Cài đặt: *Máy chủ cửa hàng* → **BẮT ĐẦU** / **CẬP NHẬT** | `npm run launcher` |
 | Chạy chế độ máy chủ | `scripts\windows\start_server.bat` | `./scripts/unix/start_server.sh` |
 | **Cập nhật phiên bản mới (1 chạm)** | `scripts\windows\update_project.bat` | `./scripts/unix/update_project.sh` |
 | Mở đường hầm HTTPS ra Internet (Cloudflare Quick Tunnel, miễn phí) | `scripts\windows\start_tunnel.bat` | `./scripts/unix/start_tunnel.sh` |
@@ -209,6 +215,10 @@ npm run migration:generate -- TenThayDoi   # sinh migration từ khác biệt en
 npm run db:seed          # nạp dữ liệu mẫu (chỉ máy phát triển; chạy lại nhiều lần vẫn an toàn)
 npm run start:all        # chạy song song API + giao diện
 npm run start:launch     # tiến trình giám sát: API + giao diện, tự khởi động lại khi sập, mở trình duyệt khi /health = 200
+npm run launcher         # HoYoSalon Launcher (giao diện BẮT ĐẦU / CẬP NHẬT / Chẩn đoán)
+npm run update           # cập nhật 1 chạm (node scripts/update.mjs --check: chỉ kiểm tra phiên bản)
+npm run backup           # sao lưu CSDL ngay vào backups/
+npm run test:scripts     # kiểm thử thư viện Launcher (semver, changelog, zip, ẩn bí mật)
 npm run build            # build backend và frontend cho môi trường thật
 npm test                 # 35 kiểm thử đơn vị bộ tính khung giờ
 npm run test:e2e         # kiểm thử end-to-end trên CSDL TẠM salon_booking_test (tự tạo, tự xoá; cần PostgreSQL đang chạy)
@@ -221,7 +231,9 @@ npm run lint             # ESLint cho cả hai phía
 
 | Bộ | Lệnh | Nội dung |
 |---|---|---|
-| Đơn vị | `npm test` | 35 ca cho bộ tính khung giờ trống |
+| Đơn vị backend | `npm test` | 168 ca: bộ tính khung giờ, âm lịch & ngày lễ, độ phủ ca, trợ lý xếp lịch, DTO, quy tắc ca… |
+| Đơn vị frontend + Launcher | `npm run test:frontend` · `npm run test:scripts` | Luật bản Demo; semver, CHANGELOG, ZIP, ẩn bí mật |
+| Góp ý Mentor Sprint 2 | `npm run test:e2e` | Đăng ký ca → duyệt, giữ chỗ 10 phút (10 khách tranh 1 khung), email xác nhận, AI ngày lễ, độ phủ ca, trợ lý xếp lịch, chân trang |
 | Phân quyền | `npm run test:e2e` | Đối chiếu 17 endpoint × 4 vai trò, khoá 15 phút sau 5 lần sai |
 | Chống đặt trùng | `npm run test:e2e` | 20 yêu cầu đồng thời → đúng 1 thành công |
 | End-to-end | `npm run test:e2e` | Đặt → xác nhận → check-in → hoàn tất → tính tiền → đánh giá → báo cáo |
@@ -272,6 +284,26 @@ Chạy NestJS + PostgreSQL với `seed.sql`, đăng nhập từng vai trò và m
 
 ---
 
+## Góp ý Mentor Sprint 2 (06/10/2026) — v1.4.0
+
+| # | Góp ý | Đã làm | Vị trí |
+|---|---|---|---|
+| 1 | Phân chia lại nhánh GitHub | `main` (Production) · `develop` (Staging) · `feature/*` · `fix/*` · `docs/*`; nhánh cũ lưu thành thẻ `archive/*` | `docs/guides/git/GIT-BRANCHING.md`, `scripts/git/branch-cleanup.mjs` |
+| 2 | Bảng ca làm rối mắt | Lưới thợ × ngày, ca tô màu theo buổi, nút ẩn tới khi rê chuột, đếm thợ trực | `pages/admin/shifts/ShiftBoard.tsx` |
+| 3 | Chọn giờ 24 giờ | `TimeSelect24` 00:00 → 23:45, bước 15 phút | `components/TimeSelect24.tsx` |
+| 4 | AI phân tích khung giờ | Trợ lý xếp lịch: sớm · vừa khít · cân bằng thợ, có lý do | `GET /appointments/smart-slots`, `SmartSlotAssistant.tsx` |
+| 5 | AI sinh ngày lễ | Âm lịch thiên văn + Bộ luật Lao động, không chèn lên lịch khách | `GET /holidays/suggestions`, `POST /holidays/generate` |
+| 6 | Thợ tự đăng ký lịch, quản lý duyệt | Đăng ký cả tuần, duyệt / sửa giờ / từ chối / duyệt tất cả | `/shift-requests`, trang “Đăng ký lịch làm” |
+| 7 | Chân trang | Nền tối, Facebook, Zalo, địa chỉ + chỉ đường, hotline, email, giờ mở cửa, đội ngũ chuyên viên | `GET /public/salon-info`, `layouts/SiteFooter.tsx` |
+| 8 | Hiển thị dày hơn | Lưới 4 cột liền mạch, 2 hàng + “Xem thêm”, khung 7xl | `pages/public/HomePage.tsx` |
+| 9 | Khung giờ nào cũng có thợ | Cảnh báo khoảng trống + gợi ý thợ ít giờ làm, xếp 1 cú nhấp | `GET /shifts/coverage`, `CoveragePanel.tsx` |
+| 10 | Email đặt lịch thành công | Email đầy đủ (trạng thái, chỉ đường, Google Calendar), gửi ngay; gửi bổ sung từ màn hình thành công | `POST /public/bookings/email` |
+| 11 | Giữ chỗ 10–15 phút | Khoá khung giờ khi khách điền form, đếm ngược, giữ thêm | `POST/DELETE /public/holds`, `SLOT_HOLD_MINUTES` |
+
+Chi tiết từng mục: [`docs/feedback/2026-10-06-mentor-sprint2/RESOLUTION.md`](docs/feedback/2026-10-06-mentor-sprint2/RESOLUTION.md) · lịch sử phiên bản: [`CHANGELOG.md`](CHANGELOG.md).
+
+---
+
 ## Tài liệu kèm theo
 
 - [`docs/STAGING.md`](docs/STAGING.md) — môi trường staging và tài khoản mẫu (một trang)
@@ -279,3 +311,5 @@ Chạy NestJS + PostgreSQL với `seed.sql`, đăng nhập từng vai trò và m
 - [`docs/TIMEZONE.md`](docs/TIMEZONE.md) — quy ước múi giờ và định dạng
 - [`docs/BACKLOG-MAPPING.md`](docs/BACKLOG-MAPPING.md) — 39 user story ↔ mã nguồn
 - [`docs/API.md`](docs/API.md) — danh mục endpoint theo module
+- [`docs/guides/git/GIT-BRANCHING.md`](docs/guides/git/GIT-BRANCHING.md) — quy trình nhánh Git
+- [`docs/reports/`](docs/reports/) · [`docs/presentations/`](docs/presentations/) — báo cáo thực tập (NĐ 30/2020) và slide
