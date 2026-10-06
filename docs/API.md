@@ -112,3 +112,26 @@ Lỗi — thông điệp luôn bằng tiếng Việt, `field` chỉ ra ô nhập
   "timestamp": "2026-09-22T07:48:00.000Z"
 }
 ```
+
+
+## Bổ sung v1.4.0 — Góp ý Mentor Sprint 2
+
+| Phương thức | Đường dẫn | Quyền | Mô tả |
+|---|---|---|---|
+| GET | `/api/public/salon-info` | Công khai | Liên hệ, mạng xã hội, giờ mở cửa, đội ngũ chuyên viên (chân trang) |
+| POST | `/api/public/holds` | Công khai | Giữ chỗ khung giờ 10 phút (`SLOT_HOLD_MINUTES`) khi khách điền form; 409 `SLOT_HELD` nếu khách khác đang giữ |
+| DELETE | `/api/public/holds/:token` | Công khai | Trả chỗ đang giữ |
+| POST | `/api/public/bookings/email` | Công khai | Gửi (lại) email xác nhận — xác thực mã tra cứu + SĐT, 5 lần/giờ/IP |
+| GET | `/api/public/availability?holdToken=` | Công khai | Tham số mới: không ẩn khung giờ đang giữ của chính khách |
+| POST | `/api/public/bookings` (`holdToken`) | Công khai | Tham số mới: đổi chỗ đang giữ thành lịch hẹn |
+| GET | `/api/appointments/smart-slots?serviceIds&date&days&stylistId&limit` | Lễ tân, Chủ tiệm, Admin | Trợ lý AI xếp lịch: gợi ý có điểm + lý do, khoảng rảnh từng thợ |
+| GET | `/api/holidays/suggestions?year` | Chủ tiệm, Lễ tân | Ngày lễ quốc gia của năm + trạng thái ready / exists / conflict / past |
+| POST | `/api/holidays/generate` `{ year, keys?, force? }` | Chủ tiệm | Áp dụng 1-click; ngày trùng lịch khách chỉ tạo khi `force` |
+| GET | `/api/shifts/coverage?from&to&minStaff` | Chủ tiệm, Lễ tân, Admin | Khung giờ mở cửa chưa đủ thợ + gợi ý thợ cân bằng giờ làm (≤ 31 ngày) |
+| GET | `/api/shift-requests/mine` | Thợ | Yêu cầu đăng ký ca / nghỉ của tôi |
+| POST | `/api/shift-requests` `{ items[] }` | Thợ | Đăng ký ca làm (giờ 24h) hoặc xin nghỉ, tối đa 31 ngày / lần, trước tối đa 60 ngày |
+| DELETE | `/api/shift-requests/:id` | Thợ | Huỷ yêu cầu còn chờ duyệt |
+| GET | `/api/shift-requests?status&from&to&stylistId` | Chủ tiệm, Lễ tân, Admin | Danh sách yêu cầu |
+| POST | `/api/shift-requests/:id/approve` `{ startTime?, endTime?, note?, force? }` | Chủ tiệm | Duyệt (có thể chỉnh giờ) → tạo ca / ngày nghỉ thật |
+| POST | `/api/shift-requests/:id/reject` `{ note? }` | Chủ tiệm | Từ chối kèm lý do |
+| POST | `/api/shift-requests/approve-batch` `{ ids[] }` | Chủ tiệm | Duyệt nhiều yêu cầu |
