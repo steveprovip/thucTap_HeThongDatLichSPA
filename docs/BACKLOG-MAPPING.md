@@ -14,7 +14,7 @@ Ký hiệu đường dẫn: `be/` = `backend/src/`, `fe/` = `frontend/src/`.
 | **S1-03** | 5 | 4 vai trò nhân sự và khách công khai, menu theo quyền, API trả 403 | `be/common/guards/roles.guard.ts`, `be/common/constants/roles.constant.ts` | `fe/layouts/AdminLayout.tsx`, `fe/pages/admin/PermissionMatrixPage.tsx` |
 | **S1-04** | 3 | Đổi mật khẩu, quên mật khẩu, liên kết 30 phút dùng một lần, giới hạn 3 lần/giờ | `be/modules/auth/auth.service.ts` (`changePassword`, `forgotPassword`, `resetPassword`) | `fe/pages/auth/ChangePasswordPage.tsx`, `ForgotPasswordPage.tsx`, `ResetPasswordPage.tsx` |
 | **S1-09** | 3 | Nhật ký hoạt động chỉ đọc, lọc theo ngày và tài khoản, 50 dòng/trang | `be/modules/audit/*`, `be/common/interceptors/audit-log.interceptor.ts`, trigger `audit_logs_readonly` trong `schema.sql` | `fe/pages/admin/AuditLogsPage.tsx` |
-| **S1-10** | 3 | Môi trường staging một lệnh + dữ liệu mẫu chạy lại không nhân đôi | `run_project.bat`, `docker-compose.yml`, `database/seed.sql`, `be/database/run-seed.ts` | — (tài liệu `docs/STAGING.md`) |
+| **S1-10** | 3 | Môi trường staging một lệnh + dữ liệu mẫu chạy lại không nhân đôi | `scripts\windows\run_project.bat`, `docker-compose.yml`, `backend/database/seed.sql`, `be/database/run-seed.ts` | — (tài liệu `docs/STAGING.md`) |
 | **S4-10** | 3 | Rà soát phân quyền bằng kiểm thử tự động + kịch bản demo | `backend/test/auth-rbac.e2e-spec.ts` | `docs/DEMO-SCRIPT.md` |
 
 ## EP-02 — Dịch vụ, thợ và lịch làm việc (27 point · 6 story)
@@ -78,7 +78,7 @@ Ký hiệu đường dẫn: `be/` = `backend/src/`, `fe/` = `frontend/src/`.
 
 ## Đối chiếu AC và kiểm định 06/10/2026
 
-Nguồn điểm: `de_tai/3. Hệ thống đặt lịch Salon Spa.xlsx`, sheet **4. Product Backlog** và **5. Sprint Plan**. Đã đối chiếu đủ 39 mã story, điểm từng story và tổng theo Epic / Sprint. AC trong bảng là bản tóm tắt; dùng workbook gốc và `DEMO-SCRIPT.md` để nghiệm thu đầy đủ.
+Nguồn điểm: `docs/requirements/3. Hệ thống đặt lịch Salon Spa.xlsx`, sheet **4. Product Backlog** và **5. Sprint Plan**. Đã đối chiếu đủ 39 mã story, điểm từng story và tổng theo Epic / Sprint. AC trong bảng là bản tóm tắt; dùng workbook gốc và `DEMO-SCRIPT.md` để nghiệm thu đầy đủ.
 
 | Sprint | Story | Point |
 |---|---|---|

@@ -6,7 +6,7 @@ const BUILD_ID = typeof __APP_BUILD_ID__ === 'string' ? __APP_BUILD_ID__ : 'dev'
 const CHECK_EVERY_MS = 5 * 60_000;
 
 /**
- * Báo "có phiên bản mới" cho thiết bị đang mở sẵn trang: sau khi cập nhật hệ thống (git push → tự build, hoặc update_project.bat)
+ * Báo "có phiên bản mới" cho thiết bị đang mở sẵn trang: sau khi cập nhật hệ thống (git push → tự build, hoặc scripts\windows\update_project.bat)
  * máy bàn, laptop và điện thoại không phải tự nghĩ ra việc tải lại trang. Hỏi tệp /version.json (không cache) mỗi 5 phút
  * và mỗi khi tab hiện lại. KHÔNG tự tải lại để khỏi làm mất phiếu/biểu mẫu nhân viên đang nhập dở.
  */

@@ -105,7 +105,7 @@ export const hintFor = (conn: DbConnection, err: PgError): string | null => {
       return `CSDL "${conn.database}" chưa tồn tại. Nếu dùng Docker: npm run db:reset. Nếu dùng PostgreSQL riêng: tạo CSDL rồi chạy lại.`;
     case 'ECONNREFUSED':
     case 'ETIMEDOUT':
-      return `Không có PostgreSQL nào lắng nghe ở ${conn.host}:${conn.port}. Hãy bật Docker Desktop rồi chạy lại launcher (hoặc: docker compose up -d).`;
+      return `Không có PostgreSQL nào lắng nghe ở ${conn.host}:${conn.port}. Hãy bật Docker Desktop rồi chạy lại launcher (hoặc: npm run db:up).`;
     default:
       if (/SSL|TLS|certificate/i.test(err.message)) {
         return 'Lỗi mã hoá đường truyền. CSDL trên mây cần DB_SSL=true (hoặc DB_SSL=require nếu chứng chỉ không xác minh được); CSDL tại máy cần DB_SSL=false.';

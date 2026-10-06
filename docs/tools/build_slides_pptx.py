@@ -5,7 +5,7 @@ Sinh slide thuyết trình (.pptx) cho dự án Hệ thống Đặt lịch Salon
     pip install python-pptx pillow
     python docs/tools/build_slides_pptx.py
 
-Kết quả: docs/Slide_Bao_Cao_He_Thong_Dat_Lich_Salon_Spa.pptx (13 slide, 16:9)
+Kết quả: docs/presentations/Slide_Bao_Cao_He_Thong_Dat_Lich_Salon_Spa.pptx (13 slide, 16:9)
 Tông màu Fresha Light Luxury: Teal #0D9488 · Slate #0F172A · nền #F8FAFC, thẻ bo góc.
 Mỗi slide có ghi chú thuyết trình (Speaker Notes).
 """
@@ -32,7 +32,7 @@ A = os.path.join(DOCS, "assets")
 SCREEN = lambda n: os.path.join(A, "screens", n)  # noqa: E731
 DIAG = lambda n: os.path.join(A, "diagrams", n)  # noqa: E731
 ICON = lambda n, c="w": os.path.join(A, "icons", f"{n}_{c}.png")  # noqa: E731
-OUT = os.path.join(DOCS, "Slide_Bao_Cao_He_Thong_Dat_Lich_Salon_Spa.pptx")
+OUT = os.path.join(DOCS, "presentations", "Slide_Bao_Cao_He_Thong_Dat_Lich_Salon_Spa.pptx")
 
 TEAL = "0D9488"
 TEAL_DARK = "0F766E"

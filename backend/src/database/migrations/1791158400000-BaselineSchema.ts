@@ -2,7 +2,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
 import { readSchemaSql } from '../sql-files';
 
 /**
- * MIGRATION GỐC — đưa CSDL về đúng lược đồ của `database/schema.sql`.
+ * MIGRATION GỐC — đưa CSDL về đúng lược đồ của `backend/database/schema.sql`.
  *
  * Vì sao chạy lại schema.sql thay vì viết lại từng lệnh CREATE TABLE?
  *  - schema.sql chứa những thứ TypeORM không tự sinh được (ràng buộc EXCLUDE chống trùng giờ thợ,

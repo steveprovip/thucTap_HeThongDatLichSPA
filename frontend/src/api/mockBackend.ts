@@ -21,7 +21,7 @@ const KEY = 'salon.demo.v6';
 export const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === 'true';
 /** Phiên demo lưu MÃ tài khoản (không phải vai trò) để mọi kiểm tra quyền dựa trên đúng người đăng nhập. */
 const SESSION_KEY = 'salon.demoUserId';
-/** Mật khẩu mẫu theo vai trò — trùng khớp seed của máy chủ thật (database/seed.sql) và README. */
+/** Mật khẩu mẫu theo vai trò — trùng khớp seed của máy chủ thật (backend/database/seed.sql) và README. */
 const passwordForRole = (role: string): string =>
   (DEMO_PASSWORDS as Record<string, string>)[role] ?? DEMO_PASSWORDS.stylist;
 /** Mật khẩu tạm cho tài khoản mới / cấp lại: luôn có chữ hoa, chữ thường, số và ký tự đặc biệt (giống backend). */
@@ -112,9 +112,9 @@ const serviceSeed: ServiceItem[] = [
   priceText: money(Number(price)), description: String(description), isActive: true,
   stylistIds: ['st1', 'st2', 'st3', 'st4', 'st5'], stylistCount: 5, hasNoStylist: false,
 }));
-/** Giới tính 5 thợ mẫu — khớp UPDATE gender trong database/seed.sql (st1, st3, st5 là nữ). */
+/** Giới tính 5 thợ mẫu — khớp UPDATE gender trong backend/database/seed.sql (st1, st3, st5 là nữ). */
 const SEED_GENDERS: StylistGender[] = ['female', 'male', 'female', 'male', 'female'];
-/** 5 thợ mẫu — cùng tên/SĐT/email với database/seed.sql (stylist1…5@salon.vn). */
+/** 5 thợ mẫu — cùng tên/SĐT/email với backend/database/seed.sql (stylist1…5@salon.vn). */
 const stylistSeed: Stylist[] = [
   ['st1', 'Nguyễn Thu Hà', '0902000001', 4.9, 87],
   ['st2', 'Trần Minh Tuấn', '0902000002', 4.8, 64],
@@ -130,7 +130,7 @@ const stylistSeed: Stylist[] = [
   serviceIds: serviceSeed.map(s => s.id), serviceNames: serviceSeed.map(s => s.name),
   avgRating: Number(avgRating), reviewCount: Number(reviewCount),
 }));
-/** Tài khoản mẫu — trùng khớp tuyệt đối với README.md và database/seed.sql. */
+/** Tài khoản mẫu — trùng khớp tuyệt đối với README.md và backend/database/seed.sql. */
 const usersSeed: UserRow[] = [
   { id: 'u-admin', fullName: 'Quản trị hệ thống', email: 'admin@salon.vn', phone: '0901000001', role: 'admin', stylistId: null },
   { id: 'u-owner', fullName: 'Nguyễn Hoàng Anh', email: 'owner@salon.vn', phone: '0901000002', role: 'owner', stylistId: null },

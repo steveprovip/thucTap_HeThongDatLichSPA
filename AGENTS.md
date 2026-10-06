@@ -30,7 +30,7 @@ npm --prefix backend run test
 npm --prefix backend run test:e2e
 
 # Khởi động toàn hệ thống
-./run_project.bat
+./HoYoSalon.bat   # Launcher 1-Click (hoặc scripts\windows\run_project.bat)
 ```
 
 ## 5. Các Ràng Buộc Nghiệp Vụ Cốt Lõi (Invariants)

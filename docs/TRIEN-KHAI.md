@@ -8,7 +8,7 @@ luôn thấy **cùng một dữ liệu**, và cách cập nhật phiên bản m�
 - [2. Quy ước CSDL cho người lập trình (migration)](#2-quy-ước-csdl-cho-người-lập-trình-migration)
 - [3. Phương án 1: Cloud miễn phí](#3-phương-án-1-cloud-miễn-phí)
 - [4. Phương án 2: Máy bàn làm máy chủ](#4-phương-án-2-máy-bàn-làm-máy-chủ)
-- [5. Cập nhật 1 chạm: `update_project.bat`](#5-cập-nhật-1-chạm-update_projectbat)
+- [5. Cập nhật 1 chạm: `scripts\windows\update_project.bat`](#5-cập-nhật-1-chạm-update_projectbat)
 - [6. Kiểm thử e2e không đụng CSDL thật](#6-kiểm-thử-e2e-không-đụng-csdl-thật)
 - [7. Biến môi trường mới](#7-biến-môi-trường-mới)
 - [8. Xử lý sự cố](#8-xử-lý-sự-cố)
@@ -67,7 +67,7 @@ tối đa 200 luồng đồng thời; mỗi luồng tối đa 20 phút rồi t�
 
 ## 2. Quy ước CSDL cho người lập trình (migration)
 
-`database/schema.sql` đã **đóng băng** làm mốc gốc: nó được chạy duy nhất một lần bởi migration `BaselineSchema1791158400000`.
+`backend/database/schema.sql` đã **đóng băng** làm mốc gốc: nó được chạy duy nhất một lần bởi migration `BaselineSchema1791158400000`.
 Từ nay **mọi thay đổi cấu trúc là một migration mới** trong `backend/src/database/migrations/`.
 `seed.sql` (dữ liệu mẫu, đặt lại mật khẩu 8 tài khoản mẫu, phụ thuộc ngày hôm nay) **không bao giờ** nằm trong migration và không bao giờ chạy khi cập nhật.
 
@@ -193,14 +193,14 @@ Máy bàn giữ PostgreSQL và chạy bản production của hệ thống; lapto
 
 1. Cài **Node.js 20+**, **Git** và **Docker Desktop** (bật "Start Docker Desktop when you sign in").
 2. `git clone <địa chỉ repo>` rồi ở nhánh `main`. Không sửa mã nguồn trên máy này (cập nhật sẽ từ chối nếu có tệp bị sửa).
-3. Chạy `start_server.bat` một lần. Nó tạo `backend/.env`, sinh khoá JWT ngẫu nhiên, dựng PostgreSQL, cài gói, **chạy migration (không nạp dữ liệu mẫu)**, build bản production rồi chạy.
+3. Chạy `scripts\windows\start_server.bat` một lần. Nó tạo `backend/.env`, sinh khoá JWT ngẫu nhiên, dựng PostgreSQL, cài gói, **chạy migration (không nạp dữ liệu mẫu)**, build bản production rồi chạy.
    CSDL trống thì cần tài khoản đầu tiên: mở `backend/.env`, điền `BOOTSTRAP_ADMIN_EMAIL` và `BOOTSTRAP_ADMIN_PASSWORD` (≥ 8 ký tự, có chữ và số, không dấu; **tránh ký tự `#`** vì `.env` coi nó là bắt đầu ghi chú), rồi chạy lại. Đăng nhập xong hệ thống bắt đổi mật khẩu.
 4. Đặt trong `backend/.env`: `FRONTEND_URL` (địa chỉ công khai, nằm trong link email gửi khách) và nhóm `SMTP_*` nếu gửi email thật. Hộp thư ảo Maildev chỉ hứng thư, không gửi ra ngoài.
 
-`start_server.bat` có thể chạy lại bao nhiêu lần tuỳ ý mà không đụng tới dữ liệu khách. Lần chạy sau nếu mã nguồn không đổi thì bỏ qua bước build.
+`scripts\windows\start_server.bat` có thể chạy lại bao nhiêu lần tuỳ ý mà không đụng tới dữ liệu khách. Lần chạy sau nếu mã nguồn không đổi thì bỏ qua bước build.
 Dừng máy chủ: `Ctrl+C` trong cửa sổ đó, hoặc `npm run stop:server`.
 
-> `run_project.bat` là chế độ **phát triển** (có dữ liệu mẫu, nạp lại mỗi lần chạy). **Không chạy nó trên máy chủ thật.**
+> `scripts\windows\run_project.bat` là chế độ **phát triển** (có dữ liệu mẫu, nạp lại mỗi lần chạy). **Không chạy nó trên máy chủ thật.**
 
 ### 4.2 Laptop và điện thoại trong tiệm
 
@@ -211,7 +211,7 @@ Trong LAN, luồng SSE chạy trực tiếp (chấm **Trực tiếp**). Nên gá
 
 Đường hầm chỉ cần máy bàn chủ động kết nối ra Cloudflare, **không phải mở cổng trên router**.
 
-**Cách A, Quick Tunnel (miễn phí hoàn toàn, không cần tài khoản hay tên miền):** chạy `start_tunnel.bat` (sau khi `start_server.bat` đã chạy). Cần có `cloudflared.exe`: tải
+**Cách A, Quick Tunnel (miễn phí hoàn toàn, không cần tài khoản hay tên miền):** chạy `scripts\windows\start_tunnel.bat` (sau khi `scripts\windows\start_server.bat` đã chạy). Cần có `cloudflared.exe`: tải
 [bản Windows 64-bit](https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe), đổi tên thành `cloudflared.exe`, đặt vào `C:\Cloudflared\bin` hoặc thư mục `tools\` của dự án.
 Màn hình in địa chỉ dạng `https://….trycloudflare.com`; mở nó trên laptop hoặc điện thoại. Giới hạn do Cloudflare nêu rõ:
 
@@ -242,7 +242,7 @@ Tài liệu Cloudflare không nói rõ Tunnel có tên có giữ được luồn
   `schtasks /Create /TN "Salon Spa - May chu" /SC ONLOGON /TR "\"F:\đường\dẫn\du_an\start_server.bat\"" /RL LIMITED /F`
   (cần bật đăng nhập tự động cho tài khoản Windows của máy bàn; chưa thử trên máy Windows thật).
 - Container PostgreSQL có `restart: unless-stopped`, Docker Desktop bật cùng Windows thì CSDL tự lên.
-- Mất điện giữa lúc cập nhật: chạy lại `update_project.bat` (mục 5).
+- Mất điện giữa lúc cập nhật: chạy lại `scripts\windows\update_project.bat` (mục 5).
 
 ### 4.5 Sao lưu
 
@@ -254,7 +254,7 @@ Tài liệu Cloudflare không nói rõ Tunnel có tên có giữ được luồn
 ### 4.6 Bảo mật trước khi mở ra Internet (bắt buộc)
 
 `seed.sql` tạo 8 tài khoản mẫu có mật khẩu **công khai trong README** (`Admin@123`…). Ai biết địa chỉ đường hầm đều thử được.
-`start_server.bat` tự chạy `security:check` và in cảnh báo; **bạn phải xử lý trước khi chia sẻ địa chỉ**:
+`scripts\windows\start_server.bat` tự chạy `security:check` và in cảnh báo; **bạn phải xử lý trước khi chia sẻ địa chỉ**:
 
 ```
 npm run security:check            # liệt kê tài khoản mẫu còn mật khẩu mặc định (mã thoát 3 nếu có)
@@ -266,9 +266,9 @@ Swagger (`/api/docs`) tự tắt khi chạy production.
 
 ---
 
-## 5. Cập nhật 1 chạm: `update_project.bat`
+## 5. Cập nhật 1 chạm: `scripts\windows\update_project.bat`
 
-Bấm đúp `update_project.bat` ở thư mục gốc (macOS/Linux: `./update_project.sh`). Dữ liệu khách và phiên đăng nhập được giữ nguyên.
+Bấm đúp `scripts\windows\update_project.bat` ở thư mục gốc (macOS/Linux: `./scripts/unix/update_project.sh`). Dữ liệu khách và phiên đăng nhập được giữ nguyên.
 
 | Bước | Việc làm | Nếu lỗi |
 |---|---|---|
@@ -285,7 +285,7 @@ Bấm đúp `update_project.bat` ở thư mục gốc (macOS/Linux: `./update_pr
 - **Không bao giờ nạp dữ liệu mẫu.** Cả chế độ máy chủ lẫn chế độ phát triển khi được cập nhật đều chỉ chạy `migration:run`, không chạy `seed.sql`.
 - **Phiên đăng nhập được giữ** vì khoá JWT nằm trong `backend/.env` (không đổi) và refresh token nằm trong CSDL. Thiết bị đang đăng nhập không bị bắt đăng nhập lại.
 - **Logic cập nhật mới có hiệu lực ngay trong lần này:** sau `git pull`, launcher chạy lại chính nó bằng mã vừa kéo về cho các bước còn lại.
-- Nếu hệ thống đang tắt, `update_project.bat` cập nhật rồi bật luôn ở chế độ máy chủ. Nếu đang chạy ở chế độ phát triển (`run_project.bat`), nó giữ đúng chế độ đó.
+- Nếu hệ thống đang tắt, `scripts\windows\update_project.bat` cập nhật rồi bật luôn ở chế độ máy chủ. Nếu đang chạy ở chế độ phát triển (`scripts\windows\run_project.bat`), nó giữ đúng chế độ đó.
 - Đã là phiên bản mới nhất thì báo "Không có gì để cập nhật" và **không khởi động lại** hệ thống.
 - `package-lock.json` bị `npm install` tự sửa tại máy được bỏ qua khi kiểm tra tệp bị sửa, và tự hoàn lại nếu bản mới cũng đổi chính tệp đó.
 - Lỗi ở bước 5 trở đi: CSDL đã giữ nguyên hoặc chỉ được **thêm** cấu trúc, nên bản cũ vẫn chạy được. Thông báo cuối cùng nêu đường dẫn bản sao lưu.
@@ -340,9 +340,9 @@ Biến phía giao diện (`frontend/.env`): `VITE_API_BASE_URL` (địa chỉ AP
 
 | Triệu chứng | Nguyên nhân thường gặp | Cách xử lý |
 |---|---|---|
-| `start_server.bat` báo "Chưa có tài khoản nào" | CSDL trống và chưa đặt `BOOTSTRAP_ADMIN_*` | Điền hai biến trong `backend/.env` rồi chạy lại |
+| `scripts\windows\start_server.bat` báo "Chưa có tài khoản nào" | CSDL trống và chưa đặt `BOOTSTRAP_ADMIN_*` | Điền hai biến trong `backend/.env` rồi chạy lại |
 | Bootstrap báo mật khẩu không hợp lệ dù đã đặt | Mật khẩu có `#` bị `.env` cắt cụt | Bỏ `#` hoặc đặt cả mật khẩu trong dấu nháy kép |
-| `update_project.bat` báo "tệp mã nguồn bị sửa" | Có người sửa tay mã nguồn trên máy chủ | Gửi thay đổi cho người lập trình, hoặc `git checkout -- <tệp>` |
+| `scripts\windows\update_project.bat` báo "tệp mã nguồn bị sửa" | Có người sửa tay mã nguồn trên máy chủ | Gửi thay đổi cho người lập trình, hoặc `git checkout -- <tệp>` |
 | "git pull thất bại (lịch sử khác kho mã)" | Máy chủ có commit riêng chưa đẩy lên | Liên hệ người lập trình; không dùng `--force` |
 | Chấm trạng thái vàng "Cập nhật định kỳ" | SSE bị chặn (Quick Tunnel, proxy công ty) | Bình thường, dữ liệu vẫn đồng bộ mỗi 15 giây |
 | Laptop không mở được `http://IP:3000` | Tường lửa Windows hoặc khác mạng | Cho phép Node.js ở mạng riêng; kiểm tra cùng Wi-Fi |
