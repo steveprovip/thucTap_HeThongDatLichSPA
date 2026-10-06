@@ -301,6 +301,9 @@ describe('Mentor Sprint 2', () => {
       const [{ n }] = await ds.query('SELECT COUNT(*)::int AS n FROM stylists WHERE is_active');
       expect(info.team).toHaveLength(n);
       expect(JSON.stringify(info)).not.toMatch(/phone|email":"stylist/);
+      // VietQR cấu hình lúc chạy (BANK_*): chưa cấu hình thì null; có thì đủ BIN 6 số + số tài khoản
+      if (info.bank !== null) expect(info.bank).toMatchObject({ bin: expect.stringMatching(/^\d{6}$/), accountNo: expect.any(String) });
+      else expect(info.bank).toBeNull();
     });
   });
 

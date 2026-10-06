@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { BANK, buildVietQrPayload, toBankText } from '@/utils/vietqr';
 import { formatVnd } from '@/utils/format';
+import { useSalonInfo } from '@/utils/salonInfo';
 
 interface Props {
   amount: number;
@@ -15,7 +16,10 @@ interface Props {
  * Thư viện `qrcode` được nạp lười để không cộng vào bundle các trang khác.
  */
 export function VietQrCode({ amount, addInfo, className = '' }: Props) {
-  const payload = buildVietQrPayload({ bankBin: BANK.bin, accountNo: BANK.accountNo, amount, addInfo });
+  // Ưu tiên tài khoản cấu hình lúc chạy (Launcher > Thiết lập cửa hàng); bản build cũ có VITE_BANK_* vẫn dùng được
+  const { info, loaded } = useSalonInfo();
+  const bank = info?.bank ?? (BANK.bin ? { bin: BANK.bin, accountNo: BANK.accountNo, accountName: BANK.accountName } : null);
+  const payload = bank ? buildVietQrPayload({ bankBin: bank.bin, accountNo: bank.accountNo, amount, addInfo }) : null;
   const [src, setSrc] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -32,12 +36,15 @@ export function VietQrCode({ amount, addInfo, className = '' }: Props) {
     return () => { alive = false; };
   }, [payload]);
 
+  if (!payload && !loaded) {
+    return <div className={`skeleton-shimmer mx-auto h-[220px] w-[220px] max-w-full rounded-lg ${className}`} aria-hidden />;
+  }
   if (!payload || failed) {
     return (
       <p className={`flex items-start gap-2 rounded-xl bg-amber-50 px-3.5 py-3 text-sm text-amber-900 ${className}`}>
         <AlertTriangle size={16} className="mt-0.5 shrink-0" />
         {failed ? 'Không tạo được mã QR. Vui lòng tải lại trang.'
-          : 'Chưa cấu hình tài khoản nhận (VITE_BANK_BIN, VITE_BANK_ACCOUNT_NO) nên chưa hiển thị được mã VietQR.'}
+          : 'Chưa có tài khoản nhận chuyển khoản nên chưa hiện được mã VietQR. Chủ tiệm mở Launcher Hương Sen Salon > Thiết lập cửa hàng để nhập ngân hàng và số tài khoản.'}
       </p>
     );
   }
@@ -51,8 +58,8 @@ export function VietQrCode({ amount, addInfo, className = '' }: Props) {
           : <div className="skeleton-shimmer h-[220px] w-[220px] max-w-full rounded-lg" aria-hidden />}
       </div>
       <figcaption className="text-xs leading-relaxed text-ink-soft">
-        {BANK.accountName && <span className="block font-semibold text-slate-900">{BANK.accountName}</span>}
-        <span className="block">STK {BANK.accountNo}</span>
+        {bank?.accountName && <span className="block font-semibold text-slate-900">{bank.accountName}</span>}
+        <span className="block">STK {bank?.accountNo}</span>
         <span className="block">Số tiền <strong className="text-slate-900">{formatVnd(Math.round(amount))}</strong></span>
         <span className="block">Nội dung <strong className="font-mono text-slate-900">{toBankText(addInfo)}</strong></span>
       </figcaption>
