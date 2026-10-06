@@ -17,8 +17,10 @@ import { normalizeSearch } from '../../common/utils/text.util';
 import { WorkingHoursService } from '../working-hours/working-hours.service';
 import { StylistsService } from '../stylists/stylists.service';
 import {
-  computeAvailableSlots, Interval, isSlotAvailable, longestShiftLength, ShiftInput, SlotCalcInput, TimeOffInput,
+  computeAvailableSlots, computeFreeIntervals, Interval, isSlotAvailable, longestShiftLength, ShiftInput, SlotCalcInput,
+  TimeOffInput, toMinutes,
 } from './slot-calculator';
+import { rankSmartSlots, SmartSlot, SmartSlotCandidate } from './smart-slots';
 
 export interface PublicServiceView {
   id: string;
@@ -55,6 +57,19 @@ export interface AvailabilityResult {
   suggestedDates: string[];
   /** Cảnh báo nên tách thành hai lần hẹn (S2-04). */
   exceedsLongestShift: boolean;
+}
+
+export interface SmartSlotsResult {
+  fromDate: string;
+  days: number;
+  totalDurationMinutes: number;
+  suggestions: SmartSlot[];
+  /** Khoảng rảnh liên tục (đủ dài cho gói dịch vụ) của từng thợ từng ngày — để lễ tân nhìn nhanh, khỏi mở lịch ngày. */
+  windows: {
+    date: string;
+    closedReason: string | null;
+    stylists: { stylistId: string; stylistName: string; loadMinutes: number; free: { start: string; end: string }[] }[];
+  }[];
 }
 
 @Injectable()
@@ -330,6 +345,69 @@ export class AvailabilityService {
       slots,
       suggestedDates,
       exceedsLongestShift: longest > 0 && totalDuration > longest,
+    };
+  }
+
+  /**
+   * Mentor S2 · mục 4 — Trợ lý AI xếp lịch cho nhân viên: duyệt mọi khung hợp lệ của mọi thợ làm được gói dịch vụ
+   * trong `days` ngày kể từ `fromDate`, chấm điểm (sớm · vừa khít · cân bằng) và giải thích lý do.
+   * Dùng giờ thực của nhân viên: bỏ mốc đặt trước 60 phút nhưng không gợi ý giờ đã qua.
+   */
+  async smartSlots(params: {
+    serviceIds: string[]; fromDate: string; days?: number; stylistId?: string; limit?: number; now?: Date;
+  }): Promise<SmartSlotsResult> {
+    if (!isValidDateString(params.fromDate)) throw new BadRequestException('Ngày không hợp lệ');
+    const days = Math.min(7, Math.max(1, params.days ?? 3));
+    const services = await this.loadServices(params.serviceIds);
+    const totalDuration = services.reduce((sum, x) => sum + x.durationMinutes, 0);
+    let stylists = await this.capableStylists(params.serviceIds);
+    if (params.stylistId) stylists = stylists.filter((x) => x.id === params.stylistId);
+    const today = todaySalon(params.now);
+    const start = params.fromDate < today ? today : params.fromDate;
+
+    const candidates: SmartSlotCandidate[] = [];
+    const windows: SmartSlotsResult['windows'] = [];
+    for (let i = 0; i < days; i += 1) {
+      const date = addDays(start, i);
+      const closedReason = await this.closedReason(date);
+      if (closedReason) { windows.push({ date, closedReason, stylists: [] }); continue; }
+      const perStylist: { id: string; name: string; load: number; free: Interval[]; starts: number[] }[] = [];
+      for (const st of stylists) {
+        const input = await this.buildCalcInput({
+          date, stylistId: st.id, totalDuration, ignoreLeadTime: true, now: params.now,
+        });
+        const free = computeFreeIntervals(input).filter((f) => f.end - f.start >= totalDuration);
+        const starts = computeAvailableSlots(input).map(toMinutes);
+        const load = input.apptBusy.reduce((sum, b) => sum + (b.end - b.start), 0);
+        perStylist.push({ id: st.id, name: st.fullName, load, free, starts });
+      }
+      const loads = perStylist.map((p) => p.load);
+      const allStarts = perStylist.flatMap((p) => p.starts);
+      const earliestOfDay = allStarts.length ? Math.min(...allStarts) : 0;
+      for (const p of perStylist) {
+        for (const s of p.starts) {
+          const win = p.free.find((f) => f.start <= s && s + totalDuration <= f.end);
+          if (!win) continue;
+          candidates.push({
+            date, dayOffset: i, start: s, duration: totalDuration, stylistId: p.id, stylistName: p.name,
+            freeStart: win.start, freeEnd: win.end, dayLoadMinutes: p.load,
+            maxDayLoad: Math.max(...loads), minDayLoad: Math.min(...loads), earliestOfDay,
+          });
+        }
+      }
+      const fmt = (m: number): string => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+      windows.push({
+        date, closedReason: null,
+        stylists: perStylist.map((p) => ({
+          stylistId: p.id, stylistName: p.name, loadMinutes: p.load,
+          free: p.free.map((f) => ({ start: fmt(f.start), end: fmt(f.end) })),
+        })),
+      });
+    }
+    return {
+      fromDate: start, days, totalDurationMinutes: totalDuration,
+      suggestions: rankSmartSlots(candidates, Math.min(12, Math.max(1, params.limit ?? 6))),
+      windows,
     };
   }
 

@@ -16,7 +16,7 @@ import { AuthUser } from '../../common/types/auth.types';
 import { todaySalon } from '../../common/utils/time.util';
 import {
   BulkReassignDto, CreateBookingDto, DayScheduleQuery, ListAppointmentsQuery,
-  RejectDto, RescheduleDto, StaffAvailabilityQueryDto, WalkInBookingDto,
+  RejectDto, RescheduleDto, SmartSlotsQueryDto, StaffAvailabilityQueryDto, WalkInBookingDto,
 } from './dto/booking.dto';
 import { CreateServiceNoteDto } from '../customers/dto/customer.dto';
 
@@ -71,6 +71,15 @@ export class AppointmentsController {
       stylistId: q.stylistId,
       ignoreLeadTime: true,
       excludeAppointmentId: q.excludeAppointmentId,
+    });
+  }
+
+  /** Mentor S2 · mục 4: Trợ lý AI gợi ý khung giờ tốt nhất (sớm · vừa khít · cân bằng thợ) ngay trong màn hình tạo lịch. */
+  @Get('smart-slots')
+  @Roles(Role.RECEPTIONIST, Role.OWNER, Role.ADMIN)
+  smartSlots(@Query() q: SmartSlotsQueryDto) {
+    return this.availability.smartSlots({
+      serviceIds: q.serviceIds, fromDate: q.date, days: q.days, stylistId: q.stylistId, limit: q.limit,
     });
   }
 

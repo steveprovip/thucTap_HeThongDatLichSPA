@@ -36,6 +36,29 @@ export class AvailabilityQueryDto {
   holdToken?: string;
 }
 
+/** GET /appointments/smart-slots — Trợ lý AI xếp lịch (Mentor S2 · mục 4). */
+export class SmartSlotsQueryDto {
+  @Transform(toIdList)
+  @IsArray()
+  @ArrayMinSize(1, { message: 'Vui lòng chọn ít nhất một dịch vụ' })
+  @ArrayMaxSize(5, { message: 'Mỗi lượt đặt chỉ được chọn tối đa 5 dịch vụ' })
+  @ArrayUnique({ message: 'Mỗi dịch vụ chỉ được chọn một lần' })
+  @IsUUID('4', { each: true, message: 'Mã dịch vụ không hợp lệ' })
+  serviceIds!: string[];
+
+  @Matches(DATE_RE, { message: 'Ngày phải theo định dạng yyyy-MM-dd' })
+  date!: string;
+
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(7)
+  days?: number;
+
+  @IsOptional() @IsUUID('4', { message: 'Thợ không hợp lệ' })
+  stylistId?: string;
+
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(12)
+  limit?: number;
+}
+
 /** Dùng cho màn hình nội bộ: thêm tuỳ chọn bỏ qua chính lịch hẹn đang sửa. */
 export class StaffAvailabilityQueryDto extends AvailabilityQueryDto {
   @IsOptional() @IsUUID('4', { message: 'Lịch hẹn không hợp lệ' })

@@ -257,6 +257,24 @@ describe('Mentor Sprint 2', () => {
       await ds.query('UPDATE appointments SET status = \'cancelled\' WHERE code = $1', [code]);
     });
 
+    it('Mục 4: Trợ lý AI gợi ý khung giờ có điểm + lý do, khoảng rảnh từng thợ; thợ không được dùng', async () => {
+      const res = await request(server).get('/api/appointments/smart-slots')
+        .query({ serviceIds: serviceId, date, days: 1 }).set(as('receptionist')).expect(200);
+      const data = res.body.data as {
+        suggestions: { date: string; time: string; stylistId: string; score: number; reasons: string[] }[];
+        windows: { date: string; stylists: { stylistId: string; free: { start: string; end: string }[] }[] }[];
+      };
+      expect(data.suggestions.length).toBeGreaterThan(0);
+      const ours = data.suggestions.filter((x) => x.stylistId === stylistId);
+      expect(ours.length).toBeLessThanOrEqual(2);
+      expect(data.suggestions.every((x) => x.reasons.length > 0 && x.date === date)).toBe(true);
+      const w = data.windows[0].stylists.find((x) => x.stylistId === stylistId);
+      expect(w?.free.length).toBeGreaterThan(0);
+      // Gợi ý nào cho thợ này cũng phải nằm trọn trong khoảng rảnh của thợ
+      for (const sug of ours) expect(w!.free.some((f) => f.start <= sug.time && sug.time < f.end)).toBe(true);
+      await request(server).get('/api/appointments/smart-slots').query({ serviceIds: serviceId, date }).set(as('stylist')).expect(403);
+    });
+
     it('giữ chỗ hết hạn thì tự trả lại; trả chỗ chủ động bằng DELETE', async () => {
       const t2 = plus(time, 60);
       const a = await request(server).post('/api/public/holds').send({ serviceIds: [serviceId], date, time: t2, stylistId }).expect(201);
