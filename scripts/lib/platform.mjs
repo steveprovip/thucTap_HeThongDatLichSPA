@@ -1,0 +1,56 @@
+/**
+ * Khác biệt theo hệ điều hành mà Launcher cần xử lý. Node thuần, không cần gói npm.
+ *
+ * macOS: ứng dụng mở từ Finder / Dock / Launchpad KHÔNG đọc ~/.zshrc nên PATH chỉ có /usr/bin:/bin:/usr/sbin:/sbin.
+ * Hậu quả: không thấy `docker` (Docker Desktop, Homebrew), `npm`, `git`, hoặc `docker compose up` báo
+ * "error getting credentials - docker-credential-desktop: executable file not found in $PATH".
+ * Bổ sung các thư mục công cụ quen thuộc vào CUỐI PATH (PATH của người dùng vẫn được ưu tiên).
+ */
+import { existsSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { delimiter, dirname, join } from 'node:path';
+
+/** Thư mục công cụ thường gặp trên macOS (Homebrew Apple Silicon / Intel, Docker Desktop, trình cài Node.js chính thức). */
+export const macToolDirs = (home = homedir()) => [
+  '/opt/homebrew/bin',
+  '/opt/homebrew/sbin',
+  '/usr/local/bin',
+  '/Applications/Docker.app/Contents/Resources/bin',
+  join(home, '.docker', 'bin'),
+  '/Applications/Docker.app/Contents/Resources/cli-plugins',
+];
+
+/**
+ * PATH đã bổ sung: thư mục chứa chính `node` đang chạy được đặt ĐẦU (để `npm` luôn khớp với `node`), các thư mục công
+ * cụ macOS còn thiếu (và có thật trên đĩa) đặt CUỐI. Windows: giữ nguyên.
+ */
+export function withToolPath(currentPath = '', {
+  platform = process.platform, execPath = process.execPath, home = homedir(), exists = existsSync,
+} = {}) {
+  if (platform === 'win32') return currentPath;
+  const parts = currentPath.split(delimiter).filter(Boolean);
+  const have = new Set(parts);
+  const nodeDir = dirname(execPath);
+  const head = have.has(nodeDir) ? [] : [nodeDir];
+  const tail = platform === 'darwin'
+    ? macToolDirs(home).filter((d) => !have.has(d) && exists(d))
+    : [];
+  return [...head, ...parts, ...tail].join(delimiter);
+}
+
+/** Gọi một lần ở đầu mỗi tiến trình Launcher: mọi tiến trình con (docker, npm, git) thừa hưởng PATH đầy đủ. */
+export function ensureToolPath() {
+  if (process.platform === 'win32') return;
+  process.env.PATH = withToolPath(process.env.PATH ?? '');
+}
+
+/** Trình duyệt Chromium trên macOS có chế độ cửa sổ ứng dụng (--app, không thanh địa chỉ) cho cửa sổ Launcher. */
+export const macAppBrowsers = (home = homedir()) => [
+  ['Google Chrome', 'Google Chrome'],
+  ['Microsoft Edge', 'Microsoft Edge'],
+  ['Brave Browser', 'Brave Browser'],
+  ['Chromium', 'Chromium'],
+].flatMap(([app, bin]) => [
+  `/Applications/${app}.app/Contents/MacOS/${bin}`,
+  join(home, 'Applications', `${app}.app`, 'Contents', 'MacOS', bin),
+]);

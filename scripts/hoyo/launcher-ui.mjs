@@ -25,6 +25,9 @@ import { fileURLToPath } from 'node:url';
 import { checkForUpdate, localVersion, readChangelog } from '../lib/version.mjs';
 import { buildLogBundle, deviceInfo, deviceInfoText, tailFile } from '../lib/diagnostics.mjs';
 import { BANKS, buildShopUpdates, readShopConfig, upsertEnv } from '../lib/shop-config.mjs';
+import { ensureToolPath, macAppBrowsers } from '../lib/platform.mjs';
+
+ensureToolPath(); // macOS mở từ Finder không có PATH của Terminal
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..');
@@ -223,6 +226,13 @@ function openUrl(url, { appWindow = false } = {}) {
       const browser = EDGE_PATHS.find((p) => p && existsSync(p));
       if (browser) {
         spawn(browser, [`--app=${url}`, '--window-size=1280,760', '--no-first-run'], { detached: true, stdio: 'ignore', windowsHide: false }).unref();
+        return;
+      }
+    }
+    if (process.platform === 'darwin' && appWindow) {
+      const browser = macAppBrowsers().find((p) => existsSync(p));
+      if (browser) {
+        spawn(browser, [`--app=${url}`, '--window-size=1280,760', '--no-first-run'], { detached: true, stdio: 'ignore' }).unref();
         return;
       }
     }
