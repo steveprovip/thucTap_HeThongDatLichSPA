@@ -38,7 +38,9 @@ import net from 'node:net';
 import { networkInterfaces } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ensureToolPath } from './lib/platform.mjs';
+import { composeServices, ensureToolPath } from './lib/platform.mjs';
+import { adoptRepo, gitLogin } from './lib/git-repair.mjs';
+import { classifyGitError, problemOf } from './lib/version.mjs';
 import { cwdInside, mentionsRoot, parseNetstatListeners, parsePidList } from './lib/ports.mjs';
 
 // macOS mở từ Finder không có PATH của Terminal: bổ sung để thấy docker / npm / git (xem lib/platform.mjs)
@@ -63,6 +65,23 @@ const IS_WIN = process.platform === 'win32';
 const log = (msg = '') => process.stdout.write(`${msg}\n`);
 const err = (msg) => process.stderr.write(`${msg}\n`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** Đo thời gian từng bước khởi động: in ra màn hình và lưu logs/startup-timing.json (máy chạy chậm gửi tệp này là biết chậm ở đâu). */
+const timings = [];
+async function timed(name, fn) {
+  const t0 = Date.now();
+  try { return await fn(); } finally {
+    const sec = Math.round((Date.now() - t0) / 100) / 10;
+    timings.push({ name, sec });
+    log(`      ⏱ ${name}: ${sec} giây`);
+  }
+}
+function saveTimings(mode) {
+  try {
+    mkdirSync(join(ROOT, 'logs'), { recursive: true });
+    writeFileSync(join(ROOT, 'logs', 'startup-timing.json'), JSON.stringify({ at: new Date().toISOString(), mode, node: process.version, platform: `${process.platform} ${process.arch}`, steps: timings }, null, 2));
+  } catch { /* chỉ để chẩn đoán */ }
+}
 
 function readEnvValue(file, key) {
   if (!existsSync(file)) return undefined;
@@ -153,12 +172,52 @@ function depsHash(dir) {
   return h.digest('hex');
 }
 
+/** Chạy npm bất đồng bộ, gom đầu ra (chỉ in khi lỗi); cứ 15 giây báo một lần để người dùng biết hệ thống không treo. */
+function npmCapture(args, { cwd, label, heartbeat = true }) {
+  return new Promise((resolve) => {
+    const child = spawn('npm', args, { cwd, shell: IS_WIN, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    let out = '';
+    const t0 = Date.now();
+    const timer = heartbeat ? setInterval(() => log(`      ${label}: đang chạy ... (${Math.round((Date.now() - t0) / 1000)} giây)`), 15_000) : null;
+    const take = (c) => { out = (out + c.toString('utf8')).slice(-20_000); };
+    child.stdout.on('data', take);
+    child.stderr.on('data', take);
+    const done = (status) => { clearInterval(timer); resolve({ status, out }); };
+    child.on('error', (e) => { out += e.message; done(1); });
+    child.on('close', (code) => done(code ?? 1));
+  });
+}
+
 /**
- * Cài gói khi: chưa có node_modules, HOẶC package.json / package-lock.json đã đổi
- * (vd. sau git pull) so với lần cài trước. Lần sau không đổi gì thì bỏ qua -> khởi động nhanh.
+ * Cài gói của MỘT thư mục. node_modules chưa có + có package-lock.json -> `npm ci` (nhanh hơn, đúng phiên bản đã khoá);
+ * ci lỗi (lệch khoá) hoặc đã có node_modules -> `npm install`. --prefer-offline dùng lại bộ nhớ đệm npm.
  */
-function ensureDeps() {
-  for (const [dir, label] of [['.', 'workspace gốc'], ['backend', 'backend'], ['frontend', 'frontend']]) {
+async function installDir(abs, label) {
+  const fast = ['--no-fund', '--no-audit', '--progress=false', '--prefer-offline'];
+  const clean = !existsSync(join(abs, 'node_modules')) && existsSync(join(abs, 'package-lock.json'));
+  if (clean) {
+    const r = await npmCapture(['ci', ...fast], { cwd: abs, label });
+    if (r.status === 0) return true;
+    log(`      ${label}: npm ci không khớp package-lock.json, chuyển sang npm install ...`);
+  }
+  const r = await npmCapture(['install', ...fast], { cwd: abs, label });
+  if (r.status !== 0) {
+    err(`[LỖI] npm install thất bại trong ${label}. Kiểm tra kết nối mạng rồi chạy lại. Chi tiết:`);
+    err(r.out.split('\n').slice(-25).join('\n'));
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Cài gói khi: chưa có node_modules, HOẶC package.json / package-lock.json đã đổi (vd. sau git pull) so với lần cài trước.
+ * Các thư mục cần cài được cài SONG SONG. Thư mục gốc (chỉ phục vụ kiểm thử AI e2e và `npm run start:all`) mặc định bỏ qua:
+ * máy tiệm không cần, và nó từng chiếm một phần đáng kể thời gian chạy lần đầu.
+ */
+async function ensureDeps({ root = false } = {}) {
+  const dirs = [['backend', 'backend'], ['frontend', 'frontend'], ...(root ? [['.', 'workspace gốc']] : [])];
+  const work = [];
+  for (const [dir, label] of dirs) {
     const abs = join(ROOT, dir);
     const stampFile = join(abs, 'node_modules', STAMP);
     const want = depsHash(abs);
@@ -167,21 +226,14 @@ function ensureDeps() {
       log(`      ${label}: gói đã đầy đủ.`);
       continue;
     }
-    log(`      ${label}: cài đặt / cập nhật gói (lần đầu có thể mất vài phút) ...`);
-    const r = spawnSync('npm', ['install', '--no-fund', '--no-audit'], {
-      cwd: abs,
-      stdio: 'inherit',
-      shell: process.platform === 'win32', // npm là npm.cmd trên Windows
-      windowsHide: true,
-    });
-    if (r.status !== 0) {
-      err(`[LỖI] npm install thất bại trong ${label}. Kiểm tra kết nối mạng rồi chạy lại.`);
-      return false;
-    }
-    // npm install có thể tự cập nhật package-lock.json -> tính lại hash sau khi cài
-    writeFileSync(stampFile, depsHash(abs));
+    log(`      ${label}: cài đặt / cập nhật gói (lần đầu có thể mất vài phút, các thư mục cài song song) ...`);
+    work.push(installDir(abs, label).then((ok) => {
+      // npm install có thể tự cập nhật package-lock.json -> tính lại hash sau khi cài
+      if (ok) writeFileSync(stampFile, depsHash(abs));
+      return ok;
+    }));
   }
-  return true;
+  return (await Promise.all(work)).every(Boolean);
 }
 
 const tcpOpen = (host, port) =>
@@ -259,9 +311,9 @@ function killProcessOnPort(port) {
   } catch { /* không dọn được thì để bước kiểm tra cổng phía sau báo lỗi */ }
 }
 
-async function prepare() {
+async function prepare({ root = true } = {}) {
   ensureEnvFiles();
-  if (!ensureDeps()) return 1;
+  if (!(await ensureDeps({ root }))) return 1;
 
   let apiBusy = await portInUse(API_PORT);
   let webBusy = await portInUse(WEB_PORT);
@@ -338,6 +390,15 @@ const DB_CONTAINER = 'salon_postgres';
  */
 const COMPOSE_FILE = join(ROOT, 'deploy', 'docker', 'docker-compose.yml');
 const composeArgs = (...args) => ['compose', '--project-directory', ROOT, '-f', COMPOSE_FILE, ...args];
+/**
+ * Chỉ dựng dịch vụ CẦN CHO CHẠY: PostgreSQL, và Maildev khi thư gửi đi vào hộp thư ảo (SMTP_HOST là máy này).
+ * PgAdmin (image ~0,5 GB, chỉ để xem CSDL bằng tay) KHÔNG còn tự dựng — tải nó là phần lớn thời gian chạy lần đầu.
+ * Cần PgAdmin: `npm run db:up`. Ghi đè: SALON_DOCKER_SERVICES=postgres,maildev,pgadmin
+ */
+const dockerServices = () => composeServices({
+  forced: process.env.SALON_DOCKER_SERVICES,
+  smtpHost: process.env.SMTP_HOST ?? readEnvValue(join(ROOT, 'backend', '.env'), 'SMTP_HOST') ?? '',
+});
 const DOCKER_DOWNLOAD = 'https://www.docker.com/products/docker-desktop/';
 
 /** Địa chỉ PostgreSQL mà backend sẽ kết nối (biến môi trường thắng backend/.env, giống dotenv). */
@@ -442,10 +503,11 @@ async function ensureDatabase(step = '[3/6]') {
     err('      Linux: sudo systemctl start docker (và thêm tài khoản vào nhóm docker).');
     return false;
   }
-  log('      Dựng PostgreSQL, PgAdmin và Maildev (lần đầu phải tải image, có thể mất vài phút) ...');
-  if (spawnSync('docker', composeArgs('up', '-d'), { cwd: ROOT, stdio: 'inherit', windowsHide: true }).status !== 0) {
+  const services = dockerServices();
+  log(`      Dựng ${services.join(' + ')} (lần đầu phải tải image, có thể mất vài phút) ...`);
+  if (spawnSync('docker', composeArgs('up', '-d', ...services), { cwd: ROOT, stdio: 'inherit', windowsHide: true }).status !== 0) {
     err('[LỖI] docker compose up thất bại. Nguyên nhân thường gặp:');
-    err('      - Cổng 5432 / 5050 / 1080 đang bị chương trình khác chiếm (vd. PostgreSQL cài sẵn trên máy).');
+    err('      - Cổng 5432 / 1080 đang bị chương trình khác chiếm (vd. PostgreSQL cài sẵn trên máy).');
     err('        Cách sửa: đặt POSTGRES_PORT=5433 trong .env và DB_PORT=5433 trong backend/.env rồi chạy lại.');
     err('      - Trùng tên container của một bản sao dự án khác: docker rm -f salon_postgres salon_pgadmin salon_maildev');
     err('      - Docker Desktop quá cũ, không có lệnh "docker compose": cập nhật Docker Desktop.');
@@ -504,9 +566,14 @@ async function start() {
   log(`[1/6] Node.js ${process.version}`);
   log('[2/6] Chuẩn bị tệp .env (luôn chạy với API thật, không dùng chế độ Demo) ...');
   ensureEnvFiles();
-  if (!(await ensureDatabase())) return 1;
-  log('[4/6] Kiểm tra gói npm và cổng mạng ...');
-  const rc = await prepare();
+  log('[3/6] Docker + PostgreSQL và gói npm chạy song song ...');
+  const [dbOk, depsOk] = await Promise.all([
+    timed('Docker + PostgreSQL', () => ensureDatabase()),
+    timed('Cài gói npm', () => ensureDeps()),
+  ]);
+  if (!dbOk || !depsOk) return 1;
+  log('[4/6] Kiểm tra cổng mạng ...');
+  const rc = await prepare({ root: false });
   if (rc === 10) {
     log('Cửa sổ này có thể đóng.');
     await waitForEnter();
@@ -514,7 +581,8 @@ async function start() {
   }
   if (rc !== 0) return 1;
   log(`      Cổng ${API_PORT} và ${WEB_PORT} đang trống.`);
-  if (!seedDatabase()) return 1;
+  if (!(await timed('Nạp dữ liệu mẫu', async () => seedDatabase()))) return 1;
+  saveTimings('dev');
   printBanner();
   return run();
 }
@@ -761,7 +829,7 @@ function clearState() {
 }
 
 const npm = (args, opts = {}) => spawnSync('npm', args, { cwd: ROOT, shell: IS_WIN, windowsHide: true, ...opts });
-const git = (args, opts = {}) => spawnSync('git', args, { cwd: ROOT, encoding: 'utf8', windowsHide: true, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }, ...opts });
+const git = (args, opts = {}) => spawnSync('git', ['-c', `safe.directory=${ROOT.replace(/\\/g, '/')}`, ...args], { cwd: ROOT, encoding: 'utf8', windowsHide: true, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }, ...opts });
 const gitOut = (args) => {
   const r = git(args);
   return r.status === 0 ? r.stdout.trim() : '';
@@ -815,27 +883,25 @@ async function stopRunning(state) {
  * Build vào backend/dist-next và frontend/dist-next TRƯỚC, trong lúc bản cũ vẫn đang phục vụ khách.
  * Lỗi biên dịch thì dừng ngay, hệ thống đang chạy không bị đụng tới. Chỉ khi build xong mới dừng - đổi thư mục - chạy lại.
  */
-function buildNext() {
+async function buildNext() {
   const be = join(ROOT, 'backend');
   const fe = join(ROOT, 'frontend');
   rmSync(join(be, 'dist-next'), { recursive: true, force: true });
   rmSync(join(fe, 'dist-next'), { recursive: true, force: true });
-  log('      Biên dịch backend vào backend/dist-next (bản đang chạy chưa bị đụng tới) ...');
-  const b = npm(['run', 'build:next', '--prefix', 'backend'], { stdio: 'inherit' });
-  if (b.status !== 0 || !existsSync(join(be, 'dist-next', 'main.js'))) {
-    err('[LỖI] Biên dịch backend thất bại (xem lỗi TypeScript phía trên).');
-    rmSync(join(be, 'dist-next'), { recursive: true, force: true });
-    return false;
-  }
-  log('      Build giao diện vào frontend/dist-next ...');
-  const f = npm(['run', 'build', '--prefix', 'frontend', '--', '--outDir', 'dist-next'], { stdio: 'inherit' });
-  if (f.status !== 0 || !existsSync(join(fe, 'dist-next', 'index.html'))) {
-    err('[LỖI] Build giao diện thất bại (xem lỗi phía trên).');
-    rmSync(join(be, 'dist-next'), { recursive: true, force: true });
-    rmSync(join(fe, 'dist-next'), { recursive: true, force: true });
-    return false;
-  }
-  return true;
+  log('      Biên dịch backend và build giao diện SONG SONG vào dist-next (bản đang chạy chưa bị đụng tới) ...');
+  // build:app = vite build (không chạy lại tsc: mã đã qua kiểm tra kiểu khi phát hành, bỏ bước này tiết kiệm cả phút ở máy yếu)
+  const [b, f] = await Promise.all([
+    npmCapture(['run', 'build:next', '--prefix', 'backend'], { cwd: ROOT, label: 'backend' }),
+    npmCapture(['run', 'build:app', '--prefix', 'frontend', '--', '--outDir', 'dist-next'], { cwd: ROOT, label: 'giao diện' }),
+  ]);
+  const backendOk = b.status === 0 && existsSync(join(be, 'dist-next', 'main.js'));
+  const frontendOk = f.status === 0 && existsSync(join(fe, 'dist-next', 'index.html'));
+  if (backendOk && frontendOk) return true;
+  if (!backendOk) { err('[LỖI] Biên dịch backend thất bại:'); err(b.out.split('\n').slice(-30).join('\n')); }
+  if (!frontendOk) { err('[LỖI] Build giao diện thất bại:'); err(f.out.split('\n').slice(-30).join('\n')); }
+  rmSync(join(be, 'dist-next'), { recursive: true, force: true });
+  rmSync(join(fe, 'dist-next'), { recursive: true, force: true });
+  return false;
 }
 
 async function renameRetry(from, to) {
@@ -897,14 +963,30 @@ function needsBuild() {
 
 /* ------------------------------------------------------------ các bước CSDL (không nạp dữ liệu mẫu) */
 /** Chạy npm script của backend: in ra màn hình ĐÚNG THỨ TỰ (stdout + stderr) và trả về nội dung stdout để phân tích. */
-function backendScript(script, extra = []) {
+/** Script TypeScript của backend -> tệp đã biên dịch tương ứng (chạy bằng node thẳng, không cần ts-node). */
+const COMPILED_SCRIPT = {
+  'migration:run': ['migrate.js', 'run'],
+  bootstrap: ['run-bootstrap.js'],
+  'security:check': ['security-check.js'],
+  backup: ['backup-cli.js'],
+};
+
+/**
+ * distDir (vd. 'dist-next') có sẵn bản biên dịch ĐÚNG VỚI mã nguồn hiện tại -> chạy `node` thẳng: bỏ ts-node, vốn phải biên dịch lại
+ * TypeScript mỗi lần (3 lần liên tiếp khi khởi động: migration, bootstrap, security-check) — vài chục giây ở máy yếu.
+ */
+function backendScript(script, extra = [], distDir = null) {
+  const compiled = distDir && COMPILED_SCRIPT[script];
+  const entry = compiled && join(ROOT, 'backend', distDir, 'database', compiled[0]);
   return new Promise((resolve) => {
-    const child = spawn('npm', ['run', script, '--prefix', 'backend', ...(extra.length ? ['--', ...extra] : [])], {
-      cwd: ROOT,
-      shell: IS_WIN,
-      windowsHide: true,
-      stdio: ['inherit', 'pipe', 'pipe'],
-    });
+    const child = entry && existsSync(entry)
+      ? spawn(process.execPath, [entry, ...compiled.slice(1), ...extra], { cwd: join(ROOT, 'backend'), windowsHide: true, stdio: ['inherit', 'pipe', 'pipe'] })
+      : spawn('npm', ['run', script, '--prefix', 'backend', ...(extra.length ? ['--', ...extra] : [])], {
+        cwd: ROOT,
+        shell: IS_WIN,
+        windowsHide: true,
+        stdio: ['inherit', 'pipe', 'pipe'],
+      });
     let out = '';
     child.stdout.on('data', (c) => { out += c.toString('utf8'); process.stdout.write(c); });
     child.stderr.on('data', (c) => process.stderr.write(c));
@@ -913,17 +995,17 @@ function backendScript(script, extra = []) {
   });
 }
 
-async function migrateAndBootstrap(backup) {
-  log('      Cập nhật cấu trúc CSDL (migration; KHÔNG nạp dữ liệu mẫu, KHÔNG xoá dữ liệu khách) ...');
-  const m = await backendScript('migration:run', [`--backup=${backup}`]);
+async function migrateAndBootstrap(backup, distDir = null) {
+  log(`      Cập nhật cấu trúc CSDL (migration; KHÔNG nạp dữ liệu mẫu, KHÔNG xoá dữ liệu khách)${distDir ? ' bằng bản đã biên dịch' : ''} ...`);
+  const m = await backendScript('migration:run', [`--backup=${backup}`], distDir);
   if (!m.ok) return { ok: false, applied: [], backupFile: null };
   const applied = [...m.out.matchAll(/✓ (\S+)/g)].map((x) => x[1]);
   const backupFile = /Đã sao lưu \([^)]*\): (.+)/.exec(m.out)?.[1]?.trim() ?? null;
-  const b = await backendScript('bootstrap');
+  const b = await backendScript('bootstrap', [], distDir);
   if (!b.ok) return { ok: false, applied, backupFile };
   const noAdmin = /CSDL chưa có tài khoản nào/.test(b.out); // bootstrap chỉ cảnh báo khi thiếu BOOTSTRAP_ADMIN_*
   // Cảnh báo (không chặn): tài khoản mẫu còn mật khẩu mặc định thì không được mở hệ thống ra Internet
-  await backendScript('security:check');
+  await backendScript('security:check', [], distDir);
   return { ok: true, applied, backupFile, noAdmin };
 }
 
@@ -974,28 +1056,35 @@ async function serve() {
     err(`[LỖI] Cổng ${API_PORT} đang bị chương trình khác chiếm. Đóng chương trình đó rồi chạy lại.`);
     return 1;
   }
-  if (!(await ensureDatabase())) return 1;
-  log('[4/6] Kiểm tra gói npm ...');
-  if (!ensureDeps()) return 1;
+  // Docker + PostgreSQL (chờ mạng / Docker Desktop khởi động) chạy SONG SONG với cài gói npm và build: không còn cộng dồn thời gian chờ
+  log('[3/6] Docker + PostgreSQL, gói npm và build chạy song song để nhanh hơn ...');
+  let built = false;
+  const dbJob = timed('Docker + PostgreSQL', () => ensureDatabase());
+  const buildJob = (async () => {
+    log('[4/6] Kiểm tra gói npm ...');
+    if (!(await timed('Cài gói npm', () => ensureDeps()))) return false;
+    if (!needsBuild()) { log('      Bản build đã khớp mã nguồn.'); return true; }
+    log('      Bản build chưa có hoặc đã cũ so với mã nguồn - build lại ...');
+    built = await timed('Build', () => buildNext());
+    return built;
+  })();
+  const [dbOk, buildOk] = await Promise.all([dbJob, buildJob]);
+  if (!dbOk || !buildOk) return 1;
   log('[5/6] Cấu trúc CSDL ...');
-  const mig = await migrateAndBootstrap(process.env.MIGRATION_BACKUP ?? 'auto');
+  const mig = await timed('Migration + tài khoản quản trị', () => migrateAndBootstrap(process.env.MIGRATION_BACKUP ?? 'auto', built ? 'dist-next' : 'dist'));
   if (!mig.ok) {
     err('[LỖI] Không cập nhật được cấu trúc CSDL. Máy chủ KHÔNG khởi động để tránh chạy sai dữ liệu. Xem lỗi phía trên.');
     return 1;
   }
   if (mig.noAdmin) {
     err('[LỖI] CSDL chưa có tài khoản nào nên không ai đăng nhập được. Máy chủ chưa khởi động.');
-    err('      Mở backend\\.env, điền BOOTSTRAP_ADMIN_EMAIL và BOOTSTRAP_ADMIN_PASSWORD (>= 8 ký tự, có chữ và số, không dấu;');
-    err('      tránh ký tự #), lưu lại rồi chạy lại HoYoSalon.bat (hoặc scripts\\windows\\start_server.bat). Tài khoản quản trị đầu tiên sẽ được tạo tự động.');
+    err('      Mở Launcher > Thiết lập cửa hàng (hoặc sửa backend/.env: BOOTSTRAP_ADMIN_EMAIL, BOOTSTRAP_ADMIN_PASSWORD), điền email và mật khẩu');
+    err('      quản trị đầu tiên (>= 8 ký tự, có chữ và số, không dấu; tránh ký tự #), rồi chạy lại. Tài khoản đó được tạo tự động.');
     return 1;
   }
-  if (needsBuild()) {
-    log('      Bản build chưa có hoặc đã cũ so với mã nguồn - build lại (vài chục giây) ...');
-    if (!buildNext()) return 1;
-    await swapNext();
-  } else {
-    log('      Bản build đã khớp mã nguồn.');
-  }
+  if (built) await swapNext();
+  saveTimings('serve');
+  log(`      Tổng thời gian chuẩn bị: ${timings.map((t) => `${t.name} ${t.sec}s`).join(' · ')}`);
   printServerBanner();
   return run('serve');
 }
@@ -1179,8 +1268,12 @@ async function update() {
 
   const oldRev = currentCommit();
   log('[2/8] Kiểm tra phiên bản trên kho mã (git fetch origin main) ...');
-  if (git(['fetch', '--quiet', 'origin', 'main'], { stdio: 'inherit' }).status !== 0) {
-    err('[LỖI] Không kết nối được kho mã (kiểm tra Internet / quyền truy cập GitHub). CHƯA có gì bị thay đổi.');
+  const fetched = git(['fetch', '--quiet', 'origin', 'main']);
+  if (fetched.status !== 0) {
+    const p = problemOf(classifyGitError(fetched.stderr, { missing: !!fetched.error }), fetched.stderr);
+    err(`[LỖI] ${p.message} CHƯA có gì bị thay đổi.`);
+    err(`      ${p.fix}`);
+    if (p.detail) err(`      Chi tiết git: ${p.detail}`);
     return 1;
   }
   const remoteRev = gitOut(['rev-parse', 'origin/main']);
@@ -1286,14 +1379,14 @@ async function updateApply() {
     if (!(await stopRunning(state))) return fail(`[LỖI] Không dừng được hệ thống cũ (cổng ${API_PORT} vẫn bận). Chưa thay đổi gì.`);
     stopped = true;
   }
-  if (!ensureDeps()) return fail('[LỖI] Cài gói thất bại.');
+  if (!(await ensureDeps())) return fail('[LỖI] Cài gói thất bại.');
 
   const needBuild = mode === 'serve' && needsBuild();
   if (mode !== 'serve') {
     log('[5/8] Chế độ phát triển: không cần build.');
   } else if (needBuild) {
     log(stopped ? '[5/8] Build bản mới ...' : '[5/8] Build bản mới ở thư mục tạm (bản cũ vẫn phục vụ trong lúc này) ...');
-    if (!buildNext()) {
+    if (!(await buildNext())) {
       return fail(stopped ? '[LỖI] Build thất bại.' : '[LỖI] Build thất bại. Hệ thống đang chạy KHÔNG bị đụng tới, vẫn là bản cũ.');
     }
   } else {
@@ -1306,7 +1399,8 @@ async function updateApply() {
     stopped = true;
   }
   if (!(await ensureDatabase('     -'))) return fail('[LỖI] Không kết nối được PostgreSQL.');
-  const mig = await migrateAndBootstrap(backupPolicy);
+  // Bản biên dịch mới nằm ở dist-next (chưa swap) hoặc dist (đã khớp mã nguồn); chế độ phát triển không build -> ts-node
+  const mig = await migrateAndBootstrap(backupPolicy, mode !== 'serve' ? null : needBuild ? 'dist-next' : 'dist');
   if (!mig.ok) {
     return fail(
       '[LỖI] Cập nhật cấu trúc CSDL thất bại. Dữ liệu cũ được giữ nguyên (mỗi migration chạy trong một giao dịch, lỗi thì tự huỷ).',
@@ -1384,11 +1478,40 @@ async function backupNow() {
   return 0;
 }
 
+/** Sửa kết nối cập nhật cho thư mục không phải git clone (Launcher > Thông tin phiên bản > Sửa kết nối cập nhật). */
+function repairGit() {
+  log('SỬA KẾT NỐI CẬP NHẬT: nối thư mục này với kho mã để cập nhật 1 chạm.');
+  const origin = process.argv.find((a) => a.startsWith('--origin='))?.slice(9);
+  const r = adoptRepo(ROOT, { origin, log });
+  if (!r.ok) {
+    const p = r.problem;
+    err(`[LỖI] ${p ? `${p.message} ${p.fix}` : r.error}`);
+    if (p?.detail) err(`      Chi tiết git: ${p.detail}`);
+    return 1;
+  }
+  if (r.patch) log(`      Thay đổi tay (nếu có) đã lưu ở ${r.patch}`);
+  log(`ĐÃ NỐI KHO MÃ XONG (commit ${r.commit}). Bấm CẬP NHẬT để cài đặt và chạy bản mới.`);
+  return 0;
+}
+
+/** Đăng nhập GitHub một lần cho kho riêng tư (Launcher > Đăng nhập GitHub). */
+function gitLoginCommand() {
+  log('ĐĂNG NHẬP GITHUB: làm theo cửa sổ đăng nhập vừa hiện ra (có thể nằm sau cửa sổ này).');
+  const r = gitLogin(ROOT);
+  if (!r.ok) {
+    err(`[LỖI] ${r.problem.message} ${r.problem.fix}`);
+    if (r.problem.detail) err(`      Chi tiết git: ${r.problem.detail}`);
+    return 1;
+  }
+  log('ĐÃ ĐĂNG NHẬP GITHUB XONG. Bấm "Kiểm tra phiên bản mới nhất".');
+  return 0;
+}
+
 /* ------------------------------------------------------------------------ main */
 const cmd = process.argv[2];
 const handlers = {
   start, 'check-node': checkNode, prepare, open: openWhenReady, run,
-  serve, resume, tunnel, stop: stopCommand, update, 'update-apply': updateApply, backup: backupNow,
+  serve, resume, tunnel, stop: stopCommand, update, 'update-apply': updateApply, backup: backupNow, 'repair-git': repairGit, 'git-login': gitLoginCommand,
 };
 if (!handlers[cmd]) {
   err(`Cách dùng: node scripts/launcher.mjs <${Object.keys(handlers).join('|')}>`);
