@@ -11,7 +11,7 @@ xem bảng đối chiếu tại [`docs/BACKLOG-MAPPING.md`](docs/BACKLOG-MAPPING
 
 ## Chạy dự án bằng MỘT cú nhấp — HoYoSalon Launcher
 
-**Windows:** nhấp đúp **`HoYoSalon.bat`** ở thư mục gốc một lần — tệp này giao cho `scripts\windows\HoYoSalon.vbs` chạy ẩn rồi đóng ngay, và tạo lối tắt **Hương Sen Salon** (biểu tượng hoa sen) trên màn hình. Từ đó chỉ cần bấm lối tắt: **không có cửa sổ CMD/Terminal nào hiện ra** (máy chủ Launcher, Docker, NestJS, Vite đều chạy nền, nhật ký ở `logs/`). Cần xem lỗi trực tiếp: `HoYoSalon.bat --console`. **macOS / Linux:** `npm run launcher`.
+**Windows:** nhấp đúp **`HoYoSalon.bat`** ở thư mục gốc một lần — tệp này giao cho `scripts\windows\HoYoSalon.vbs` chạy ẩn rồi đóng ngay, và tạo lối tắt **Hương Sen Salon** (biểu tượng hoa sen) trên màn hình. Từ đó chỉ cần bấm lối tắt: **không có cửa sổ CMD/Terminal nào hiện ra** (máy chủ Launcher, Docker, NestJS, Vite đều chạy nền, nhật ký ở `logs/`). Cần xem lỗi trực tiếp: `HoYoSalon.bat --console`. **macOS:** nhấp đúp **`HoYoSalon.command`** (lần đầu tự tạo ứng dụng *Hương Sen Salon* trong `~/Applications`, kéo vào Dock để mở không cần Terminal) — chi tiết và lỗi thường gặp: [`docs/guides/CHAY-TREN-MACOS.md`](docs/guides/CHAY-TREN-MACOS.md). **Linux:** `npm run launcher`.
 
 Cửa sổ Launcher (nền tối kính mờ, phong cách game launcher) mở ra:
 

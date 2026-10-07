@@ -38,6 +38,10 @@ import net from 'node:net';
 import { networkInterfaces } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ensureToolPath } from './lib/platform.mjs';
+
+// macOS mở từ Finder không có PATH của Terminal: bổ sung để thấy docker / npm / git (xem lib/platform.mjs)
+ensureToolPath();
 
 // Node 24+ cảnh báo bằng tiếng Anh khi gọi npm qua shell trên Windows; ẩn để người dùng mới không hoang mang
 process.noDeprecation = true;
@@ -1044,7 +1048,7 @@ async function tunnel() {
     err('[LỖI] Chưa có cloudflared (chương trình tạo đường hầm của Cloudflare, miễn phí).');
     err('      Windows: tải https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe');
     err('               đổi tên thành cloudflared.exe và đặt vào C:\\Cloudflared\\bin (hoặc thư mục tools\\ của dự án).');
-    err('      macOS/Linux: xem https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/downloads/');
+    err('      macOS: brew install cloudflared   |   Linux: xem https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/downloads/');
     return 1;
   }
   if ((await httpStatus(HEALTH_URL)) !== 200) {

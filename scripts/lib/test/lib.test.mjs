@@ -4,7 +4,7 @@
  */
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
@@ -12,6 +12,8 @@ import { fileURLToPath } from 'node:url';
 import { inflateRawSync } from 'node:zlib';
 import { checkForUpdate, compareSemver, latestTag, parseSemver, readChangelog } from '../version.mjs';
 import { crc32, createZip, redactEnv } from '../diagnostics.mjs';
+import { APP_NAME, appleScriptSource, asString, createMacApp } from '../macos-app.mjs';
+import { macAppBrowsers, withToolPath } from '../platform.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
@@ -139,4 +141,63 @@ test('Thiết lập cửa hàng: ghi đúng khoá vào .env, giữ nguyên dòng
   assert.equal(view.hasSmtpPassword, true);
   assert.equal(view.gmailConfigured, true);
   assert.equal(toBankName('Đặng Văn Ân'), 'DANG VAN AN');
+});
+
+test('macOS: PATH của ứng dụng mở từ Finder được bổ sung thư mục Docker / Homebrew, node đứng đầu', () => {
+  const have = new Set(['/opt/homebrew/bin', '/Applications/Docker.app/Contents/Resources/bin']);
+  const opts = { platform: 'darwin', execPath: '/Users/a/.nvm/versions/node/v22/bin/node', home: '/Users/a', exists: (d) => have.has(d) };
+  const out = withToolPath('/usr/bin:/bin:/usr/sbin:/sbin', opts).split(':');
+  assert.equal(out[0], '/Users/a/.nvm/versions/node/v22/bin');
+  assert.deepEqual(out.slice(1, 5), ['/usr/bin', '/bin', '/usr/sbin', '/sbin']);
+  assert.deepEqual(out.slice(5), ['/opt/homebrew/bin', '/Applications/Docker.app/Contents/Resources/bin']);
+  // đã có sẵn thì không thêm trùng; thư mục không tồn tại thì bỏ qua
+  assert.equal(withToolPath(out.join(':'), opts), out.join(':'));
+  assert.ok(!out.includes('/usr/local/bin'));
+});
+
+test('PATH: Windows giữ nguyên, Linux chỉ thêm thư mục của node', () => {
+  assert.equal(withToolPath('C:\\a;C:\\b', { platform: 'win32' }), 'C:\\a;C:\\b');
+  assert.equal(withToolPath('/usr/bin', { platform: 'linux', execPath: '/opt/node/bin/node', exists: () => true }), '/opt/node/bin:/usr/bin');
+  assert.equal(withToolPath('/opt/node/bin:/usr/bin', { platform: 'linux', execPath: '/opt/node/bin/node' }), '/opt/node/bin:/usr/bin');
+});
+
+test('macOS: tìm trình duyệt Chromium trong /Applications và ~/Applications', () => {
+  const list = macAppBrowsers('/Users/a');
+  assert.ok(list.includes('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'));
+  assert.ok(list.includes('/Users/a/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge'));
+});
+
+test('macOS: mã AppleScript của ứng dụng thoát đúng đường dẫn có dấu cách, nháy kép, dấu tiếng Việt', () => {
+  assert.equal(asString('a"b\\c'), '"a\\"b\\\\c"');
+  const src = appleScriptSource('/Users/Lan Anh/Dự án "salon"', '/opt/homebrew/bin/node');
+  assert.match(src, /^set rootDir to "\/Users\/Lan Anh\/Dự án \\"salon\\""$/m);
+  assert.match(src, /quoted form of nodeBin & " scripts\/hoyo\/launcher-ui\.mjs >> logs\/launcher-ui\.log 2>&1 &"/);
+});
+
+test('macOS: tạo ứng dụng .app bằng osacompile; nền tảng khác từ chối; osacompile lỗi thì báo lỗi', () => {
+  assert.equal(createMacApp({ root: '/x', platform: 'linux' }).ok, false);
+  const home = mkdtempSync(join(tmpdir(), 'salon-home-'));
+  const calls = [];
+  const ok = createMacApp({
+    root: '/Users/a/salon', nodePath: '/usr/local/bin/node', home, platform: 'darwin',
+    run: (cmd, args) => { calls.push([cmd, args, readFileSync(args[2], 'utf8')]); return { status: 0 }; },
+  });
+  assert.equal(ok.ok, true);
+  assert.equal(ok.path, join(home, 'Applications', APP_NAME));
+  assert.equal(calls[0][0], 'osacompile');
+  assert.deepEqual(calls[0][1].slice(0, 2), ['-o', ok.path]);
+  assert.match(calls[0][2], /set nodeBin to "\/usr\/local\/bin\/node"/);
+  const bad = createMacApp({ root: '/x', home, platform: 'darwin', run: () => ({ status: 1, stderr: 'boom' }) });
+  assert.deepEqual([bad.ok, bad.error], [false, 'boom']);
+});
+
+test('macOS: tệp .sh / .command có quyền chạy (100755) và xuống dòng LF — thiếu là "Permission denied" trên Mac', () => {
+  const r = spawnSync('git', ['ls-files', '-s', 'HoYoSalon.command', 'scripts/unix'], { cwd: ROOT, encoding: 'utf8' });
+  if (r.status !== 0) return; // không phải bản git (vd. tải .zip)
+  const rows = r.stdout.trim().split('\n').map((l) => l.split(/\s+/));
+  assert.ok(rows.length >= 5);
+  for (const [mode, , , file] of rows) {
+    assert.equal(mode, '100755', `${file} thiếu quyền chạy (git update-index --chmod=+x)`);
+    assert.ok(!readFileSync(join(ROOT, file), 'utf8').includes('\r'), `${file} có CRLF`);
+  }
 });
