@@ -51,6 +51,119 @@ const PRESETS = [
 
 const actionLabel = (a: string) => ACTION_LABELS[a.toUpperCase()] ?? a;
 
+/** Nhãn tiếng Việt cho các trường dữ liệu chi tiết trong nhật ký. */
+const FIELD_LABELS: Record<string, string> = {
+  shifts: 'Danh sách ca làm việc',
+  startTime: 'Giờ bắt đầu',
+  endTime: 'Giờ kết thúc',
+  workDate: 'Ngày làm việc',
+  breakStart: 'Nghỉ giữa ca từ',
+  breakEnd: 'Nghỉ giữa ca đến',
+  fullName: 'Họ và tên',
+  email: 'Địa chỉ email',
+  phone: 'Số điện thoại',
+  role: 'Vai trò tài khoản',
+  isActive: 'Trạng thái hoạt động',
+  name: 'Tên đối tượng',
+  price: 'Đơn giá',
+  durationMinutes: 'Thời lượng (phút)',
+  description: 'Mô tả',
+  categoryId: 'Mã nhóm',
+  stylistId: 'Mã thợ',
+  customerId: 'Mã khách hàng',
+  appointmentId: 'Mã lịch hẹn',
+  code: 'Mã',
+  status: 'Trạng thái',
+  notes: 'Ghi chú',
+  reason: 'Lý do thao tác',
+  openTime: 'Giờ mở cửa',
+  closeTime: 'Giờ đóng cửa',
+  dayOfWeek: 'Thứ trong tuần',
+  isClosed: 'Đóng cửa cả ngày',
+  startDate: 'Từ ngày',
+  endDate: 'Đến ngày',
+  discountPercent: 'Tỉ lệ giảm giá (%)',
+  discountAmount: 'Số tiền giảm giá (đ)',
+  minOrderValue: 'Giá trị đơn tối thiểu (đ)',
+  maxDiscount: 'Giảm tối đa (đ)',
+  validFrom: 'Có hiệu lực từ',
+  validUntil: 'Có hiệu lực đến',
+  usageLimit: 'Giới hạn số lần dùng',
+  usedCount: 'Đã sử dụng',
+  paymentMethod: 'Phương thức thanh toán',
+  subtotal: 'Tạm tính (đ)',
+  finalAmount: 'Tổng thanh toán (đ)',
+  rating: 'Đánh giá (sao)',
+  comment: 'Nhận xét',
+  serviceIds: 'Danh sách dịch vụ chọn',
+};
+
+function formatIsoDateVi(dStr: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dStr)) return dStr;
+  const [y, m, d] = dStr.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+function renderValueVi(k: string, v: unknown): React.ReactNode {
+  if (v === null || v === undefined || v === '') return <span className="text-slate-400 font-normal italic">Trống / Không có</span>;
+  if (typeof v === 'boolean') return <span className={v ? 'text-emerald-700 font-semibold' : 'text-slate-600'}>{v ? 'Có (Kích hoạt)' : 'Không (Tắt/Khóa)'}</span>;
+  if (typeof v === 'number') {
+    if (['price', 'subtotal', 'finalAmount', 'discountAmount', 'minOrderValue', 'maxDiscount'].includes(k)) {
+      return <span className="font-semibold text-emerald-800">{v.toLocaleString('vi-VN')} đ</span>;
+    }
+    if (k === 'durationMinutes') return <span>{v} phút</span>;
+    if (k === 'discountPercent') return <span>{v}%</span>;
+    return <span>{v}</span>;
+  }
+  if (typeof v === 'string') {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return <span className="font-medium text-slate-800">{formatIsoDateVi(v)}</span>;
+    if (k === 'role') return <span className="font-semibold text-teal-800">{ROLE_LABELS[v] ?? v}</span>;
+    return <span className="font-medium text-slate-800">{v}</span>;
+  }
+  if (Array.isArray(v)) {
+    if (v.length === 0) return <span className="text-slate-400 font-normal italic">Danh sách trống</span>;
+    if (k === 'shifts') {
+      const shiftList = v as Array<Record<string, unknown>>;
+      return (
+        <div className="mt-1 space-y-1">
+          {shiftList.map((shift, idx) => (
+            <div key={idx} className="flex flex-wrap items-center gap-1.5 rounded border border-teal-200 bg-teal-50/70 px-2 py-1 text-xs text-teal-900">
+              <span className="font-semibold">{shift.workDate ? formatIsoDateVi(String(shift.workDate)) : `Ca ${idx + 1}`}:</span>
+              <span className="font-medium text-slate-900">{String(shift.startTime ?? '')} - {String(shift.endTime ?? '')}</span>
+              {Boolean(shift.breakStart && shift.breakEnd) && (
+                <span className="text-slate-600 text-[11px]">(Nghỉ: {String(shift.breakStart)} - {String(shift.breakEnd)})</span>
+              )}
+            </div>
+          ))}
+        </div>
+      );
+    }
+    const rawList = v as unknown[];
+    return (
+      <div className="mt-1 flex flex-wrap gap-1">
+        {rawList.map((item, idx) => (
+          <span key={idx} className="rounded bg-slate-200 px-1.5 py-0.5 text-[11px] text-slate-800 font-medium">
+            {typeof item === 'object' && item !== null ? JSON.stringify(item) : String(item ?? '')}
+          </span>
+        ))}
+      </div>
+    );
+  }
+  if (typeof v === 'object') {
+    return (
+      <div className="mt-1 grid gap-1.5 rounded border border-slate-200 bg-slate-50 p-2 text-xs sm:grid-cols-2">
+        {Object.entries(v as Record<string, unknown>).map(([subK, subV]) => (
+          <div key={subK} className="flex flex-col">
+            <span className="text-[11px] text-slate-500 font-medium">{FIELD_LABELS[subK] ?? subK}:</span>
+            <div className="text-xs font-semibold text-slate-800">{renderValueVi(subK, subV)}</div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+  return String(v);
+}
+
 /** S1-09: nhật ký CHỈ ĐỌC — không vai trò nào sửa hay xoá được, kể cả Quản trị. */
 export function AuditLogsPage() {
   const toast = useToast();
@@ -223,21 +336,21 @@ export function AuditLogsPage() {
                                   {typeof r.changes === 'object' && !Array.isArray(r.changes) ? (
                                     <div className="grid gap-2 rounded-lg border border-slate-200 bg-white p-2.5 text-xs sm:grid-cols-2">
                                       {Object.entries(r.changes).map(([k, v]) => (
-                                        <div key={k} className="flex flex-col rounded bg-slate-50 px-2 py-1">
-                                          <span className="font-mono text-[11px] text-slate-500 font-medium">{k}</span>
-                                          <span className="font-semibold text-slate-800">
-                                            {typeof v === 'boolean' ? (v ? 'Có (True)' : 'Không (False)') : typeof v === 'object' ? JSON.stringify(v) : String(v ?? '—')}
-                                          </span>
+                                        <div key={k} className="flex flex-col rounded bg-slate-50 px-2.5 py-1.5 border border-slate-100">
+                                          <span className="text-[11px] text-slate-500 font-semibold">{FIELD_LABELS[k] ?? k}:</span>
+                                          <div className="text-xs text-slate-800 mt-0.5">
+                                            {renderValueVi(k, v)}
+                                          </div>
                                         </div>
                                       ))}
                                     </div>
                                   ) : (
                                     <div className="rounded-lg border border-slate-200 bg-white p-2.5 text-xs">
-                                      {String(r.changes)}
+                                      {renderValueVi('', r.changes)}
                                     </div>
                                   )}
                                   <details className="mt-1 text-[11px] text-slate-500">
-                                    <summary className="cursor-pointer hover:text-teal-700">Xem mã nguồn JSON kỹ thuật</summary>
+                                    <summary className="cursor-pointer hover:text-teal-700 font-medium">Xem mã nguồn JSON kỹ thuật</summary>
                                     <pre className="thin-scroll mt-1 max-h-36 overflow-auto rounded border border-slate-200 bg-slate-900 p-2 font-mono text-[10px] text-emerald-400">
                                       {JSON.stringify(r.changes, null, 2)}
                                     </pre>

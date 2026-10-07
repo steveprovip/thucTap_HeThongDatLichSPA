@@ -227,12 +227,39 @@ function openBrowser(url) {
   }
 }
 
+function killProcessOnPort(port) {
+  if (!IS_WIN) {
+    try {
+      const r = spawnSync('lsof', ['-ti', `:${port}`], { encoding: 'utf8', windowsHide: true });
+      if (r.stdout) {
+        for (const pid of r.stdout.trim().split(/\s+/)) {
+          if (pid && Number(pid) !== process.pid) spawnSync('kill', ['-9', pid], { windowsHide: true });
+        }
+      }
+    } catch { /* bỏ qua */ }
+    return;
+  }
+  try {
+    const netstat = spawnSync('netstat', ['-ano', '-p', 'tcp'], { encoding: 'utf8', windowsHide: true });
+    const lines = (netstat.stdout || '').split('\n');
+    for (const line of lines) {
+      if (line.includes(`:${port}`) && line.includes('LISTENING')) {
+        const parts = line.trim().split(/\s+/);
+        const pid = Number(parts[parts.length - 1]);
+        if (pid && pid !== process.pid) {
+          spawnSync('taskkill', ['/F', '/T', '/PID', String(pid)], { windowsHide: true });
+        }
+      }
+    }
+  } catch { /* bỏ qua */ }
+}
+
 async function prepare() {
   ensureEnvFiles();
   if (!ensureDeps()) return 1;
 
-  const apiBusy = await portInUse(API_PORT);
-  const webBusy = await portInUse(WEB_PORT);
+  let apiBusy = await portInUse(API_PORT);
+  let webBusy = await portInUse(WEB_PORT);
   if (apiBusy || webBusy) {
     const ours = apiBusy && webBusy && (await httpStatus(HEALTH_URL)) === 200;
     if (ours) {
@@ -241,11 +268,20 @@ async function prepare() {
       openBrowser(APP_URL);
       return 10;
     }
-    const busy = [apiBusy && `${API_PORT} (API)`, webBusy && `${WEB_PORT} (giao diện)`].filter(Boolean).join(', ');
-    err(`[LỖI] Cổng ${busy} đang bị chương trình khác chiếm.`);
-    err('      Đóng cửa sổ launcher cũ / chương trình đang dùng cổng đó rồi chạy lại.');
-    err(`      Tìm chương trình đang chiếm cổng: ${process.platform === 'win32' ? 'netstat -ano | findstr :' : 'lsof -i :'}${apiBusy ? API_PORT : WEB_PORT}`);
-    return 1;
+    // Tự động giải phóng cổng bị chiếm bởi tiến trình cũ/mồ côi để tránh lỗi chiếm cổng
+    if (apiBusy) killProcessOnPort(API_PORT);
+    if (webBusy) killProcessOnPort(WEB_PORT);
+    await sleep(800);
+    apiBusy = await portInUse(API_PORT);
+    webBusy = await portInUse(WEB_PORT);
+
+    if (apiBusy || webBusy) {
+      const busy = [apiBusy && `${API_PORT} (API)`, webBusy && `${WEB_PORT} (giao diện)`].filter(Boolean).join(', ');
+      err(`[LỖI] Cổng ${busy} đang bị chương trình khác chiếm.`);
+      err('      Đóng cửa sổ launcher cũ / chương trình đang dùng cổng đó rồi chạy lại.');
+      err(`      Tìm chương trình đang chiếm cổng: ${process.platform === 'win32' ? 'netstat -ano | findstr :' : 'lsof -i :'}${apiBusy ? API_PORT : WEB_PORT}`);
+      return 1;
+    }
   }
   return 0;
 }
