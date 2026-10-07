@@ -35,7 +35,7 @@ Máy mới clone chỉ cần **bật Docker Desktop** rồi nhấp đúp `script
 
 1. Kiểm tra Node.js ≥ 20.
 2. Tạo các tệp `.env` còn thiếu (gốc, `backend`, `frontend`), sinh khoá JWT ngẫu nhiên thay giá trị mẫu và **ghi `VITE_DEMO_MODE=false`**: launcher luôn chạy với **API thật**, không bao giờ rơi vào chế độ Demo.
-3. Chờ Docker sẵn sàng (tối đa 2 phút; Windows/macOS tự thử mở Docker Desktop), `docker compose --project-directory . -f deploy/docker/docker-compose.yml up -d` — PostgreSQL (healthcheck qua TCP) + PgAdmin + Maildev — rồi chờ PostgreSQL báo `healthy`. Chưa cài Docker thì in hướng dẫn tiếng Việt: cài Docker Desktop, hoặc dùng PostgreSQL riêng với `SALON_SKIP_DOCKER=1`.
+3. Chờ Docker sẵn sàng (tối đa 2 phút; Windows/macOS tự thử mở Docker Desktop), `docker compose --project-directory . -f deploy/docker/docker-compose.yml up -d` — chỉ PostgreSQL (healthcheck qua TCP) và Maildev (khi thư gửi vào hộp thư ảo); **PgAdmin không tự dựng** (image ~0,5 GB làm chậm lần chạy đầu, cần thì `npm run db:up`) — rồi chờ PostgreSQL báo `healthy`. Chưa cài Docker thì in hướng dẫn tiếng Việt: cài Docker Desktop, hoặc dùng PostgreSQL riêng với `SALON_SKIP_DOCKER=1`.
 4. **Cài gói khi chưa có `node_modules` hoặc khi `package.json`/`package-lock.json` đổi** (vd. sau `git pull`). Kiểm tra cổng 3000/5173 còn trống: đang bận thì nêu rõ cổng nào và lệnh tìm chương trình đang chiếm; nếu hệ thống đang chạy ở cửa sổ khác thì chỉ mở trình duyệt.
 5. Áp dụng migration (cấu trúc CSDL; `schema.sql` là migration gốc) rồi nạp dữ liệu mẫu `seed.sql` (chạy lại bao nhiêu lần cũng an toàn). **Chỉ máy phát triển làm bước nạp mẫu này.**
 6. Chạy API + giao diện dưới **một tiến trình giám sát** (`node scripts/launcher.mjs run`, không qua
@@ -53,7 +53,7 @@ Máy đã cài sẵn PostgreSQL chiếm cổng 5432? Đặt `POSTGRES_PORT=5433`
 | API | http://localhost:3000/api |
 | Tài liệu API (Swagger) | http://localhost:3000/api/docs |
 | Hộp thư ảo (Maildev) | http://localhost:1080 |
-| PgAdmin | http://localhost:5050 |
+| PgAdmin (chỉ sau `npm run db:up`) | http://localhost:5050 |
 
 ### Tài khoản mẫu
 
@@ -210,7 +210,7 @@ giới hạn của từng gói miễn phí và xử lý sự cố: [`docs/TRIEN-
 
 ```bash
 npm run install:all      # cài gói cho backend + frontend
-npm run db:up            # chỉ dựng docker (postgres, pgadmin, maildev)
+npm run db:up            # chỉ dựng docker (postgres, pgadmin, maildev) — PgAdmin chỉ dựng ở lệnh này
 npm run db:reset         # xoá volume, dựng lại CSDL TRỐNG (rồi npm run db:seed để có dữ liệu mẫu)
 npm run db:migrate       # áp dụng migration còn chờ (tự sao lưu nếu CSDL đã có dữ liệu); db:status để xem
 npm run db:backup        # sao lưu CSDL ngay vào backups/
