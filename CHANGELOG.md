@@ -3,6 +3,15 @@
 Định dạng theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), phiên bản theo [Semantic Versioning](https://semver.org/lang/vi/).
 Launcher (biểu tượng Hương Sen Salon / `HoYoSalon.bat`) đọc tệp này cho mục **Có gì mới** và **Nhật ký cập nhật**.
 
+## [1.5.1] - 2026-10-07
+
+### macOS
+- Thêm **`HoYoSalon.command`** (nhấp đúp) và ứng dụng **Hương Sen Salon.app** tự tạo trong `~/Applications`: mở Launcher không cần Terminal.
+- Sửa lỗi `Permission denied` khi chạy `./scripts/unix/start_server.sh`, `start_tunnel.sh`, `update_project.sh` (thiếu quyền chạy trong git).
+- Ứng dụng mở từ Finder/Dock không có PATH của Terminal: Launcher tự bổ sung thư mục của Docker Desktop, Homebrew và Node.js để thấy `docker`, `npm`, `git` (hết lỗi `docker-credential-desktop` / "chưa cài Docker").
+- Cửa sổ Launcher mở dạng ứng dụng (không thanh địa chỉ) bằng Chrome / Edge / Brave nếu có, như trên Windows.
+- Hướng dẫn riêng: `docs/guides/CHAY-TREN-MACOS.md`.
+
 ## [1.5.0] - 2026-10-06
 
 ### Launcher: 1 chạm như game

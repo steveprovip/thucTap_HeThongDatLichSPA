@@ -268,7 +268,7 @@ Swagger (`/api/docs`) tự tắt khi chạy production.
 
 ## 5. Cập nhật 1 chạm: `scripts\windows\update_project.bat`
 
-Bấm đúp `scripts\windows\update_project.bat` ở thư mục gốc (macOS/Linux: `./scripts/unix/update_project.sh`). Dữ liệu khách và phiên đăng nhập được giữ nguyên.
+Bấm đúp `scripts\windows\update_project.bat` ở thư mục gốc (macOS/Linux: `./scripts/unix/update_project.sh`). Chạy trên macOS: xem [`docs/guides/CHAY-TREN-MACOS.md`](guides/CHAY-TREN-MACOS.md). Dữ liệu khách và phiên đăng nhập được giữ nguyên.
 
 | Bước | Việc làm | Nếu lỗi |
 |---|---|---|
