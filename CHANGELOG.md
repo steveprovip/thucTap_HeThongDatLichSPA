@@ -11,6 +11,7 @@ Launcher (biểu tượng Hương Sen Salon / `HoYoSalon.bat`) đọc tệp này
 - Ứng dụng mở từ Finder/Dock không có PATH của Terminal: Launcher tự bổ sung thư mục của Docker Desktop, Homebrew và Node.js để thấy `docker`, `npm`, `git` (hết lỗi `docker-credential-desktop` / "chưa cài Docker").
 - Cửa sổ Launcher mở dạng ứng dụng (không thanh địa chỉ) bằng Chrome / Edge / Brave nếu có, như trên Windows.
 - Hướng dẫn riêng: `docs/guides/CHAY-TREN-MACOS.md`.
+- Tự giải phóng cổng 3000/5173 khi mở Launcher giờ chỉ dọn tiến trình đang **lắng nghe** cổng VÀ thuộc thư mục dự án (trước đây `lsof -ti :cổng` còn bắn nhầm trình duyệt đang kết nối và mọi chương trình khác giữ cổng); dọn bằng SIGTERM thay vì kill -9.
 
 ## [1.5.0] - 2026-10-06
 

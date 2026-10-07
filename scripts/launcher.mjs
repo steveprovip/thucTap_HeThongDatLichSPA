@@ -39,6 +39,7 @@ import { networkInterfaces } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ensureToolPath } from './lib/platform.mjs';
+import { cwdInside, mentionsRoot, parseNetstatListeners, parsePidList } from './lib/ports.mjs';
 
 // macOS mở từ Finder không có PATH của Terminal: bổ sung để thấy docker / npm / git (xem lib/platform.mjs)
 ensureToolPath();
@@ -227,31 +228,35 @@ function openBrowser(url) {
   }
 }
 
-function killProcessOnPort(port) {
-  if (!IS_WIN) {
-    try {
-      const r = spawnSync('lsof', ['-ti', `:${port}`], { encoding: 'utf8', windowsHide: true });
-      if (r.stdout) {
-        for (const pid of r.stdout.trim().split(/\s+/)) {
-          if (pid && Number(pid) !== process.pid) spawnSync('kill', ['-9', pid], { windowsHide: true });
-        }
-      }
-    } catch { /* bỏ qua */ }
-    return;
+/** Tiến trình này có phải của CHÍNH dự án (dòng lệnh nhắc tới thư mục dự án, hoặc thư mục làm việc nằm trong đó)? */
+function ownedByProject(pid) {
+  if (IS_WIN) {
+    const r = spawnSync('powershell', ['-NoProfile', '-NonInteractive', '-Command',
+      `(Get-CimInstance Win32_Process -Filter 'ProcessId=${pid}').CommandLine`], { encoding: 'utf8', windowsHide: true, timeout: 15_000 });
+    return mentionsRoot(r.stdout, ROOT);
   }
+  const ps = spawnSync('ps', ['-o', 'command=', '-p', String(pid)], { encoding: 'utf8' });
+  if (mentionsRoot(ps.stdout, ROOT)) return true;
+  return cwdInside(spawnSync('lsof', ['-a', '-p', String(pid), '-d', 'cwd', '-Fn'], { encoding: 'utf8' }).stdout, ROOT);
+}
+
+/**
+ * Dọn tiến trình MỒ CÔI của chính dự án đang giữ cổng (lần chạy trước bị tắt đột ngột). Chỉ đụng tới tiến trình đang
+ * LẮNG NGHE cổng đó VÀ thuộc thư mục dự án này; chương trình khác (dự án khác dùng cổng 3000, trình duyệt đang kết
+ * nối...) tuyệt đối không bị tắt — Launcher chỉ báo để người dùng tự xử lý.
+ */
+function killProcessOnPort(port) {
   try {
-    const netstat = spawnSync('netstat', ['-ano', '-p', 'tcp'], { encoding: 'utf8', windowsHide: true });
-    const lines = (netstat.stdout || '').split('\n');
-    for (const line of lines) {
-      if (line.includes(`:${port}`) && line.includes('LISTENING')) {
-        const parts = line.trim().split(/\s+/);
-        const pid = Number(parts[parts.length - 1]);
-        if (pid && pid !== process.pid) {
-          spawnSync('taskkill', ['/F', '/T', '/PID', String(pid)], { windowsHide: true });
-        }
-      }
+    const pids = IS_WIN
+      ? parseNetstatListeners(spawnSync('netstat', ['-ano', '-p', 'tcp'], { encoding: 'utf8', windowsHide: true }).stdout, port)
+      : parsePidList(spawnSync('lsof', ['-ti', `tcp:${port}`, '-sTCP:LISTEN'], { encoding: 'utf8' }).stdout);
+    for (const pid of pids) {
+      if (pid === process.pid || !ownedByProject(pid)) continue;
+      log(`      Dọn tiến trình cũ của dự án đang giữ cổng ${port} (PID ${pid}) ...`);
+      if (IS_WIN) spawnSync('taskkill', ['/F', '/T', '/PID', String(pid)], { windowsHide: true });
+      else { try { process.kill(pid, 'SIGTERM'); } catch { /* đã dừng */ } }
     }
-  } catch { /* bỏ qua */ }
+  } catch { /* không dọn được thì để bước kiểm tra cổng phía sau báo lỗi */ }
 }
 
 async function prepare() {
