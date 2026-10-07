@@ -39,6 +39,7 @@ import { networkInterfaces } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ensureToolPath } from './lib/platform.mjs';
+import { cwdInside, mentionsRoot, parseNetstatListeners, parsePidList } from './lib/ports.mjs';
 
 // macOS mở từ Finder không có PATH của Terminal: bổ sung để thấy docker / npm / git (xem lib/platform.mjs)
 ensureToolPath();
@@ -227,12 +228,43 @@ function openBrowser(url) {
   }
 }
 
+/** Tiến trình này có phải của CHÍNH dự án (dòng lệnh nhắc tới thư mục dự án, hoặc thư mục làm việc nằm trong đó)? */
+function ownedByProject(pid) {
+  if (IS_WIN) {
+    const r = spawnSync('powershell', ['-NoProfile', '-NonInteractive', '-Command',
+      `(Get-CimInstance Win32_Process -Filter 'ProcessId=${pid}').CommandLine`], { encoding: 'utf8', windowsHide: true, timeout: 15_000 });
+    return mentionsRoot(r.stdout, ROOT);
+  }
+  const ps = spawnSync('ps', ['-o', 'command=', '-p', String(pid)], { encoding: 'utf8' });
+  if (mentionsRoot(ps.stdout, ROOT)) return true;
+  return cwdInside(spawnSync('lsof', ['-a', '-p', String(pid), '-d', 'cwd', '-Fn'], { encoding: 'utf8' }).stdout, ROOT);
+}
+
+/**
+ * Dọn tiến trình MỒ CÔI của chính dự án đang giữ cổng (lần chạy trước bị tắt đột ngột). Chỉ đụng tới tiến trình đang
+ * LẮNG NGHE cổng đó VÀ thuộc thư mục dự án này; chương trình khác (dự án khác dùng cổng 3000, trình duyệt đang kết
+ * nối...) tuyệt đối không bị tắt — Launcher chỉ báo để người dùng tự xử lý.
+ */
+function killProcessOnPort(port) {
+  try {
+    const pids = IS_WIN
+      ? parseNetstatListeners(spawnSync('netstat', ['-ano', '-p', 'tcp'], { encoding: 'utf8', windowsHide: true }).stdout, port)
+      : parsePidList(spawnSync('lsof', ['-ti', `tcp:${port}`, '-sTCP:LISTEN'], { encoding: 'utf8' }).stdout);
+    for (const pid of pids) {
+      if (pid === process.pid || !ownedByProject(pid)) continue;
+      log(`      Dọn tiến trình cũ của dự án đang giữ cổng ${port} (PID ${pid}) ...`);
+      if (IS_WIN) spawnSync('taskkill', ['/F', '/T', '/PID', String(pid)], { windowsHide: true });
+      else { try { process.kill(pid, 'SIGTERM'); } catch { /* đã dừng */ } }
+    }
+  } catch { /* không dọn được thì để bước kiểm tra cổng phía sau báo lỗi */ }
+}
+
 async function prepare() {
   ensureEnvFiles();
   if (!ensureDeps()) return 1;
 
-  const apiBusy = await portInUse(API_PORT);
-  const webBusy = await portInUse(WEB_PORT);
+  let apiBusy = await portInUse(API_PORT);
+  let webBusy = await portInUse(WEB_PORT);
   if (apiBusy || webBusy) {
     const ours = apiBusy && webBusy && (await httpStatus(HEALTH_URL)) === 200;
     if (ours) {
@@ -241,11 +273,20 @@ async function prepare() {
       openBrowser(APP_URL);
       return 10;
     }
-    const busy = [apiBusy && `${API_PORT} (API)`, webBusy && `${WEB_PORT} (giao diện)`].filter(Boolean).join(', ');
-    err(`[LỖI] Cổng ${busy} đang bị chương trình khác chiếm.`);
-    err('      Đóng cửa sổ launcher cũ / chương trình đang dùng cổng đó rồi chạy lại.');
-    err(`      Tìm chương trình đang chiếm cổng: ${process.platform === 'win32' ? 'netstat -ano | findstr :' : 'lsof -i :'}${apiBusy ? API_PORT : WEB_PORT}`);
-    return 1;
+    // Tự động giải phóng cổng bị chiếm bởi tiến trình cũ/mồ côi để tránh lỗi chiếm cổng
+    if (apiBusy) killProcessOnPort(API_PORT);
+    if (webBusy) killProcessOnPort(WEB_PORT);
+    await sleep(800);
+    apiBusy = await portInUse(API_PORT);
+    webBusy = await portInUse(WEB_PORT);
+
+    if (apiBusy || webBusy) {
+      const busy = [apiBusy && `${API_PORT} (API)`, webBusy && `${WEB_PORT} (giao diện)`].filter(Boolean).join(', ');
+      err(`[LỖI] Cổng ${busy} đang bị chương trình khác chiếm.`);
+      err('      Đóng cửa sổ launcher cũ / chương trình đang dùng cổng đó rồi chạy lại.');
+      err(`      Tìm chương trình đang chiếm cổng: ${process.platform === 'win32' ? 'netstat -ano | findstr :' : 'lsof -i :'}${apiBusy ? API_PORT : WEB_PORT}`);
+      return 1;
+    }
   }
   return 0;
 }

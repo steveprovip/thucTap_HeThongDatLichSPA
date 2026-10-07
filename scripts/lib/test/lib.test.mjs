@@ -14,6 +14,7 @@ import { checkForUpdate, compareSemver, latestTag, parseSemver, readChangelog } 
 import { crc32, createZip, redactEnv } from '../diagnostics.mjs';
 import { APP_NAME, appleScriptSource, asString, createMacApp } from '../macos-app.mjs';
 import { macAppBrowsers, withToolPath } from '../platform.mjs';
+import { cwdInside, mentionsRoot, parseNetstatListeners, parsePidList } from '../ports.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
@@ -200,4 +201,28 @@ test('macOS: tệp .sh / .command có quyền chạy (100755) và xuống dòng 
     assert.equal(mode, '100755', `${file} thiếu quyền chạy (git update-index --chmod=+x)`);
     assert.ok(!readFileSync(join(ROOT, file), 'utf8').includes('\r'), `${file} có CRLF`);
   }
+});
+
+test('dọn cổng: chỉ lấy tiến trình LISTENING đúng cổng, không khớp cổng dài hơn hay kết nối khách', () => {
+  const netstat = [
+    '  TCP    0.0.0.0:3000           0.0.0.0:0              LISTENING       4120',
+    '  TCP    0.0.0.0:30001          0.0.0.0:0              LISTENING       999',
+    '  TCP    127.0.0.1:51000        127.0.0.1:3000         ESTABLISHED     777',
+    '  TCP    [::]:3000              [::]:0                 LISTENING       4120',
+    '  UDP    0.0.0.0:3000           *:*                                    555',
+  ].join('\r\n');
+  assert.deepEqual(parseNetstatListeners(netstat, 3000), [4120]);
+  assert.deepEqual(parsePidList('123\n456\n123\nabc\n0\n-5'), [123, 456]);
+  assert.deepEqual(parsePidList(''), []);
+});
+
+test('dọn cổng: chỉ coi là của dự án khi dòng lệnh / thư mục làm việc nằm trong thư mục dự án', () => {
+  const root = 'F:\\hoc_tap\\thuc_tap\\du_an';
+  assert.ok(mentionsRoot('node.exe F:/hoc_tap/thuc_tap/du_an/frontend/node_modules/vite/bin/vite.js', root));
+  assert.ok(mentionsRoot('"C:\\node.exe" "F:\\HOC_TAP\\thuc_tap\\du_an\\backend\\dist\\main.js"', root));
+  assert.ok(!mentionsRoot('node /Users/a/other-app/server.js', '/Users/a/du_an'));
+  assert.ok(!mentionsRoot('anything', ''));
+  assert.ok(cwdInside('p123\nfcwd\nn/Users/a/du_an/backend\n', '/Users/a/du_an'));
+  assert.ok(!cwdInside('p123\nfcwd\nn/Users/a/du_an-khac\n', '/Users/a/du_an'));
+  assert.ok(!cwdInside('', '/Users/a/du_an'));
 });
