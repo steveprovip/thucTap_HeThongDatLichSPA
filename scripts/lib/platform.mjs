@@ -8,7 +8,7 @@
  */
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { delimiter, dirname, join } from 'node:path';
+import { dirname, join, posix } from 'node:path';
 
 /** Thư mục công cụ thường gặp trên macOS (Homebrew Apple Silicon / Intel, Docker Desktop, trình cài Node.js chính thức). */
 export const macToolDirs = (home = homedir()) => [
@@ -16,7 +16,7 @@ export const macToolDirs = (home = homedir()) => [
   '/opt/homebrew/sbin',
   '/usr/local/bin',
   '/Applications/Docker.app/Contents/Resources/bin',
-  join(home, '.docker', 'bin'),
+  posix.join(home.replace(/\\/g, '/'), '.docker', 'bin'),
   '/Applications/Docker.app/Contents/Resources/cli-plugins',
 ];
 
@@ -28,14 +28,15 @@ export function withToolPath(currentPath = '', {
   platform = process.platform, execPath = process.execPath, home = homedir(), exists = existsSync,
 } = {}) {
   if (platform === 'win32') return currentPath;
-  const parts = currentPath.split(delimiter).filter(Boolean);
+  const delim = platform === 'win32' ? ';' : ':';
+  const parts = currentPath.split(delim).filter(Boolean);
   const have = new Set(parts);
-  const nodeDir = dirname(execPath);
+  const nodeDir = (platform === 'win32' ? dirname(execPath) : posix.dirname(execPath.replace(/\\/g, '/')));
   const head = have.has(nodeDir) ? [] : [nodeDir];
   const tail = platform === 'darwin'
     ? macToolDirs(home).filter((d) => !have.has(d) && exists(d))
     : [];
-  return [...head, ...parts, ...tail].join(delimiter);
+  return [...head, ...parts, ...tail].join(delim);
 }
 
 /** Gọi một lần ở đầu mỗi tiến trình Launcher: mọi tiến trình con (docker, npm, git) thừa hưởng PATH đầy đủ. */
@@ -45,12 +46,15 @@ export function ensureToolPath() {
 }
 
 /** Trình duyệt Chromium trên macOS có chế độ cửa sổ ứng dụng (--app, không thanh địa chỉ) cho cửa sổ Launcher. */
-export const macAppBrowsers = (home = homedir()) => [
-  ['Google Chrome', 'Google Chrome'],
-  ['Microsoft Edge', 'Microsoft Edge'],
-  ['Brave Browser', 'Brave Browser'],
-  ['Chromium', 'Chromium'],
-].flatMap(([app, bin]) => [
-  `/Applications/${app}.app/Contents/MacOS/${bin}`,
-  join(home, 'Applications', `${app}.app`, 'Contents', 'MacOS', bin),
-]);
+export const macAppBrowsers = (home = homedir()) => {
+  const normHome = home.replace(/\\/g, '/');
+  return [
+    ['Google Chrome', 'Google Chrome'],
+    ['Microsoft Edge', 'Microsoft Edge'],
+    ['Brave Browser', 'Brave Browser'],
+    ['Chromium', 'Chromium'],
+  ].flatMap(([app, bin]) => [
+    `/Applications/${app}.app/Contents/MacOS/${bin}`,
+    posix.join(normHome, 'Applications', `${app}.app`, 'Contents', 'MacOS', bin),
+  ]);
+};
