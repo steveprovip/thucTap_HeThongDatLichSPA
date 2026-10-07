@@ -58,3 +58,14 @@ export const macAppBrowsers = (home = homedir()) => {
     posix.join(normHome, 'Applications', `${app}.app`, 'Contents', 'MacOS', bin),
   ]);
 };
+
+/**
+ * Dịch vụ Docker cần dựng. PostgreSQL luôn cần; Maildev (hộp thư ảo) chỉ khi thư gửi đi vào máy này (SMTP_HOST rỗng / localhost).
+ * PgAdmin (image ~0,5 GB, chỉ để xem CSDL bằng tay) KHÔNG tự dựng: tải nó từng chiếm phần lớn thời gian chạy lần đầu.
+ * `forced` (SALON_DOCKER_SERVICES=postgres,maildev,pgadmin) ghi đè.
+ */
+export function composeServices({ smtpHost = '', forced = '' } = {}) {
+  const list = String(forced).split(',').map((x) => x.trim()).filter(Boolean);
+  if (list.length) return list;
+  return ['postgres', ...(['', 'localhost', '127.0.0.1', 'maildev'].includes(String(smtpHost).trim().toLowerCase()) ? ['maildev'] : [])];
+}

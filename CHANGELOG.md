@@ -3,6 +3,21 @@
 Định dạng theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), phiên bản theo [Semantic Versioning](https://semver.org/lang/vi/).
 Launcher (biểu tượng Hương Sen Salon / `HoYoSalon.bat`) đọc tệp này cho mục **Có gì mới** và **Nhật ký cập nhật**.
 
+## [1.5.2] - 2026-10-07
+
+### Kiểm tra bản mới: báo đúng nguyên nhân
+- Máy có mạng nhưng Launcher báo "Không kết nối được kho mã" và hiện commit / nhánh là "—": nay phân loại đúng nguyên nhân — thư mục không phải git clone (chép thư mục / giải nén .zip), chưa cài Git, kho riêng tư chưa đăng nhập GitHub, mạng chặn, Git từ chối thư mục khác chủ sở hữu (*dubious ownership*, nay tự xử lý) — kèm cách sửa và chi tiết lỗi git.
+- Nút **Sửa kết nối cập nhật** (nối thư mục chép / .zip với kho mã, giữ nguyên .env, dữ liệu, sao lưu; thay đổi tay lưu thành `logs/adopt-*.patch`) và **Đăng nhập GitHub** (kho riêng tư).
+- Không còn báo "Đang là bản mới nhất" khi chưa kiểm tra được; cảnh báo hiện ngay trên màn hình chính.
+- Giao diện hỏi trạng thái mỗi 1,5 giây từng chạy 8+ tiến trình git mỗi lần: nay nhớ kết quả 5 giây (nhẹ máy yếu).
+
+### Khởi động lần đầu nhanh hơn
+- Không còn tự tải **PgAdmin** (~0,5 GB); chỉ dựng PostgreSQL (+ Maildev khi cần). Cần PgAdmin: `npm run db:up`.
+- Docker + PostgreSQL, cài gói npm và build chạy **song song**; backend và giao diện cài / build đồng thời; `npm ci` cho lần cài sạch; bỏ cài gói thư mục gốc (chỉ dành cho kiểm thử AI).
+- Build giao diện bằng `vite build` (bỏ `tsc` lặp lại), migration / tài khoản quản trị / kiểm tra bảo mật chạy bằng bản đã biên dịch thay vì ts-node (11,8 s → 1,3 s đo thực tế).
+- Mỗi bước được đo giờ (`⏱`) và lưu `logs/startup-timing.json`, có trong `system_logs.zip`: máy chậm gửi tệp này là biết chậm ở bước nào.
+- Đo thật khởi động lạnh chế độ máy chủ (không Docker): 52 s → 29 s.
+
 ## [1.5.1] - 2026-10-07
 
 ### macOS

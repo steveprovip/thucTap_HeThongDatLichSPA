@@ -4,16 +4,17 @@
  */
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { inflateRawSync } from 'node:zlib';
-import { checkForUpdate, compareSemver, latestTag, parseSemver, readChangelog } from '../version.mjs';
+import { checkForUpdate, classifyGitError, compareSemver, latestTag, localVersion, parseSemver, readChangelog } from '../version.mjs';
 import { crc32, createZip, redactEnv } from '../diagnostics.mjs';
 import { APP_NAME, appleScriptSource, asString, createMacApp } from '../macos-app.mjs';
-import { macAppBrowsers, withToolPath } from '../platform.mjs';
+import { composeServices, macAppBrowsers, withToolPath } from '../platform.mjs';
+import { adoptRepo, gitLogin } from '../git-repair.mjs';
 import { cwdInside, mentionsRoot, parseNetstatListeners, parsePidList } from '../ports.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -225,4 +226,89 @@ test('dọn cổng: chỉ coi là của dự án khi dòng lệnh / thư mục l
   assert.ok(cwdInside('p123\nfcwd\nn/Users/a/du_an/backend\n', '/Users/a/du_an'));
   assert.ok(!cwdInside('p123\nfcwd\nn/Users/a/du_an-khac\n', '/Users/a/du_an'));
   assert.ok(!cwdInside('', '/Users/a/du_an'));
+});
+
+test('phân loại lỗi git: đúng nguyên nhân thay vì luôn báo "kiểm tra Internet"', () => {
+  assert.equal(classifyGitError('fatal: detected dubious ownership in repository at /x'), 'dubious');
+  assert.equal(classifyGitError("fatal: unable to access 'https://github.com/a/b.git/': Could not resolve host: github.com"), 'network');
+  assert.equal(classifyGitError("remote: Repository not found.\nfatal: repository 'https://github.com/a/b.git/' not found"), 'auth');
+  assert.equal(classifyGitError("fatal: could not read Username for 'https://github.com': terminal prompts disabled"), 'auth');
+  assert.equal(classifyGitError("fatal: unable to access 'x': The requested URL returned error: 403"), 'auth');
+  assert.equal(classifyGitError('fatal: not a git repository (or any of the parent directories): .git'), 'no-repo');
+  assert.equal(classifyGitError('', { missing: true }), 'no-git');
+  assert.equal(classifyGitError('lỗi lạ'), 'unknown');
+});
+
+test('thư mục không phải git clone: báo "no-repo" kèm cách sửa, KHÔNG báo mất Internet', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'salon-norepo-'));
+  writeFileSync(join(dir, 'package.json'), '{"version":"1.5.0"}');
+  const info = await checkForUpdate(dir, { fetchRemote: true });
+  assert.equal(info.isRepo, false);
+  assert.equal(info.remoteReachable, false);
+  assert.equal(info.problem.code, 'no-repo');
+  assert.equal(info.problem.action, 'repair-git');
+  assert.equal(info.canUpdate, false);
+});
+
+test('git từ chối thư mục khác chủ sở hữu (dubious ownership): vẫn đọc được commit nhờ safe.directory', { skip: !process.getuid || process.getuid() !== 0 }, () => {
+  const dir = mkdtempSync(join(tmpdir(), 'salon-owner-'));
+  const g = (...a) => spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd: dir, encoding: 'utf8' });
+  g('init', '-q'); writeFileSync(join(dir, 'a.txt'), 'x'); g('add', '.'); g('commit', '-q', '-m', 'x');
+  spawnSync('chown', ['-R', '54321:54321', dir]);
+  const direct = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' });
+  if (!/dubious ownership/.test(direct.stderr)) return; // môi trường này không áp dụng kiểm tra chủ sở hữu
+  const v = localVersion(dir, { fresh: true });
+  assert.match(v.commit ?? '', /^[0-9a-f]{7,}$/);
+  assert.equal(v.problem, null);
+});
+
+test('Sửa kết nối cập nhật: thư mục chép/giải nén .zip được nối với kho mã, giữ .env, lưu bản vá thay đổi tay', () => {
+  const base = mkdtempSync(join(tmpdir(), 'salon-adopt-'));
+  const origin = join(base, 'origin.git');
+  const seed = join(base, 'seed');
+  const sh = (cwd, ...a) => spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd, encoding: 'utf8' });
+  mkdirSync(seed);
+  sh(seed, 'init', '-q', '-b', 'main');
+  writeFileSync(join(seed, 'package.json'), '{"version":"1.0.0"}');
+  writeFileSync(join(seed, 'code.js'), 'v1');
+  sh(seed, 'add', '.'); sh(seed, 'commit', '-q', '-m', 'v1'); sh(seed, 'tag', 'v1.0.0');
+  writeFileSync(join(seed, 'code.js'), 'v2'); writeFileSync(join(seed, 'package.json'), '{"version":"1.1.0"}');
+  sh(seed, 'commit', '-q', '-am', 'v2'); sh(seed, 'tag', 'v1.1.0');
+  spawnSync('git', ['clone', '-q', '--bare', seed, origin]);
+
+  // "bản .zip" của v1.0.0 (không có .git) + tệp riêng của máy
+  const zip = join(base, 'zip');
+  sh(base, 'clone', '-q', '--branch', 'v1.0.0', origin, zip);
+  rmSync(join(zip, '.git'), { recursive: true, force: true });
+  mkdirSync(join(zip, 'backend'));
+  writeFileSync(join(zip, 'backend', '.env'), 'SALON_NAME=Tiệm của tôi');
+  writeFileSync(join(zip, 'code.js'), 'v1-sua-tay');
+
+  const logs = [];
+  const r = adoptRepo(zip, { origin, log: (l) => logs.push(l) });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(readFileSync(join(zip, 'code.js'), 'utf8'), 'v2'); // về đúng origin/main
+  assert.equal(readFileSync(join(zip, 'backend', '.env'), 'utf8'), 'SALON_NAME=Tiệm của tôi'); // tệp không theo dõi còn nguyên
+  assert.match(readFileSync(r.patch, 'utf8'), /v1-sua-tay|v2/); // bản vá lưu thay đổi cũ
+  const v = localVersion(zip, { fresh: true });
+  assert.equal(v.branch, 'main');
+  assert.equal(v.problem, null);
+  assert.equal(v.current, 'v1.1.0');
+  assert.equal(adoptRepo(zip, { origin }).ok, false); // đã là git: không làm lại
+
+  // kho không tồn tại: báo lỗi và gỡ sạch .git vừa tạo (máy trở lại như cũ)
+  const bare = join(base, 'bare');
+  cpSync(zip, bare, { recursive: true }); rmSync(join(bare, '.git'), { recursive: true, force: true });
+  const bad = adoptRepo(bare, { origin: join(base, 'khong-ton-tai.git') });
+  assert.equal(bad.ok, false);
+  assert.ok(bad.problem);
+  assert.equal(existsSync(join(bare, '.git')), false);
+  assert.equal(typeof gitLogin, 'function');
+});
+
+test('Docker: chỉ dựng PostgreSQL (+ Maildev khi gửi thư vào máy này), không tải PgAdmin 0,5 GB', () => {
+  assert.deepEqual(composeServices({ smtpHost: 'smtp.gmail.com' }), ['postgres']);
+  assert.deepEqual(composeServices({ smtpHost: 'localhost' }), ['postgres', 'maildev']);
+  assert.deepEqual(composeServices({}), ['postgres', 'maildev']);
+  assert.deepEqual(composeServices({ smtpHost: 'smtp.gmail.com', forced: 'postgres, maildev,pgadmin' }), ['postgres', 'maildev', 'pgadmin']);
 });

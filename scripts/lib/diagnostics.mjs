@@ -156,7 +156,7 @@ export async function buildLogBundle(root, info, extraLogs = {}) {
   if (existsSync(logsDir)) {
     for (const f of readdirSync(logsDir)) {
       const p = join(logsDir, f);
-      if (statSync(p).isFile() && /\.log(\.\d+)?$/.test(f)) entries.push({ name: `logs/${basename(f)}`, data: tailFile(p, 1_000_000) });
+      if (statSync(p).isFile() && /(\.log(\.\d+)?|^startup-timing\.json)$/.test(f)) entries.push({ name: `logs/${basename(f)}`, data: tailFile(p, 1_000_000) });
     }
   }
   for (const [name, text] of Object.entries(extraLogs)) if (text) entries.push({ name: `logs/${name}`, data: text });
