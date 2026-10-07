@@ -38,7 +38,7 @@ const SETTINGS_FILE = join(ROOT, '.salon-launcher.json');
 const RUN_STATE = join(ROOT, '.salon-run.json');
 const BACKEND_ENV = join(ROOT, 'backend', '.env');
 /** Máy tiệm cài từ nhánh main -> mặc định chế độ "Máy chủ cửa hàng" (bản production, KHÔNG nạp dữ liệu mẫu). */
-const DEFAULT_MODE = localVersion(ROOT).branch === 'main' ? 'serve' : 'dev';
+const defaultMode = () => (localVersion(ROOT).branch === 'main' ? 'serve' : 'dev');
 const PORT = Number(process.env.SALON_LAUNCHER_PORT ?? 47321);
 const TOKEN = randomBytes(24).toString('hex');
 const IS_WIN = process.platform === 'win32';
@@ -61,7 +61,7 @@ const readJson = (file, fallback) => { try { return JSON.parse(readFileSync(file
 const settings = () => {
   const s = readJson(SETTINGS_FILE, {});
   const runMode = readJson(RUN_STATE, null)?.mode;
-  const mode = s.mode === 'serve' || s.mode === 'dev' ? s.mode : runMode === 'serve' || runMode === 'dev' ? runMode : DEFAULT_MODE;
+  const mode = s.mode === 'serve' || s.mode === 'dev' ? s.mode : runMode === 'serve' || runMode === 'dev' ? runMode : defaultMode();
   return {
     mode, autoCheck: s.autoCheck !== false, openOnReady: s.openOnReady !== false, closeOnReady: s.closeOnReady !== false,
     autoStartWindows: !!STARTUP_FILE && existsSync(STARTUP_FILE), canAutoStart: !!STARTUP_FILE,
@@ -283,6 +283,13 @@ const readBody = (req) => new Promise((resolve) => {
 });
 const okHost = (host = '') => /^(127\.0\.0\.1|localhost)(:\d+)?$/i.test(host);
 
+/** Sau khi nối kho mã / đăng nhập GitHub: bỏ kết quả kiểm tra cũ và kiểm tra lại ngay. */
+function afterGitFix() {
+  latestCheck = null;
+  localVersion(ROOT, { fresh: true });
+  versionInfo(true).catch(() => undefined);
+}
+
 let checking = null; // gộp các lần kiểm tra trùng nhau (tự động + người dùng bấm) -> chỉ một lệnh git fetch chạy
 async function versionInfo(fetchRemote) {
   if (fetchRemote) {
@@ -290,7 +297,7 @@ async function versionInfo(fetchRemote) {
     latestCheck = await checking;
   }
   const local = localVersion(ROOT);
-  return { ...local, ...(latestCheck ?? {}), current: local.current, commit: local.commit, branch: local.branch };
+  return { ...local, ...(latestCheck ?? {}), current: local.current, commit: local.commit, branch: local.branch, problem: local.problem ?? latestCheck?.problem ?? null };
 }
 
 const routes = {
@@ -324,6 +331,14 @@ const routes = {
     spawnSync(process.execPath, [LAUNCHER, 'stop'], { cwd: ROOT, encoding: 'utf8', timeout: 60000, windowsHide: true });
     task = null;
     return startApp();
+  },
+  'POST /api/repair-git': async () => {
+    runTask('repair', ['repair-git'], { percentOf: (k, n) => Math.round((k / n) * 95), onSuccess: afterGitFix });
+    return { started: true };
+  },
+  'POST /api/git-login': async () => {
+    runTask('gitlogin', ['git-login'], { onSuccess: afterGitFix });
+    return { started: true };
   },
   'POST /api/backup': async () => {
     runTask('backup', ['backup'], { percentOf: (k, n) => Math.round((k / n) * 90) });

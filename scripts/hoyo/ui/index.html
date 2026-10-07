@@ -347,11 +347,13 @@ function render() {
   led.className = 'led';
 
   if (busy) {
-    label = `${{ update: 'ĐANG CẬP NHẬT', backup: 'ĐANG SAO LƯU' }[task.kind] || 'ĐANG KHỞI ĐỘNG'}<small>${Math.round(task.percent)}%</small>`;
+    label = `${{ update: 'ĐANG CẬP NHẬT', backup: 'ĐANG SAO LƯU', repair: 'ĐANG NỐI KHO MÃ', gitlogin: 'ĐĂNG NHẬP GITHUB' }[task.kind] || 'ĐANG KHỞI ĐỘNG'}<small>${Math.round(task.percent)}%</small>`;
     hero.disabled = true;
     status = {
       update: 'Đang cập nhật: sao lưu CSDL → tải mã → cài gói → build → migration → chạy lại.',
       backup: 'Đang sao lưu dữ liệu vào thư mục backups…',
+      repair: 'Đang nối thư mục với kho mã GitHub (1–3 phút)…',
+      gitlogin: 'Đăng nhập GitHub trong cửa sổ vừa hiện ra, rồi quay lại đây.',
     }[task.kind] || 'Đang khởi động Docker, CSDL, API và giao diện…';
     led.className = 'led busy';
   } else if (v.canUpdate) {
@@ -368,6 +370,7 @@ function render() {
     led.className = 'led on';
     if (v.updateAvailable && !v.canUpdate) status += ` · Có bản ${esc(v.latest || 'mới')} trên kho mã (máy đang ở nhánh ${esc(v.branch)}, chỉ nhánh main tự cập nhật).`;
   }
+  if (!busy && v.problem) status += ` · ⚠ ${v.problem.message} Mở ⚙ > Thông tin & Chẩn đoán để sửa.`;
   if (task && !task.running && task.error && !app.running) {
     status = `Lỗi: ${task.error}`;
     led.className = 'led warn';
@@ -421,7 +424,7 @@ async function checkUpdate(silent = false) {
     lastCheck = await post('/api/check-update');
     render();
     if (!silent) {
-      if (!lastCheck.remoteReachable) toast('Không kết nối được kho mã (GitHub). Kiểm tra Internet.', 'err');
+      if (!lastCheck.remoteReachable) toast(lastCheck.problem ? `${lastCheck.problem.message} ${lastCheck.problem.fix}` : 'Không kết nối được kho mã (GitHub).', 'err');
       else toast(lastCheck.updateAvailable ? `Có phiên bản mới ${lastCheck.latest}` : `Bạn đang dùng bản mới nhất (${lastCheck.current})`, lastCheck.updateAvailable ? '' : 'ok');
     }
     if (document.querySelector('.tab.active')?.dataset.tab === 'version' && $('overlay').classList.contains('show')) showTab('version');
@@ -487,6 +490,11 @@ document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () 
 
 const closeBtn = '<button class="close" aria-label="Đóng" onclick="closeModal()">✕</button>';
 
+const PROBLEM_LABEL = { 'no-repo': 'Không phải git clone', 'no-git': 'Chưa cài Git', auth: 'GitHub từ chối (kho riêng tư)', network: 'Không có đường tới GitHub', dubious: 'Git từ chối thư mục', unknown: 'Lỗi git' };
+const PROBLEM_ACTION = {
+  'repair-git': { label: 'Sửa kết nối cập nhật', api: '/api/repair-git', toast: 'Đang nối thư mục với kho mã…', confirm: 'Nối thư mục này với kho mã GitHub?\n\nMã nguồn sẽ được đưa về đúng bản main mới nhất. Dữ liệu khách, cài đặt cửa hàng (.env) và thư mục sao lưu giữ nguyên.' },
+  'git-login': { label: 'Đăng nhập GitHub', api: '/api/git-login', toast: 'Đang mở cửa sổ đăng nhập GitHub…' },
+};
 async function showTab(tab) {
   clearInterval(logTimer);
   document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === tab));
@@ -496,16 +504,22 @@ async function showTab(tab) {
     panel.innerHTML = `${closeBtn}<h3>Thông tin phiên bản</h3><p class="sub">Phiên bản đang chạy trên máy này và trạng thái kết nối kho mã.</p>
       <div class="big-version">${esc(v.current || '—')}</div>
       <div class="grid2" style="margin-top:12px">
-        <div class="card"><div class="k">Mã commit</div><div class="v">${esc(v.commit || '—')}</div></div>
+        <div class="card"><div class="k">Mã commit</div><div class="v">${esc(v.commit || (v.isRepo === false ? 'không phải git clone' : '—'))}</div></div>
         <div class="card"><div class="k">Nhánh</div><div class="v">${esc(v.branch || '—')}</div></div>
-        <div class="card"><div class="k">Phiên bản mới nhất trên kho mã</div><div class="v">${esc(v.latest || 'chưa kiểm tra')}</div></div>
-        <div class="card"><div class="k">Kết nối kho mã</div><div class="v">${lastCheck ? (lastCheck.remoteReachable ? `<span class="badge ok">Đã kết nối (${esc(lastCheck.source)})</span>` : '<span class="badge warn">Không kết nối được</span>') : 'chưa kiểm tra'}</div></div>
-        <div class="card"><div class="k">Trạng thái</div><div class="v">${v.updateAvailable ? `<span class="badge warn">Có bản mới ${esc(v.latest || '')}</span>` : lastCheck ? '<span class="badge ok">Đang là bản mới nhất</span>' : '—'}</div></div>
+        <div class="card"><div class="k">Phiên bản mới nhất trên kho mã</div><div class="v">${esc(v.latest || (v.problem ? 'chưa xác định được' : 'chưa kiểm tra'))}</div></div>
+        <div class="card"><div class="k">Kết nối kho mã</div><div class="v">${lastCheck ? (lastCheck.remoteReachable ? `<span class="badge ok">Đã kết nối (${esc(lastCheck.source)})</span>` : `<span class="badge warn">${esc(v.problem ? PROBLEM_LABEL[v.problem.code] || 'Lỗi git' : 'Không kết nối được')}</span>`) : (v.problem ? `<span class="badge warn">${esc(PROBLEM_LABEL[v.problem.code] || 'Lỗi git')}</span>` : 'chưa kiểm tra')}</div></div>
+        <div class="card"><div class="k">Trạng thái</div><div class="v">${v.updateAvailable ? `<span class="badge warn">Có bản mới ${esc(v.latest || '')}</span>` : v.problem ? '<span class="badge warn">Chưa xác định được bản mới nhất</span>' : lastCheck?.remoteReachable ? '<span class="badge ok">Đang là bản mới nhất</span>' : '—'}</div></div>
         <div class="card"><div class="k">Kiểm tra lần cuối</div><div class="v">${lastCheck ? new Date(lastCheck.checkedAt).toLocaleString('vi-VN') : '—'}</div></div>
       </div>
+      ${v.problem ? `<div class="card" style="margin-top:12px;border-color:rgba(251,113,133,.5)"><div class="k">Nguyên nhân</div><div class="v" style="font-weight:600">${esc(v.problem.message)}</div><p class="sub" style="margin:6px 0 0">${esc(v.problem.fix)}</p>${v.problem.detail ? `<p class="sub" style="margin:6px 0 0;font-family:monospace;font-size:11px;word-break:break-all">${esc(v.problem.detail)}</p>` : ''}${PROBLEM_ACTION[v.problem.action] ? `<div class="row" style="margin-top:10px"><button class="btn gold" id="vFix">${PROBLEM_ACTION[v.problem.action].label}</button></div>` : ''}</div>` : ''}
       <div class="row"><button class="btn gold" id="vCheck">Kiểm tra phiên bản mới nhất</button><button class="btn" id="vLog">Xem log cập nhật</button>${v.updateAvailable ? '<button class="btn" id="vUpdate">Cập nhật ngay</button>' : ''}</div>
       ${v.branch && v.branch !== 'main' ? `<p class="sub">Lưu ý: cập nhật 1 chạm chỉ chạy trên nhánh <b>main</b> (máy đang ở nhánh ${esc(v.branch)}).</p>` : ''}`;
     $('vCheck').onclick = () => checkUpdate();
+    if ($('vFix')) $('vFix').onclick = async () => {
+      const act = PROBLEM_ACTION[v.problem.action];
+      if (act.confirm && !confirm(act.confirm)) return;
+      try { await post(act.api); closeModal(); toast(act.toast); lastCheck = null; refresh(); } catch (e) { toast(e.message, 'err'); }
+    };
     $('vLog').onclick = () => showTab('changelog');
     if ($('vUpdate')) $('vUpdate').onclick = () => { closeModal(); $('hero').click(); };
   }
