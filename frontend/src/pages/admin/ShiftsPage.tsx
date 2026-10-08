@@ -13,7 +13,7 @@ import { CoveragePanel } from './shifts/CoveragePanel';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 
-/** S2-01 + S2-02: xếp ca theo tuần, sao chép tuần, khai báo nghỉ riêng của thợ. */
+//** S2-01 + S2-02: xếp ca theo tuần, sao chép tuần, khai báo nghỉ riêng của thợ. *//
 export function ShiftsPage() {
   const { user } = useAuth();
   const canEdit = user?.role === 'owner';
