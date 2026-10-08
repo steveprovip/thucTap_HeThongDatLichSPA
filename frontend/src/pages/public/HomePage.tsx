@@ -53,15 +53,21 @@ export function HomePage() {
   const [groups, setGroups] = useState<PublicCatalogGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  // Dev Frontend – phân hệ Khách: debounce 250ms (giống Step1Services) — gõ nhanh trên điện thoại chỉ tốn một request
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [category, setCategory] = useState("all");
   const toast = useToast();
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(search), 250);
+    return () => window.clearTimeout(timer);
+  }, [search]);
   useEffect(() => {
     let alive = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const fetchCatalog = (retryCount = 0) => {
       setLoading(true);
       publicApi
-        .catalog(search.trim() || undefined)
+        .catalog(debouncedSearch.trim() || undefined)
         .then((data) => {
           if (alive) setGroups(data);
         })
@@ -81,7 +87,7 @@ export function HomePage() {
       alive = false;
       if (timer) clearTimeout(timer);
     };
-  }, [search, toast]);
+  }, [debouncedSearch, toast]);
   const visible = useMemo(
     () =>
       category === "all"
