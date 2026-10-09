@@ -3,7 +3,7 @@
  *   npm run db:backup            (từ thư mục gốc dự án)
  *   npm run backup               (từ thư mục backend)
  *
- * Tệp nén (-Fc) lưu ở backups/ (đổi bằng BACKUP_DIR), giữ 15 bản mới nhất. Khôi phục bằng pg_restore (docs/TRIEN-KHAI.md mục 4.5).
+ * Tệp nén (-Fc) lưu ở backups/ (đổi bằng BACKUP_DIR), giữ 14 bản mới nhất cho từng CSDL. Khôi phục bằng pg_restore (docs/TRIEN-KHAI.md mục 4.5).
  */
 import { config as loadEnv } from 'dotenv';
 import { statSync } from 'fs';
@@ -25,7 +25,7 @@ function main(): number {
   }
   const mb = (statSync(result.file).size / 1024 / 1024).toFixed(2);
   console.log(`> Đã sao lưu (${result.method}, ${mb} MB): ${result.file}`);
-  console.log(`  Giữ lại ${KEEP_BACKUPS} bản mới nhất. Hãy chép thư mục backups/ sang USB hoặc ổ đám mây.`);
+  console.log(`  Giữ lại ${KEEP_BACKUPS} bản mới nhất cho CSDL này. Hãy chép thư mục backups/ sang USB hoặc ổ đám mây.`);
   return 0;
 }
 

@@ -20,22 +20,22 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 20
+      - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
 
       - name: Install Root Dependencies
-        run: npm ci || npm install
+        run: npm ci
 
       - name: Install Backend Dependencies
         working-directory: ./backend
-        run: npm ci || npm install
+        run: npm ci
 
       - name: Install Frontend Dependencies
         working-directory: ./frontend
-        run: npm ci || npm install
+        run: npm ci
 
       - name: Check Launcher Scripts (HoYoSalon)
         run: npm run check:scripts
@@ -79,26 +79,30 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 20
+      - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
 
       - name: Install Backend Dependencies
         working-directory: ./backend
-        run: npm ci || npm install
+        run: npm ci
 
       - name: Run Jest Unit Tests
         working-directory: ./backend
         run: npm run test
 
   e2e-tests:
-    name: "E2E Backend (PostgreSQL 16, CSDL kiem thu tam)"
+    name: "E2E Backend (PostgreSQL ${{ matrix.postgres }}, CSDL kiem thu tam)"
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres: [15, 16]
     services:
       postgres:
-        image: postgres:16
+        image: postgres:${{ matrix.postgres }}
         env:
           POSTGRES_USER: salon
           POSTGRES_PASSWORD: salon123
@@ -119,19 +123,50 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 20
+      - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
           cache-dependency-path: backend/package-lock.json
 
       - name: Install Backend Dependencies
         working-directory: ./backend
-        run: npm ci || npm install
+        run: npm ci
 
       # Bộ e2e tự TẠO CSDL salon_booking_test (tên bắt buộc kết thúc bằng _test), chạy migration, rồi XOÁ sau khi xong.
       # Không bao giờ đụng tới CSDL làm việc (xem backend/test/support/global-setup.ts).
       - name: Run E2E Tests
         working-directory: ./backend
         run: npm run test:e2e
+
+  portable-install:
+    name: "Portable install/build (${{ matrix.os }}, Node 22)"
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+      - run: npm ci --prefix backend
+      - run: npm ci --prefix frontend
+      - run: npm run check:scripts
+      - run: npm run test:scripts
+      - run: npm run test --prefix backend -- --runInBand
+      - run: npm run test --prefix frontend
+      - run: npm run build
+
+  production-image:
+    name: "Production image build candidate"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f deploy/docker/Dockerfile.production --build-arg COMMIT_SHA=${{ github.sha }} -t salon-spa:ci .

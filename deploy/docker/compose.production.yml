@@ -1,0 +1,64 @@
+name: salon-production
+services:
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${SALON_PROD_DB_USER:-salon}
+      POSTGRES_PASSWORD: ${SALON_PROD_DB_PASSWORD:?Set SALON_PROD_DB_PASSWORD in the production env file}
+      POSTGRES_DB: ${SALON_PROD_DB_NAME:-salon_booking}
+      TZ: Asia/Ho_Chi_Minh
+      PGTZ: Asia/Ho_Chi_Minh
+    volumes:
+      - production_database:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [database]
+    logging:
+      options: { max-size: "10m", max-file: "3" }
+  app:
+    image: ${SALON_PROD_IMAGE:-salon-spa:local-candidate}
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.production
+      args:
+        COMMIT_SHA: ${SALON_PROD_REVISION:-unreleased}
+    restart: unless-stopped
+    init: true
+    env_file:
+      - path: ${SALON_PROD_ENV_FILE:-./production.env}
+        required: true
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      SERVE_FRONTEND: "true"
+      DATABASE_URL: ""
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: ${SALON_PROD_DB_USER:-salon}
+      DB_PASSWORD: ${SALON_PROD_DB_PASSWORD:?Set SALON_PROD_DB_PASSWORD in the production env file}
+      DB_NAME: ${SALON_PROD_DB_NAME:-salon_booking}
+      DB_SSL: "false"
+      BACKUP_DIR: /app/backups
+      MIGRATION_BACKUP: required
+    ports:
+      - "127.0.0.1:${SALON_PROD_PORT:-3000}:3000"
+    volumes:
+      - production_uploads:/app/backend/uploads
+      - production_backups:/app/backups
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks: [database, outbound]
+    logging:
+      options: { max-size: "10m", max-file: "3" }
+networks:
+  database:
+    internal: true
+  outbound: {}
+volumes:
+  production_database:
+  production_uploads:
+  production_backups:

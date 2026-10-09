@@ -4,19 +4,24 @@
  * Thứ tự thử:
  *   1. pg_dump có sẵn trên máy (PATH);
  *   2. pg_dump bên trong container Docker `salon_postgres` (máy chạy Docker thường không cài sẵn pg_dump).
- * Tệp lưu ở backups/ tại gốc dự án (đã nằm trong .gitignore), giữ lại 15 bản mới nhất.
+ * Tệp lưu ở backups/ tại gốc dự án (đã nằm trong .gitignore), giữ lại 14 bản mới nhất cho từng CSDL.
  */
-import { closeSync, existsSync, mkdirSync, openSync, readdirSync, statSync, unlinkSync } from 'fs';
+import { closeSync, existsSync, mkdirSync, openSync, readSync, readdirSync, renameSync, statSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { spawnSync } from 'child_process';
+import { createHash, randomUUID } from 'crypto';
 import { DbConnection } from '../config/db-connection';
 import { findProjectRoot } from './sql-files';
 
-export const KEEP_BACKUPS = 15;
+export const KEEP_BACKUPS = 14;
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
 
 /** Mặc định: thư mục backups/ ở gốc dự án. Đổi bằng BACKUP_DIR (vd. ổ đĩa ngoài). */
 export const backupDir = (): string => process.env.BACKUP_DIR?.trim() || join(findProjectRoot(), 'backups');
+
+/** A database-specific prefix prevents one database's retention from deleting another's backups. */
+export const backupPrefix = (database: string, endpoint?: Pick<DbConnection, 'host' | 'port'>): string =>
+  `${database.replace(/[^\w.-]+/g, '_').slice(0, 60)}-${createHash('sha256').update(JSON.stringify([endpoint?.host, endpoint?.port, database])).digest('hex').slice(0, 12)}_`;
 
 const stamp = (): string => {
   const d = new Date();
@@ -29,6 +34,27 @@ const hasCommand = (cmd: string, args: string[] = ['--version']): boolean => {
   return !r.error && r.status === 0;
 };
 
+/** A local hostname alone does not prove that the configured database is this container. */
+function containerMatchesConnection(container: string, conn: DbConnection): boolean {
+  const r = spawnSync('docker', ['inspect', '--format', '{{json .NetworkSettings.Ports}}', container], {
+    stdio: ['ignore', 'pipe', 'ignore'], timeout: 15_000, windowsHide: true,
+  });
+  if (r.error || r.status !== 0) return false;
+  try {
+    const ports: Record<string, Array<{ HostIp: string; HostPort: string }> | null> = JSON.parse(r.stdout.toString('utf8'));
+    return (ports['5432/tcp'] ?? []).some((p) => Number(p.HostPort) === conn.port &&
+      ['', '0.0.0.0', '::', conn.host.replace(/^\[|\]$/g, ''), ...(conn.host === 'localhost' ? ['127.0.0.1', '::1'] : [])].includes(p.HostIp));
+  } catch { return false; }
+}
+
+function isCustomArchive(file: string): boolean {
+  const fd = openSync(file, 'r');
+  try {
+    const magic = Buffer.alloc(5);
+    return readSync(fd, magic, 0, magic.length, 0) === magic.length && magic.toString('ascii') === 'PGDMP';
+  } finally { closeSync(fd); }
+}
+
 export interface BackupResult {
   file: string;
   method: 'pg_dump' | 'docker';
@@ -39,8 +65,14 @@ export function backupDatabase(conn: DbConnection, tag: string, kind = 'truoc'):
   const dir = backupDir();
   mkdirSync(dir, { recursive: true });
   const safeTag = tag.replace(/[^\w.-]+/g, '_').slice(0, 60);
-  const file = join(dir, `${[conn.database, stamp(), kind, safeTag].filter(Boolean).join('_')}.dump`);
-  const env = { ...process.env, PGPASSWORD: conn.password, ...(conn.ssl ? { PGSSLMODE: 'require' } : {}) };
+  const prefix = backupPrefix(conn.database, conn);
+  const safeKind = kind.replace(/[^\w.-]+/g, '_').slice(0, 30);
+  const file = join(dir, `${prefix}${[stamp(), randomUUID(), safeKind, safeTag].filter(Boolean).join('_')}.dump`);
+  const partial = `${file}.partial`;
+  const env = {
+    ...process.env, PGPASSWORD: conn.password,
+    PGSSLMODE: conn.ssl ? (conn.ssl.rejectUnauthorized ? 'verify-full' : 'require') : 'disable',
+  };
 
   const attempts: Array<{ method: BackupResult['method']; cmd: string; args: string[]; ok: () => boolean }> = [
     {
@@ -55,15 +87,15 @@ export function backupDatabase(conn: DbConnection, tag: string, kind = 'truoc'):
     attempts.push({
       method: 'docker',
       cmd: 'docker',
-      args: ['exec', '-e', `PGPASSWORD=${conn.password}`, container, 'pg_dump', '-U', conn.username, '-d', conn.database, '-Fc'],
-      ok: () => hasCommand('docker', ['exec', container, 'pg_dump', '--version']),
+      args: ['exec', '-e', 'PGPASSWORD', '-e', 'PGSSLMODE', container, 'pg_dump', '-h', '127.0.0.1', '-p', '5432', '-U', conn.username, '-d', conn.database, '-Fc'],
+      ok: () => containerMatchesConnection(container, conn) && hasCommand('docker', ['exec', container, 'pg_dump', '--version']),
     });
   }
 
   let lastError = '';
   for (const a of attempts) {
     if (!a.ok()) continue;
-    const fd = openSync(file, 'w');
+    const fd = openSync(partial, 'wx', 0o600);
     let r;
     try {
       // Ghi thẳng stdout (nhị phân) vào tệp, không qua bộ đệm chuỗi
@@ -71,21 +103,22 @@ export function backupDatabase(conn: DbConnection, tag: string, kind = 'truoc'):
     } finally {
       closeSync(fd);
     }
-    const size = existsSync(file) ? statSync(file).size : 0;
-    if (!r.error && r.status === 0 && size > 0) {
-      prune(dir);
+    const valid = existsSync(partial) && isCustomArchive(partial);
+    if (!r.error && r.status === 0 && valid) {
+      renameSync(partial, file);
+      prune(dir, prefix);
       return { file, method: a.method };
     }
-    lastError = (r.stderr?.toString('utf8') || r.error?.message || `mã thoát ${r.status}`).trim().split('\n').slice(-2).join(' ');
-    if (existsSync(file)) unlinkSync(file);
+    lastError = (r.stderr?.toString('utf8') || r.error?.message || (!valid ? 'tệp không có định dạng PostgreSQL custom archive (PGDMP)' : `mã thoát ${r.status}`)).trim().split('\n').slice(-2).join(' ');
+    if (existsSync(partial)) unlinkSync(partial);
   }
   if (lastError) throw new Error(`Sao lưu bằng pg_dump thất bại: ${lastError}`);
   return null;
 }
 
-function prune(dir: string): void {
+function prune(dir: string, prefix: string): void {
   const files = readdirSync(dir)
-    .filter((f) => f.endsWith('.dump'))
+    .filter((f) => f.startsWith(prefix) && f.endsWith('.dump'))
     .map((f) => ({ f, t: statSync(join(dir, f)).mtimeMs }))
     .sort((a, b) => b.t - a.t);
   for (const old of files.slice(KEEP_BACKUPS)) {
