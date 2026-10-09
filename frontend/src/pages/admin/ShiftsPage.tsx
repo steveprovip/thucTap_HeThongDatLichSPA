@@ -13,7 +13,7 @@ import { CoveragePanel } from './shifts/CoveragePanel';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 
-/** S2-01 + S2-02: xếp ca theo tuần, sao chép tuần, khai báo nghỉ riêng của thợ. */
+//** S2-01 + S2-02: xếp ca theo tuần, sao chép tuần, khai báo nghỉ riêng của thợ. *//
 export function ShiftsPage() {
   const { user } = useAuth();
   const canEdit = user?.role === 'owner';
@@ -176,11 +176,22 @@ export function ShiftsPage() {
             <Button size="sm" variant="outline" icon={<CalendarPlus size={15} />} onClick={() => setOffOpen(true)}>
               Khai báo nghỉ
             </Button>
-            <Button size="sm" icon={<Plus size={15} />} onClick={() => openAdd()}>Thêm ca</Button>
+            <Button
+              size="sm"
+              icon={<Plus size={15} />}
+              onClick={() => openAdd()}
+            >
+              Thêm ca
+            </Button>
           </div>
         ) : canManageOff && (
           // Lễ tân không xếp ca nhưng vẫn được khai báo / huỷ nghỉ cho thợ
-          <Button size="sm" variant="outline" icon={<CalendarPlus size={15} />} onClick={() => setOffOpen(true)}>
+          <Button
+            size="sm"
+            variant="outline"
+            icon={<CalendarPlus size={15} />}
+            onClick={() => setOffOpen(true)}
+          >
             Khai báo nghỉ
           </Button>
         )}
@@ -198,7 +209,13 @@ export function ShiftsPage() {
             <ChevronRight size={16} />
           </Button>
         </div>
-        <Button size="sm" variant="outline" onClick={() => setWeekStart(startOfWeekISO(todayISO()))}>Tuần này</Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => setWeekStart(startOfWeekISO(todayISO()))}
+        >
+          Tuần này
+        </Button>
         <input type="date" aria-label="Chọn tuần" className="field-input min-h-[36px] w-auto" value={weekStart}
                onChange={(e) => e.target.value && setWeekStart(startOfWeekISO(e.target.value))} />
         <div className="relative ml-auto w-full sm:w-56">
@@ -241,7 +258,9 @@ export function ShiftsPage() {
       <Modal open={addOpen} title="Thêm ca làm" onClose={() => setAddOpen(false)} size="sm"
              footer={<div className="flex justify-end gap-2">
                <Button variant="ghost" onClick={() => setAddOpen(false)}>Đóng</Button>
-               <Button onClick={addShift} disabled={!!addError}>Thêm ca</Button>
+               <Button onClick={addShift} disabled={!!addError}>
+          Thêm ca
+        </Button>
              </div>}>
         <div className="space-y-3">
           <Field label="Thợ" required>
@@ -362,8 +381,11 @@ export function ShiftsPage() {
         message={`Xoá ca ${removeTarget?.startTime}–${removeTarget?.endTime} ngày ${removeTarget?.workDate} của ${removeTarget?.stylistName}?`}
         onConfirm={async () => {
           if (!removeTarget) return;
-          try { await stylistsApi.removeShift(removeTarget.id); toast.success('Đã xoá ca'); void load(); }
-          catch (e) {
+          try {
+            await stylistsApi.removeShift(removeTarget.id);
+            toast.success('Đã xoá ca');
+            void load();
+          } catch (e) {
             const appointments = getErrorDetails(e).appointments;
             if (getErrorCode(e) === 'SHIFT_HAS_APPOINTMENTS' && appointments?.length) {
               setBlocked({ shift: removeTarget, appointments });
@@ -385,8 +407,13 @@ export function ShiftsPage() {
           + ' Khung giờ của thợ sẽ mở lại cho khách đặt.'}
         onConfirm={async () => {
           if (!removeOffTarget) return;
-          try { await stylistsApi.removeTimeOff(removeOffTarget.id); toast.success('Đã huỷ khai báo nghỉ'); void load(); }
-          catch (e) { toast.error(getErrorMessage(e)); }
+          try {
+            await stylistsApi.removeTimeOff(removeOffTarget.id);
+            toast.success('Đã huỷ khai báo nghỉ');
+            void load();
+          } catch (e) {
+            toast.error(getErrorMessage(e));
+          }
         }}
         onClose={() => setRemoveOffTarget(null)}
       />
