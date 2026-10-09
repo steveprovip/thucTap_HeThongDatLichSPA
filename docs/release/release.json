@@ -1,0 +1,1882 @@
+{
+  "title": "Hồ sơ cải tiến Salon Spa",
+  "slide_title": "Salon Spa",
+  "date": "2026-10-08",
+  "readiness": "CHƯA NGHIỆM THU PRODUCTION",
+  "scope": "Giữ đề tài gốc gồm 39 user story, 165 point, 4 sprint, một cơ sở. PostgreSQL 15 là đích trong workbook gốc. Chỉ cải tiến độ tin cậy, đóng gói và bằng chứng phát hành. Không thêm đa chi nhánh, kho, AI đặt lịch hay thanh toán ngân hàng thật.",
+  "assignment_sources": [
+    {
+      "path": "docs/requirements/3. Hệ thống đặt lịch Salon Spa.xlsx",
+      "description": "Hệ thống đặt lịch Salon Spa",
+      "sha256": "e67dac4d4f2cc7508ee3e4e85d0735c56c14b483598210003eb5a1050d558757"
+    }
+  ],
+  "domain_changes": [
+    "Không thay đổi quy tắc nghiệp vụ đề tài trong đợt sửa này. Các thiếu sót AC và đề xuất vượt phạm vi được ghi riêng, chưa tự ý coi là hoàn thành."
+  ],
+  "requirements": [
+    {
+      "id": "S1-01",
+      "title": "Là Quản trị hệ thống, tôi muốn đăng nhập bằng email và mật khẩu rồi được cấp phiên làm việc, để chỉ người của tiệm mới chạm được vào dữ liệu lịch hẹn và doanh thu.",
+      "source": "4. Product Backlog!A7",
+      "evidence": "**S1-01** | 5 | Đăng nhập, khoá 15 phút sau 5 lần sai, JWT 30m/7d | `be/modules/auth/auth.service.ts` (`login`, `issueTokens`, `refresh`) | `fe/pages/auth/LoginPage.tsx`, `fe/api/client.ts` (tự làm mới token)",
+      "status": "Đã ánh xạ; kiểm tra AC theo workbook và kịch bản nghiệm thu"
+    },
+    {
+      "id": "S1-02",
+      "title": "Là Quản trị hệ thống, tôi muốn tạo, sửa và ngưng hoạt động tài khoản nhân sự của tiệm, để thợ mới vào làm có tài khoản trong ngày và thợ nghỉ việc mất quyền truy cập ngay.",
+      "source": "4. Product Backlog!A8",
+      "evidence": "**S1-02** | 5 | Tạo / sửa / ngưng hoạt động tài khoản, mật khẩu tạm qua email, chặn ngưng admin cuối cùng | `be/modules/users/users.service.ts` | `fe/pages/admin/UsersPage.tsx`",
+      "status": "Đã ánh xạ; kiểm tra AC theo workbook và kịch bản nghiệm thu"
+    },
+    {
+      "id": "S1-03",
+      "title": "Là Quản trị hệ thống, tôi muốn gán vai trò cho từng tài khoản và để hệ thống chặn theo vai trò ở cả menu lẫn API, để thợ không xem được doanh thu của tiệm và lễ tân không sửa được bảng giá.",
+      "source": "4. Product Backlog!A9",
+      "evidence": "**S1-03** | 5 | 4 vai trò nhân sự và khách công khai, menu theo quyền, API trả 403 | `be/common/guards/roles.guard.ts`, `be/common/constants/roles.constant.ts` | `fe/layouts/AdminLayout.tsx`, `fe/pages/admin/PermissionMatrixPage.tsx`",
+      "status": "Đã ánh xạ; kiểm tra AC theo workbook và kịch bản nghiệm thu"
+    },
+    {
+      "id": "S1-04",
+      "title": "Là Lễ tân, tôi muốn tự đổi mật khẩu và khôi phục khi quên, để không phải nhờ người khác mỗi lần bị khoá ngoài vào giờ đông khách.",
+      "source": "4. Product Backlog!A10",
+      "evidence": "**S1-04** | 3 | Đổi mật khẩu, quên mật khẩu, liên kết 30 phút dùng một lần, giới hạn 3 lần/giờ | `be/modules/auth/auth.service.ts` (`changePassword`, `forgotPassword`, `resetPassword`) | `fe/pages/auth/ChangePasswordPage.tsx`, `ForgotPasswordPage.tsx`, `ResetPasswordPage.tsx`",
+      "status": "Đã ánh xạ; kiểm tra AC theo workbook và kịch bản nghiệm thu"
+    },
+    {
+      "id": "S1-05",
+      "title": "Là Chủ tiệm, tôi muốn khai báo từng dịch vụ kèm thời lượng chuẩn và giá, để hệ thống có cơ sở tính khung giờ trống thay vì lễ tân nhẩm trong đầu.",
+      "source": "4. Product Backlog!A11",
+      "evidence": "**S1-05** | 5 | Dịch vụ: thời lượng bội số 15 (15–240), giá ≤ 20.000.000 đ, không xoá khi đã có lịch hẹn | `be/modules/services/services.service.ts`, CHECK constraint trong `schema.sql` | `fe/pages/admin/ServicesPage.tsx`",
+      "status": "Đã ánh xạ; kiểm tra AC theo workbook và kịch bản nghiệm thu"
+    },
+    {
+      "id": "S1-06",
+      "title": "Là Chủ tiệm, tôi muốn gom dịch vụ thành các nhóm như tóc, gội dưỡng, chăm sóc da, để khách mở trang đặt lịch không phải cuộn qua một danh sách dài bốn mươi dòng.",
+      "source": "4. Product Backlog!A12",
+      "evidence": "**S1-06** | 3 | Nhóm dịch vụ, thứ tự hiển thị, chặn xoá nhóm còn dịch vụ | `be/modules/services/services.service.ts` (`removeCategory`) | `fe/pages/admin/ServicesPage.tsx` (hộp thoại nhóm)",
+      "status": "Đã ánh xạ; kiểm tra AC theo workbook và kịch bản nghiệm thu"
+    },
+    {
+      "id": "S1-07",
+      "title": "Là Chủ tiệm, tôi muốn lập hồ sơ từng thợ và đánh dấu thợ đó làm được những dịch vụ nào, để khách không đặt nhầm thợ chỉ biết cắt cho một ca nhuộm.",
+      "source": "4. Product Backlog!A13",
+      "evidence": "**S1-07** | 5 | Hồ sơ thợ, ảnh ≤ 2MB JPG/PNG, kỹ năng nhiều-nhiều, cảnh báo dịch vụ chưa có thợ | `be/modules/stylists/stylists.service.ts`, `stylists.controller.ts` (`uploadAvatar`) | `fe/pages/admin/StylistsPage.tsx`",
+      "status": "Đã ánh xạ; kiểm tra AC theo workbook và kịch bản nghiệm thu"
+    },
+    {
+      "id": "S1-08",
+      "title": "Là Chủ tiệm, tôi muốn khai báo giờ mở cửa của tiệm theo từng thứ trong tuần, để khung giờ đề xuất cho khách không rơi ra ngoài giờ làm việc.",
+      "source": "4. Product Backlog!A14",
+      "evidence": "**S1-08** | 3 | Giờ mở cửa theo thứ, chênh tối thiểu 60 phút, múi giờ Asia/Ho_Chi_Minh | `be/modules/working-hours/working-hours.service.ts`, CHECK `swh_min_60m` | `fe/pages/admin/WorkingHoursPage.tsx`",
+      "status": "Đã ánh xạ; kiểm tra AC theo workbook và kịch bản nghiệm thu"
+    },
+    {
+      "id": "S1-09",
+      "title": "Là Quản trị hệ thống, tôi muốn xem nhật ký các thao tác thay đổi dữ liệu quan trọng, để khi một lịch hẹn biến mất còn lần ra ai đã sửa lúc nào.",
+      "source": "4. Product Backlog!A15",
+      "evidence": "**S1-09** | 3 | Nhật ký hoạt động chỉ đọc, lọc theo ngày và tài khoản, 50 dòng/trang | `be/modules/audit/*`, `be/common/interceptors/audit-log.interceptor.ts`, trigger `audit_logs_readonly` trong `schema.sql` | `fe/pages/admin/AuditLogsPage.tsx`",
+      "status": "Đã ánh xạ; kiểm tra AC theo workbook và kịch bản nghiệm thu"
+    },
+    {
+      "id": "S1-10",
+      "title": "Là Quản trị hệ thống, tôi muốn có môi trường staging kèm bộ dữ liệu mẫu của một tiệm, để mọi sprint sau đều demo trên dữ liệu giống thật thay vì bảng trống.",
+      "source": "4. Product Backlog!A16",
+      "evidence": "**S1-10** | 3 | Môi trường staging một lệnh + dữ liệu mẫu chạy lại không nhân đôi | `scripts\\windows\\run_project.bat`, `docker-compose.yml`, `backend/database/seed.sql`, `be/database/run-seed.ts` | — (tài liệu `docs/STAGING.md`)",
+      "status": "Đã ánh xạ; kiểm tra AC theo workbook và kịch bản nghiệm thu"
+    },
+    {
+      "id": "S2-01",
+      "title": "Là Chủ tiệm, tôi muốn xếp ca làm theo tuần cho từng thợ và sao chép sang tuần kế tiếp, để không phải nhập lại bảng ca giống nhau mỗi thứ hai đầu tuần.",
+      "source": "4. Product Backlog!A19",
+      "evidence": "**S2-01** | 8 | Ca theo tuần, nhiều ca/ngày, nghỉ giữa ca, chống chồng lấn, sao chép tuần, chặn xoá ca có lịch | `be/modules/stylists/stylists.service.ts` (`createShifts`, `copyWeek`, `removeShift`), EXCLUDE `stylist_shifts_no_overlap` | `fe/pages/admin/ShiftsPage.tsx`",
+      "status": "Đã ánh xạ; kiểm tra AC theo workbook và kịch bản nghiệm thu"
+    },
+    {
+      "id": "S2-02",
+      "title": "Là Chủ tiệm, tôi muốn khai báo ngày nghỉ của tiệm và ngày nghỉ riêng của từng thợ, để hệ thống không nhận lịch vào mùng một Tết hay ngày thợ xin nghỉ trước.",
+      "source": "4. Product Backlog!A20",
+      "evidence": "**S2-02** | 3 | Ngày nghỉ tiệm theo khoảng ngày và nghỉ riêng của thợ, cảnh báo lịch bị ảnh hưởng | `be/modules/working-hours/working-hours.service.ts` (`createHoliday`), `be/modules/stylists/stylists.service.ts` (`createTimeOff`) | `fe/pages/admin/WorkingHoursPage.tsx`, `ShiftsPage.tsx`",
+      "status": "Đã ánh xạ; kiểm tra AC theo workbook và kịch bản nghiệm thu"
+    },
+    {
+      "id": "S2-03",
+      "title": "Là Khách hàng, tôi muốn xem trang công khai liệt kê dịch vụ theo nhóm kèm thời lượng và giá, để biết trước mình mất bao lâu và tốn bao nhiêu trước khi quyết định đặt.",
+      "source": "4. Product Backlog!A21",
+      "evidence": "**S2-03** | 5 | Danh mục công khai theo nhóm, chỉ hiện dịch vụ có thợ, tìm kiếm không dấu, 360px | `be/modules/booking-engine/availability.service.ts` (`publicCatalog`) | `fe/pages/public/HomePage.tsx`",
+      "status": "Đã ánh xạ; kiểm tra AC theo workbook và kịch bản nghiệm thu"
+    },
+    {
+      "id": "S2-04",
+      "title": "Là Khách hàng, tôi muốn chọn nhiều dịch vụ trong một lượt đặt và thấy tổng thời lượng cùng tổng tiền tạm tính, để biết mình cần dành ra bao nhiêu thời gian cho buổi đó.",
+      "source": "4. Product Backlog!A22",
+      "evidence": "**S2-04** | 3 | Chọn tối đa 5 dịch vụ, cộng dồn thời lượng và tiền tạm tính, cảnh báo vượt ca dài nhất | `public-booking.controller.ts` (`quote`), `slot-calculator.ts` (`sumDuration`, `longestShiftLength`) | `fe/contexts/BookingContext.tsx`, `steps/Step1Services.tsx`",
+      "status": "Đã ánh xạ; kiểm tra AC theo workbook và kịch bản nghiệm thu"
+    },
+    {
+      "id": "S2-05",
+      "title": "Là Khách hàng, tôi muốn chọn ngày rồi thấy đúng những khung giờ còn đủ chỗ cho các dịch vụ mình chọn, để không phải gọi điện hỏi lễ tân xem mấy giờ còn trống.",
+      "source": "4. Product Backlog!A23",
+      "evidence": "**S2-05** | 8 | Bộ tính khung giờ trống 15 phút, gợi ý 2 ngày gần nhất còn chỗ, chặn quá khứ và dưới 60 phút | `be/modules/booking-engine/slot-calculator.ts` + `availability.service.ts` | `fe/pages/public/steps/Step2Slot.tsx`",
+      "status": "Đã ánh xạ; kiểm tra AC theo workbook và kịch bản nghiệm thu"
+    },
+    {
+      "id": "S2-06",
+      "title": "Là Khách hàng, tôi muốn chọn đích danh thợ quen hoặc để hệ thống tự phân thợ bất kỳ, để vẫn đặt được lịch khi thợ quen đã kín chỗ.",
+      "source": "4. Product Backlog!A24",
+      "evidence": "**S2-06** | 3 | Chọn đích danh thợ hoặc thợ bất kỳ, ưu tiên thợ ít lịch nhất | `availability.service.ts` (`pickAutoStylist`, `capableStylists`) | `fe/pages/public/steps/Step3Stylist.tsx`",
+      "status": "Đã ánh xạ; kiểm tra AC theo workbook và kịch bản nghiệm thu"
+    },
+    {
+      "id": "S2-07",
+      "title": "Là Khách hàng, tôi muốn điền tên và số điện thoại rồi chốt lịch mà không cần tạo tài khoản, để đặt xong trong vòng một phút ngay trên điện thoại.",
+      "source": "4. Product Backlog!A25",
+      "evidence": "**S2-07** | 5 | Chốt lịch không cần tài khoản, mã 8 ký tự, tối đa 3 lịch/SĐT, 5 lượt/IP/giờ | `be/modules/booking-engine/booking.service.ts` (`createBooking`), `be/modules/rate-limit/*` | `fe/pages/public/steps/Step4Confirm.tsx`, `BookingSuccess.tsx`",
+      "status": "Đã ánh xạ; kiểm tra AC theo workbook và kịch bản nghiệm thu"
+    },
+    {
+      "id": "S2-08",
+      "title": "Là Chủ tiệm, tôi muốn hệ thống từ chối lịch thứ hai khi hai khách bấm chốt cùng một khung giờ của một thợ, để tiệm không rơi vào cảnh hai người cùng đến vào mười giờ sáng.",
+      "source": "4. Product Backlog!A26",
+      "evidence": "**S2-08** | 5 | Chống đặt trùng: SERIALIZABLE + FOR UPDATE + EXCLUDE, test 20 request đồng thời | `booking.service.ts` (`persistBooking`), `schema.sql` (`appointments_no_overlap`) | Thông báo và nạp lại khung giờ trong `BookingWizard.tsx`",
+      "status": "Đã ánh xạ; kiểm tra AC theo workbook và kịch bản nghiệm thu"
+    },
+    {
+      "id": "S2-09",
+      "title": "Là Khách hàng, tôi muốn tra cứu lịch hẹn bằng mã tra cứu hoặc số điện thoại, để kiểm tra lại giờ hẹn mà không phải gọi vào tiệm giờ đông khách.",
+      "source": "4. Product Backlog!A27",
+      "evidence": "**S2-09** | 2 | Tra cứu bằng mã hoặc SĐT, chặn 30 phút sau 10 lần sai/IP/giờ | `booking.service.ts` (`lookup`), `rate-limit.service.ts` | `fe/pages/public/LookupPage.tsx`",
+      "status": "Đã ánh xạ; kiểm tra AC theo workbook và kịch bản nghiệm thu"
+    },
+    {
+      "id": "S3-01",
+      "title": "Là Lễ tân, tôi muốn xem lịch của cả ngày dưới dạng cột theo từng thợ, để nhìn một lần là biết ai đang bận tới mấy giờ thay vì lật sổ.",
+      "source": "4. Product Backlog!A30",
+      "evidence": "**S3-01** | 8 | Lịch ngày dạng cột theo thợ, trục 15 phút, vùng ngoài ca tô khác màu | `be/modules/booking-engine/appointments.service.ts` (`dayTimeline`) | `fe/pages/reception/DayTimelinePage.tsx`",
+      "status": "Đã ánh xạ; kiểm tra AC theo workbook và kịch bản nghiệm thu"
+    },
+    {
+      "id": "S3-02",
+      "title": "Là Lễ tân, tôi muốn xác nhận hoặc từ chối các lịch khách đặt online, để tiệm chủ động kiểm soát những lịch đặt sát giờ hoặc trùng đợt cao điểm.",
+      "source": "4. Product Backlog!A31",
+      "evidence": "**S3-02** | 3 | Xác nhận / từ chối lịch online, lý do bắt buộc, đánh dấu quá hạn 12 giờ | `appointments.service.ts` (`confirm`, `reject`) | `fe/pages/reception/PendingPage.tsx`, `AppointmentDrawer.tsx`",
+      "status": "Đã ánh xạ; kiểm tra AC theo workbook và kịch bản nghiệm thu"
+    },
+    {
+      "id": "S3-03",
+      "title": "Là Lễ tân, tôi muốn check-in khách khi họ bước vào tiệm và giao cho thợ phụ trách, để thợ biết khách của mình đã tới mà không cần gọi với qua phòng.",
+      "source": "4. Product Backlog!A32",
+      "evidence": "**S3-03** | 3 | Check-in trong cửa sổ ±60 phút, đánh dấu muộn > 15 phút, báo thợ | `appointments.service.ts` (`checkIn`) | `AppointmentDrawer.tsx`",
+      "status": "Đã ánh xạ; kiểm tra AC theo workbook và kịch bản nghiệm thu"
+    },
+    {
+      "id": "S3-04",
+      "title": "Là Lễ tân, tôi muốn đổi thợ hoặc dời giờ một lịch hẹn ngay trên màn hình lịch ngày, để xử lý tại chỗ khi khách đến trễ hoặc thợ đang làm quá giờ.",
+      "source": "4. Product Backlog!A33",
+      "evidence": "**S3-04** | 5 | Đổi thợ / dời giờ, kiểm tra kỹ năng và khoảng trống, ghi lịch sử, gửi email | `appointments.service.ts` (`reschedule`) | `AppointmentDrawer.tsx` → `RescheduleModal`",
+      "status": "Đã ánh xạ; kiểm tra AC theo workbook và kịch bản nghiệm thu"
+    },
+    {
+      "id": "S3-05",
+      "title": "Là Khách hàng, tôi muốn tự huỷ lịch bằng mã tra cứu khi có việc đột xuất, để tiệm kịp nhận khách khác vào khung giờ đó.",
+      "source": "4. Product Backlog!A34",
+      "evidence": "**S3-05** | 2 | Khách tự huỷ khi còn ≥ 120 phút, giải phóng khung giờ ngay | `booking.service.ts` (`cancelByCode`) | `fe/pages/public/LookupPage.tsx`",
+      "status": "Đã ánh xạ; kiểm tra AC theo workbook và kịch bản nghiệm thu"
+    },
+    {
+      "id": "S3-06",
+      "title": "Là Lễ tân, tôi muốn đánh dấu khách không đến sau khi đã chờ đủ lâu, để tiệm có số liệu thật về tỉ lệ bỏ hẹn thay vì cảm giác là dạo này nhiều.",
+      "source": "4. Product Backlog!A35",
+      "evidence": "**S3-06** | 3 | Đánh dấu không đến sau 30 phút, cộng dồn vào hồ sơ, hoàn tác trong 15 phút | `appointments.service.ts` (`markNoShow`, `undoNoShow`) | `AppointmentDrawer.tsx`",
+      "status": "Đã ánh xạ; kiểm tra AC theo workbook và kịch bản nghiệm thu"
+    },
+    {
+      "id": "S3-07",
+      "title": "Là Lễ tân, tôi muốn nhập lịch cho khách vãng lai gọi điện hoặc đi ngang qua tiệm, để mọi lượt khách đều nằm trong hệ thống chứ không rẽ nhánh ra sổ tay.",
+      "source": "4. Product Backlog!A36",
+      "evidence": "**S3-07** | 5 | Khách vãng lai tại quầy, tự điền theo SĐT, bỏ qua ràng buộc 60 phút | `appointments.controller.ts` (`walkIn`), `customers.service.ts` (`findOrCreateByPhone`) | `fe/pages/reception/WalkInPage.tsx`",
+      "status": "Đã ánh xạ; kiểm tra AC theo workbook và kịch bản nghiệm thu"
+    },
+    {
+      "id": "S3-08",
+      "title": "Là Thợ, tôi muốn mở lịch của riêng mình theo ngày và bấm bắt đầu, hoàn tất cho từng lượt khách, để lễ tân biết lúc nào tôi rảnh nhận khách tiếp theo.",
+      "source": "4. Product Backlog!A37",
+      "evidence": "**S3-08** | 5 | Thợ xem lịch riêng, bắt đầu / hoàn tất, SĐT che, cảnh báo vượt 20 phút | `appointments.service.ts` (`myDay`, `start`, `complete`), `common/utils/phone.util.ts` | `fe/pages/stylist/MySchedulePage.tsx`",
+      "status": "Đã ánh xạ; kiểm tra AC theo workbook và kịch bản nghiệm thu"
+    },
+    {
+      "id": "S3-09",
+      "title": "Là Lễ tân, tôi muốn chuyển hàng loạt lịch của một thợ báo nghỉ đột xuất sang thợ khác, để không phải mở từng lịch hẹn rồi gọi lần lượt từng khách.",
+      "source": "4. Product Backlog!A38",
+      "evidence": "**S3-09** | 5 | Chuyển hàng loạt khi thợ nghỉ, gợi ý thợ thay thế / dời giờ, lỗi một lịch không hỏng lô | `appointments.service.ts` (`bulkReassignSuggestions`, `bulkReassign`) | `fe/pages/reception/BulkReassignPage.tsx`",
+      "status": "Đã ánh xạ; kiểm tra AC theo workbook và kịch bản nghiệm thu"
+    },
+    {
+      "id": "S3-10",
+      "title": "Là Lễ tân, tôi muốn hệ thống gộp các lần đến của cùng một số điện thoại thành một hồ sơ khách, để nhận ra khách quen ngay khi họ gọi đặt lịch.",
+      "source": "4. Product Backlog!A39",
+      "evidence": "**S3-10** | 3 | Gộp hồ sơ theo SĐT, cảnh báo tên khác, tìm kiếm nhanh | `be/modules/customers/customers.service.ts` | `fe/pages/reception/CustomersPage.tsx`",
+      "status": "Đã ánh xạ; kiểm tra AC theo workbook và kịch bản nghiệm thu"
+    },
+    {
+      "id": "S4-01",
+      "title": "Là Lễ tân, tôi muốn lập phiếu tính tiền khi khách làm xong rồi đóng lịch hẹn, để số tiền thu được gắn thẳng vào lượt dịch vụ và thợ đã làm.",
+      "source": "4. Product Backlog!A42",
+      "evidence": "**S4-01** | 8 | Phiếu tính tiền, dịch vụ phát sinh, tiền mặt/chuyển khoản, đóng phiếu, phiếu điều chỉnh | `be/modules/invoices/invoices.service.ts` | `fe/pages/reception/InvoicePage.tsx`",
+      "status": "Đã ánh xạ; kiểm tra AC theo workbook và kịch bản nghiệm thu"
+    },
+    {
+      "id": "S4-02",
+      "title": "Là Chủ tiệm, tôi muốn áp một mã giảm giá đơn giản lên phiếu tính tiền, để chạy được các đợt ưu đãi ngày thường mà vẫn ghi nhận đúng doanh thu thực thu.",
+      "source": "4. Product Backlog!A43",
+      "evidence": "**S4-02** | 2 | Mã giảm giá phần trăm hoặc số tiền, một mã/phiếu, lưu đủ ba con số | `invoices.service.ts` (`resolveVoucher`) | `fe/pages/admin/VouchersPage.tsx`, `InvoicePage.tsx`",
+      "status": "Đã ánh xạ; kiểm tra AC theo workbook và kịch bản nghiệm thu"
+    },
+    {
+      "id": "S4-03",
+      "title": "Là Thợ, tôi muốn xem lịch sử dịch vụ của khách đang ngồi trên ghế, để biết lần trước khách nhuộm màu gì và ai đã làm mà không phải hỏi lại từ đầu.",
+      "source": "4. Product Backlog!A44",
+      "evidence": "**S4-03** | 5 | Lịch sử 10 lượt gần nhất + ghi chú kỹ thuật 500 ký tự, chỉ nội bộ xem | `customers.service.ts` (`visitHistory`, `upsertServiceNote`) | `fe/pages/stylist/MySchedulePage.tsx`, `CustomersPage.tsx`",
+      "status": "Đã ánh xạ; kiểm tra AC theo workbook và kịch bản nghiệm thu"
+    },
+    {
+      "id": "S4-04",
+      "title": "Là Khách hàng, tôi muốn chấm điểm và góp ý sau khi làm xong, để tiệm biết thợ nào làm khách hài lòng thay vì chỉ nghe phản hồi lúc khách bực.",
+      "source": "4. Product Backlog!A45",
+      "evidence": "**S4-04** | 5 | Đánh giá 1–5 sao qua liên kết dùng một lần trong 7 ngày, điểm TB cần ≥ 5 lượt | `be/modules/reviews/reviews.service.ts` | `fe/pages/public/ReviewPage.tsx`, `fe/pages/owner/RevenuePage.tsx`",
+      "status": "Đã ánh xạ; kiểm tra AC theo workbook và kịch bản nghiệm thu"
+    },
+    {
+      "id": "S4-05",
+      "title": "Là Khách hàng, tôi muốn nhận email xác nhận khi đặt xong và email nhắc trước giờ hẹn, để không quên mất buổi hẹn đã đặt từ tuần trước.",
+      "source": "4. Product Backlog!A46",
+      "evidence": "**S4-05** | 5 | Email xác nhận ≤ 2 phút, nhắc trước 24 giờ, thử lại 3 lần cách 10 phút | `be/modules/notifications/mail.service.ts`, `email-queue.service.ts`, `booking.service.ts` (`scheduleReminder`) | — (xem ở Maildev)",
+      "status": "Đã ánh xạ; kiểm tra AC theo workbook và kịch bản nghiệm thu"
+    },
+    {
+      "id": "S4-06",
+      "title": "Là Thợ, tôi muốn nhận thông báo trong ứng dụng khi lịch của mình thay đổi, để không bị bất ngờ vì một khách bị chuyển sang cho mình lúc đang làm dở.",
+      "source": "4. Product Backlog!A47",
+      "evidence": "**S4-06** | 3 | Thông báo trong ứng dụng, chuông đếm chưa đọc, dọn sau 30 ngày | `be/modules/notifications/notifications.service.ts` | `fe/components/NotificationBell.tsx`",
+      "status": "Đã ánh xạ; kiểm tra AC theo workbook và kịch bản nghiệm thu"
+    },
+    {
+      "id": "S4-07",
+      "title": "Là Chủ tiệm, tôi muốn xem doanh thu theo thợ và theo dịch vụ trong một khoảng ngày tự chọn, để cuối tháng không phải ngồi cộng tay tập hoá đơn giấy.",
+      "source": "4. Product Backlog!A48",
+      "evidence": "**S4-07** | 5 | Doanh thu theo thợ và theo dịch vụ, tối đa 365 ngày, xuất CSV UTF-8 | `be/modules/analytics/analytics.service.ts` | `fe/pages/owner/RevenuePage.tsx`",
+      "status": "Đã ánh xạ; kiểm tra AC theo workbook và kịch bản nghiệm thu"
+    },
+    {
+      "id": "S4-08",
+      "title": "Là Chủ tiệm, tôi muốn mở một trang tổng quan của ngày hôm nay, để buổi sáng liếc một lần là biết hôm nay tiệm bận tới mức nào.",
+      "source": "4. Product Backlog!A49",
+      "evidence": "**S4-08** | 3 | Tổng quan hôm nay, tự làm mới 60 giây, bấm trạng thái mở danh sách | `analytics.service.ts` (`todayDashboard`) | `fe/pages/owner/DashboardPage.tsx`",
+      "status": "Đã ánh xạ; kiểm tra AC theo workbook và kịch bản nghiệm thu"
+    },
+    {
+      "id": "S4-09",
+      "title": "Là Chủ tiệm, tôi muốn xem tỉ lệ khách không đến và phân bố lượt hẹn theo khung giờ, để quyết định xếp thêm thợ vào cuối tuần dựa trên số liệu.",
+      "source": "4. Product Backlog!A50",
+      "evidence": "**S4-09** | 2 | Tỉ lệ không đến / huỷ một chữ số thập phân, phân bố khung giờ ngày thường vs cuối tuần | `analytics.service.ts` (`noShowStats`, `slotDensity`) | `fe/pages/owner/SlotDensityPage.tsx`",
+      "status": "Đã ánh xạ; kiểm tra AC theo workbook và kịch bản nghiệm thu"
+    },
+    {
+      "id": "S4-10",
+      "title": "Là Quản trị hệ thống, tôi muốn rà soát lại toàn bộ phân quyền và dựng bản staging ổn định trước buổi nghiệm thu, để buổi demo không dừng giữa chừng vì một lỗi 403 hay dữ liệu rỗng.",
+      "source": "4. Product Backlog!A51",
+      "evidence": "**S4-10** | 3 | Rà soát phân quyền bằng kiểm thử tự động + kịch bản demo | `backend/test/auth-rbac.e2e-spec.ts` | `docs/DEMO-SCRIPT.md`",
+      "status": "Đã ánh xạ; kiểm tra AC theo workbook và kịch bản nghiệm thu"
+    }
+  ],
+  "research": [
+    {
+      "title": "Docker Compose cho production",
+      "url": "https://docs.docker.com/compose/how-tos/production/",
+      "application": "Tách cấu hình production, giữ mã trong image, cấu hình restart và cổng theo môi trường."
+    },
+    {
+      "title": "Docker Compose và readiness",
+      "url": "https://docs.docker.com/compose/how-tos/startup-order/",
+      "application": "Phân biệt container đã chạy với dịch vụ sẵn sàng; dùng healthcheck và dependency đúng trạng thái."
+    },
+    {
+      "title": "PostgreSQL sao lưu và phục hồi",
+      "url": "https://www.postgresql.org/docs/16/backup-dump.html",
+      "application": "Dùng archive pg_dump và pg_restore; nghiệm thu bằng phục hồi vào database thử, lưu riêng cấu hình vai trò nếu cần."
+    },
+    {
+      "title": "PostgreSQL xác minh TLS",
+      "url": "https://www.postgresql.org/docs/16/libpq-ssl.html",
+      "application": "Giữ chính sách xác minh chứng chỉ và hostname khi dùng database qua mạng."
+    },
+    {
+      "title": "OWASP ASVS",
+      "url": "https://owasp.org/projects/asvs",
+      "application": "Chọn yêu cầu xác thực, phân quyền, bí mật và log phù hợp để kiểm tra. Chưa tuyên bố chứng nhận ASVS."
+    },
+    {
+      "title": "SLSA provenance",
+      "url": "https://slsa.dev/spec/v1.2/provenance",
+      "application": "Hướng phát hành tiếp theo lưu nguồn build và digest image. Checksum tài liệu hiện tại chưa phải đạt cấp SLSA."
+    },
+    {
+      "title": "Diataxis",
+      "url": "https://diataxis.fr/",
+      "application": "Phân loại tài liệu thành hướng dẫn bắt đầu, cách thao tác, tham chiếu và giải thích. Đây là quy ước đề xuất, không phải tiêu chuẩn bắt buộc về tên thư mục."
+    },
+    {
+      "title": "Semantic Versioning",
+      "url": "https://semver.org/",
+      "application": "Gắn phiên bản theo hợp đồng API, ghi thay đổi và giữ bất biến nội dung bản đã phát hành."
+    },
+    {
+      "title": "GitHub Actions OIDC",
+      "url": "https://docs.github.com/en/actions/how-tos/secure-your-work/security-harden-deployments/oidc-in-cloud-providers",
+      "application": "Khi có đích triển khai, dùng xác thực ngắn hạn và giới hạn môi trường thay vì lưu khóa máy chủ dài hạn."
+    }
+  ],
+  "fixes": [
+    {
+      "id": "OPS01",
+      "title": "Sao lưu đúng đích và giữ TLS",
+      "detail": "Chặn fallback Docker nếu host/port không khớp endpoint cấu hình; không đưa mật khẩu vào argv; giữ verify-full với kết nối yêu cầu kiểm tra chứng chỉ."
+    },
+    {
+      "id": "OPS02",
+      "title": "Archive nguyên vẹn và giữ đúng 14 bản",
+      "detail": "Ghi tệp .partial độc quyền, xác minh magic PGDMP rồi đổi tên; UUID tránh đè cùng giây. Retention chỉ áp dụng cho hash host/port/database, giữ 14 bản theo workbook, bảo toàn archive khác và tệp cũ."
+    },
+    {
+      "id": "OPS03",
+      "title": "Khôi phục phụ thuộc khi cập nhật lỗi",
+      "detail": "Launcher luôn npm ci theo lockfile, dừng khi lock lệch, không tự npm install. Khi rollback source sau build lỗi, cài lại phụ thuộc bản cũ trước khi khởi động. Thiếu cache/mạng sẽ báo lỗi và giữ dừng để tránh chạy sai gói."
+    },
+    {
+      "id": "OPS04",
+      "title": "Profile máy chủ và CI đa nền tảng",
+      "detail": "Thêm Dockerfile production Node 22/PostgreSQL 15, user không root, volume dữ liệu/upload/backup, không public cổng database, app chỉ loopback. CI bổ sung Windows/macOS/Linux và PostgreSQL 15/16. Chưa chạy CI từ xa."
+    },
+    {
+      "id": "DOC01",
+      "title": "Đồng bộ bằng chứng phát hành",
+      "detail": "Thêm scripts/release_evidence.py và 9 ca kiểm thử cho mỗi kho. release.json làm dữ liệu gốc cho STATUS.md và slide phát hành. Checksum phát hiện đổi đề tài, đổi mã, thêm tệp nguồn hoặc sửa artifact khiến bằng chứng cũ không còn khớp. Đây là kiểm tra tính nhất quán, không tự chạy lại test hay chứng nhận sản phẩm an toàn."
+    }
+  ],
+  "checks": [
+    {
+      "command": "npm run test --prefix backend -- --runInBand",
+      "result": "177/177 unit test, 13 bộ.",
+      "status": "PASS"
+    },
+    {
+      "command": "npm run test:e2e --prefix backend (TEST_DB_PORT=55432; tên riêng *_test)",
+      "result": "105/105 E2E, 14 bộ, PostgreSQL 15 container cô lập. Có cảnh báo MaxListeners của HTTP server trong test, cần rà vòng đời listener.",
+      "status": "PASS"
+    },
+    {
+      "command": "npm run build; npm run lint",
+      "result": "Backend/frontend build và lint đạt.",
+      "status": "PASS"
+    },
+    {
+      "command": "npm run test:frontend; npm run test:scripts; npm run check:scripts",
+      "result": "4/4 frontend; script 21 pass/1 skip; syntax check đạt.",
+      "status": "PASS"
+    },
+    {
+      "command": "docker build -f deploy/docker/Dockerfile.production",
+      "result": "Image salon-spa:audit-final-20261008 build đạt.",
+      "status": "PASS"
+    },
+    {
+      "command": "python scripts/test_release_evidence.py",
+      "result": "9/9 test công cụ hồ sơ đạt.",
+      "status": "PASS"
+    },
+    {
+      "command": "Docker isolated profile startup and HTTP probes",
+      "result": "{'project': 'salon', 'status': 'PASS', 'scope': 'Fresh disposable Docker project only; no customer data', 'endpoints': {'/': 200, '/health': 200}, 'restore_drill': 'PASS: pg_dump custom archive restored into a separate fresh audit database'}",
+      "status": "PASS"
+    }
+  ],
+  "remaining": [
+    "P0: AC bảo mật ở Product Overview B63 yêu cầu log truy cập dữ liệu cá nhân và xóa/ẩn danh theo yêu cầu. Rà soát chưa tìm thấy luồng đáp ứng đầy đủ. Cần thiết kế kiểm soát truy cập, lưu vết, bảo toàn hóa đơn/lịch sử và test trước nghiệm thu.",
+    "P0: Cần SMTP thật, tên miền, TLS thật, thông tin cửa hàng và tài khoản khách hàng thử nghiệm. Cấu hình production mới là ứng viên, chưa public trên máy chủ khách.",
+    "P1: Chạy CI trên Windows/Linux/macOS thật; kiểm tra cài mới đường dẫn tiếng Việt, mất mạng, update lỗi và khôi phục phụ thuộc. Chưa chứng minh macOS bằng máy thật.",
+    "P1: Diễn tập nâng cấp từ dữ liệu phiên bản cũ, restore cả uploads/bí mật/cấu hình cùng DB và đo thời gian phục hồi. Không tự downgrade schema đang có dữ liệu.",
+    "P1: Ghi pass/fail từng AC39 story, nhất là email đúng hạn, màn hình360px, phân quyền và thao tác tại quầy. Rà cảnh báo listener trong E2E.",
+    "P1: Chưa hoàn tất kiểm toán phụ thuộc npm toàn bộ backend Salon; không suy từ lint/test sang kết luận không có lỗ hổng."
+  ],
+  "directions": [
+    {
+      "title": "Một bản web cho một cơ sở",
+      "detail": "Giao một URL HTTPS cho khách và nhân viên. Giữ bộ chạy cục bộ cho demo hoặc cơ sở cần máy nội bộ. Dùng cùng lockfile/migration, cấu hình khác nhau theo môi trường. Không mở đa chi nhánh hoặc tự đồng bộ offline vì ngoài đề tài."
+    },
+    {
+      "title": "Cập nhật theo bản phát hành có thể quay lại",
+      "detail": "Build image trước khi chạm dịch vụ, ghi digest và revision, backup xác minh và rehearsal restore, áp migration trên staging có dữ liệu mô phỏng cũ, rồi kiểm tra đặt lịch và thu tiền. Chỉ rollback app khi schema tương thích. Hiện launcher cải thiện rollback gói; quy trình image/digest đầy đủ là phần tiếp theo."
+    },
+    {
+      "title": "Nghiệm thu theo vòng đời lịch thật",
+      "detail": "Chạy đúng chuỗi đặt, xác nhận, nhắc, check-in, hoàn tất, tính tiền, đánh giá. Thu thập lỗi và thời gian xử lý ở một cơ sở thử trước khi mở rộng. Giữ các giới hạn15phút/60phút/chống trùng/giới hạnIP và SĐT trong workbook."
+    }
+  ],
+  "slide_scope": [
+    {
+      "label": "Phạm vi",
+      "text": "39 story, 165 point, 4 sprint. Một cơ sở salon spa."
+    },
+    {
+      "label": "Công nghệ",
+      "text": "NestJS, React/Vite và PostgreSQL 15 theo workbook."
+    },
+    {
+      "label": "Nghiệp vụ",
+      "text": "Giữ chuỗi đặt lịch, phục vụ, thanh toán và đánh giá."
+    }
+  ],
+  "slide_fixes": [
+    {
+      "label": "Sao lưu",
+      "text": "Đúng endpoint, giữ TLS, archive nguyên vẹn, retention 14 bản theo đích."
+    },
+    {
+      "label": "Cập nhật",
+      "text": "Cài đúng lockfile, phục hồi gói bản cũ trước khi khởi động lại."
+    },
+    {
+      "label": "Máy chủ",
+      "text": "Image production, dữ liệu riêng, CI cho Windows/macOS/Linux."
+    }
+  ],
+  "slide_checks": [
+    {
+      "label": "Backend",
+      "text": "177 unit test đạt. 105 E2E đạt với PostgreSQL 15."
+    },
+    {
+      "label": "Frontend và script",
+      "text": "4 frontend đạt. Script 21 đạt, 1 bỏ qua. Build/lint đạt."
+    },
+    {
+      "label": "Triển khai",
+      "text": "Docker và restore DB mới đạt. CI đa OS chưa chạy."
+    }
+  ],
+  "slide_remaining": [
+    {
+      "label": "Dữ liệu khách",
+      "text": "Hoàn thiện AC log truy cập và xóa/ẩn danh có kiểm soát."
+    },
+    {
+      "label": "Vận hành",
+      "text": "SMTP, HTTPS thật, update dữ liệu cũ và restore đầy đủ."
+    },
+    {
+      "label": "Nghiệm thu",
+      "text": "Kiểm tra 39 story tại cơ sở, email đúng hạn và UI 360px."
+    }
+  ],
+  "slide_directions": [
+    {
+      "label": "Máy chủ",
+      "text": "Một URL HTTPS, dữ liệu sạch và bí mật riêng từng môi trường."
+    },
+    {
+      "label": "Phát hành",
+      "text": "Version, image digest, staging, backup và nghiệm thu nghiệp vụ."
+    },
+    {
+      "label": "Tài liệu",
+      "text": "Báo cáo và slide lấy từ release.json. Phát hiện drift bằng checksum."
+    }
+  ],
+  "base_revision": "622fd392fbdc9a2596d0b8547b3f752b08d963ac",
+  "snapshot_roots": [
+    "backend/src",
+    "backend/test",
+    "backend/database",
+    "frontend/src",
+    "frontend/test",
+    "scripts",
+    "deploy",
+    ".github",
+    "backend/package.json",
+    "backend/package-lock.json",
+    "frontend/package.json",
+    "frontend/package-lock.json",
+    "package.json",
+    "package-lock.json"
+  ],
+  "inputs": [
+    {
+      "path": ".github/CODEOWNERS",
+      "sha256": "b8a1e1645aab9f2c77e4b51207dd6cc912c8f4acaa63faf6f0fb02f45c845942"
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/01_feature_task.yml",
+      "sha256": "ef2ed8b51956a852230d1d43cd02307b94e3a609c4ec7de668e8bab56382caad"
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/02_bug_report.yml",
+      "sha256": "300368a354f2efd09d92e8820148dda64d9f790687f75c594375d4bf16207daf"
+    },
+    {
+      "path": ".github/pull_request_template.md",
+      "sha256": "53f57218f4c9419478251e05f746d151cae5adeeef22e73e48037afec0392c32"
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "sha256": "104adba6eeac9df6feadb62a7a8842f31d124c1ac81dbdd7d445c4b0e04a945d"
+    },
+    {
+      "path": "backend/database/schema.sql",
+      "sha256": "9fdf49cbd202e2886d5c09a95a713fbb687dceba4676e48ed7bf32ccd64e15ce"
+    },
+    {
+      "path": "backend/database/seed.sql",
+      "sha256": "2c2ec18edfc2fcef012dc9f49ad36f0dbcd2f0965fade90c458733f6499a857b"
+    },
+    {
+      "path": "backend/package-lock.json",
+      "sha256": "7ccd0c572c0a95d8080edfa9821f63b0e9de78c4db34c7687c8d2ceafa3b7f07"
+    },
+    {
+      "path": "backend/package.json",
+      "sha256": "6d7fb31ccd2b098a4e216700ff290dc702a4e65d23ca8d13a2a570c233fbcd92"
+    },
+    {
+      "path": "backend/src/app.module.ts",
+      "sha256": "d0f621ae157d172297f3558a8b686fbe94af632cedd28083492bd09931b2d034"
+    },
+    {
+      "path": "backend/src/common/constants/messages.constant.ts",
+      "sha256": "587df88c587fdfe31615335e2c668710a07b18544c51bb5e751e53efb07b5ff9"
+    },
+    {
+      "path": "backend/src/common/constants/roles.constant.ts",
+      "sha256": "3f613a471ca8e7e964eabef9499b358c489a1ee06b95cb56a4b03677a79b760f"
+    },
+    {
+      "path": "backend/src/common/constants/upload.constant.ts",
+      "sha256": "40e279479180a9b1a3d5a16f32cbddc83433ecc15af0aa85aa4a01d62df73028"
+    },
+    {
+      "path": "backend/src/common/decorators/audit.decorator.ts",
+      "sha256": "546832d93e1a06b9a7e7b4beb0fd4f7c9dda5d1d0a72652ad7d2d3b88fe50f06"
+    },
+    {
+      "path": "backend/src/common/decorators/client-ip.decorator.ts",
+      "sha256": "4d510e8466876cba8da9b4bb431292662ae78e3555684b1d4c7bd0a62a5e3e87"
+    },
+    {
+      "path": "backend/src/common/decorators/current-user.decorator.ts",
+      "sha256": "817c162d7178687fa17736005c007e3fa1bd0975f21adf24cd5be8d53f76bca8"
+    },
+    {
+      "path": "backend/src/common/decorators/index.ts",
+      "sha256": "d3fe66f5f6202b118e11f1b5c4cea85ce2fee5b0ad81d2f24ac2f67eb579a36a"
+    },
+    {
+      "path": "backend/src/common/decorators/public.decorator.ts",
+      "sha256": "f16824d0139ea5a37e13e6d29ce87732bea077555e9de7ae3309a72ee57f8212"
+    },
+    {
+      "path": "backend/src/common/decorators/roles.decorator.ts",
+      "sha256": "1878eb685b190d5f919e4a8e3eb2ec8669e3e82feaf03e0abda5dd74317533fe"
+    },
+    {
+      "path": "backend/src/common/dto/date-range.dto.ts",
+      "sha256": "0934b4ae7cab403f97fc8e8b50f0e633ea76cbc59379d723968fbf4a46e797ee"
+    },
+    {
+      "path": "backend/src/common/dto/pagination.dto.ts",
+      "sha256": "1cdce9f05df825ac753a12e2b64c7ea0ddf863551eb5d35793982ec8e8f94f39"
+    },
+    {
+      "path": "backend/src/common/filters/all-exceptions.filter.spec.ts",
+      "sha256": "58f899818289b383f3a781e2e76e108a6f9c61d6696e56ce858f4755359500cc"
+    },
+    {
+      "path": "backend/src/common/filters/all-exceptions.filter.ts",
+      "sha256": "af3c300c3c9c0e2d9637f8ad5ba957bd1d106c4d892c2dcdc09f53f2e1223e08"
+    },
+    {
+      "path": "backend/src/common/guards/jwt-auth.guard.ts",
+      "sha256": "571bffb741fb1b7a6dfcaf856557d9d5f1b12f1e9217ca11a929b2d7a3ac10a0"
+    },
+    {
+      "path": "backend/src/common/guards/must-change-password.guard.ts",
+      "sha256": "1323b4dc8bb008916fc598b22a86697ee4543000fceab927f8dcbca4ed4b9743"
+    },
+    {
+      "path": "backend/src/common/guards/roles.guard.ts",
+      "sha256": "f1c88fb970acf21a6960e1094ed3279a98ca8be9b0c0dd60458995cec5ec8ef7"
+    },
+    {
+      "path": "backend/src/common/interceptors/audit-log.interceptor.ts",
+      "sha256": "46b01075155fd1a306ac70d81cc61fdf626e163c5933522f475917a4a9192539"
+    },
+    {
+      "path": "backend/src/common/interceptors/transform.interceptor.ts",
+      "sha256": "d7a459f85b6cb852c889a382cca151f9593fc929393133c71e07b17b26916a60"
+    },
+    {
+      "path": "backend/src/common/types/auth.types.ts",
+      "sha256": "b1c59473c4b74df45708d944a2cdd8465ee909d39d5fca8574144c496300952f"
+    },
+    {
+      "path": "backend/src/common/utils/code.util.ts",
+      "sha256": "938095bfebe59fde6ce3e9b16383efc1a1085d63d8eceff3a5e7a25a520a3f09"
+    },
+    {
+      "path": "backend/src/common/utils/credential-rules.spec.ts",
+      "sha256": "91bcc29d1cb5990a20b5afb7c2cb760499f1a647cc431b53f0bcee0e4778b95c"
+    },
+    {
+      "path": "backend/src/common/utils/csv.util.ts",
+      "sha256": "7178e304515b8f13cba1c92dde3667f65203c6d4a92b0918844dd1c284b7c305"
+    },
+    {
+      "path": "backend/src/common/utils/currency.util.ts",
+      "sha256": "1b3b5efcd0b19d9dfbaca407bd822edae7caf10f3da49e62345eb1362418589a"
+    },
+    {
+      "path": "backend/src/common/utils/image-signature.util.ts",
+      "sha256": "81b26322954074537ce30038d3f0d25b6f8449d0254ed54439bc3ca4231519ae"
+    },
+    {
+      "path": "backend/src/common/utils/index.ts",
+      "sha256": "2ac7f61e15869073b7d2edd1cef1c65dfe336139fedb5eade895309e0df34850"
+    },
+    {
+      "path": "backend/src/common/utils/lunar-calendar.ts",
+      "sha256": "d5120a417f3d020863a120b6dee9817e867f6e7f84d72833e6d9afe21775a634"
+    },
+    {
+      "path": "backend/src/common/utils/password.util.ts",
+      "sha256": "86ceea5cbfb4b118f051710e1389f84f909d172c57593de55e70789b5339a64c"
+    },
+    {
+      "path": "backend/src/common/utils/phone.util.ts",
+      "sha256": "d2e7e8b366cb756bb918c1a34a5ee6b33e12fc4d9e8732dd18f2606ba331f2ef"
+    },
+    {
+      "path": "backend/src/common/utils/text.util.ts",
+      "sha256": "318b89bfab933b0847dbdb0d0da3717454365747b1d51d118bb96b19b4f85315"
+    },
+    {
+      "path": "backend/src/common/utils/time.util.ts",
+      "sha256": "95824a8aa2602e26e4244f2d318f38236c79bfd25754ca2f56cb69c8298b71fe"
+    },
+    {
+      "path": "backend/src/common/validators/credential.validators.ts",
+      "sha256": "c2b66638000164355243a568c5449c7dfe6c427e3ba44200093d1d2c3a716a3d"
+    },
+    {
+      "path": "backend/src/common/validators/date.validators.ts",
+      "sha256": "cf15b159751f8da6bea27fcfa00ff788e5a891ea37197c94462f8d1b314e0d16"
+    },
+    {
+      "path": "backend/src/common/validators/dto-hardening.spec.ts",
+      "sha256": "c347d2032f58a82d0376ef8180b2f016005e890fd989799af7133f0d64b61448"
+    },
+    {
+      "path": "backend/src/config/configuration.ts",
+      "sha256": "aa6587db45970fd2c48ba73b8a6b3e38298d828b301de7a69ae5501bb71a0a1e"
+    },
+    {
+      "path": "backend/src/config/database.config.ts",
+      "sha256": "8dc2f6302efde85cc2e56fe8b74097af04794b03ab0040a8033cc110942119bd"
+    },
+    {
+      "path": "backend/src/config/db-connection.ts",
+      "sha256": "cd6e9844a245ae7ff79d46c0fbbed9664612289970ffb899098dc4846575a254"
+    },
+    {
+      "path": "backend/src/config/static.config.ts",
+      "sha256": "7bb8159262d1f8ad5930ddd77fa3dbbf251d890d00913def16eca256b0687f6b"
+    },
+    {
+      "path": "backend/src/database/backup-cli.ts",
+      "sha256": "71b3860cf01e5923cda6f4579920c10945a37c703bebcab5df9b8ff4c932bc34"
+    },
+    {
+      "path": "backend/src/database/backup.spec.ts",
+      "sha256": "37567aa751ebeab34a21f547dbe98e021fa0759528bc4dc186d35ec0882576bd"
+    },
+    {
+      "path": "backend/src/database/backup.ts",
+      "sha256": "e07111d1036868c5712c5118883ac47b16a9ff3b14f53814a3339d3c4020ead0"
+    },
+    {
+      "path": "backend/src/database/data-source.ts",
+      "sha256": "387ff563b93e1e0bef9f61ad862e04e9a6c687bdc5937b05db1c83b741496035"
+    },
+    {
+      "path": "backend/src/database/db-tools.ts",
+      "sha256": "00ff5e9390cc06203e31118aa12b84a8d9f060543a0f8d2ca15fe4d40081915d"
+    },
+    {
+      "path": "backend/src/database/entities/appointment-change.entity.ts",
+      "sha256": "db33371c2c59eae529b5fe3e622e9f8020fd4bcbbd625f0530da5425b790ea36"
+    },
+    {
+      "path": "backend/src/database/entities/appointment-service.entity.ts",
+      "sha256": "f54ffb4bb1410a6a60585177e9f32a29ab1075c5b700bd2256185adfefd41e47"
+    },
+    {
+      "path": "backend/src/database/entities/appointment.entity.ts",
+      "sha256": "82d01b61a55b80f41132fbedaf487946fd5099a3313a6f32abee13fea4237214"
+    },
+    {
+      "path": "backend/src/database/entities/audit-log.entity.ts",
+      "sha256": "a9c57d4c65012d21b539ba33afa0340d17bf1859d5c2145444cf00715c685dc9"
+    },
+    {
+      "path": "backend/src/database/entities/customer.entity.ts",
+      "sha256": "8f553993bf1049f17e97e52cfcefb9798ab96ab7fda7ffe62c9ff372ab0a4fed"
+    },
+    {
+      "path": "backend/src/database/entities/email-queue.entity.ts",
+      "sha256": "8fb0ba849f4bfaf057552b744f300fe684127014e66cdda8458a1962f328ab55"
+    },
+    {
+      "path": "backend/src/database/entities/index.ts",
+      "sha256": "d5e84b4434df9a770063dfdb882ead4d74e043c0193d2a3328c7e22367fedd4d"
+    },
+    {
+      "path": "backend/src/database/entities/invoice-item.entity.ts",
+      "sha256": "e99d22fbdea18b4e498b3dc5e4608d11848959a9b8ad97d7ac9697c4effec67e"
+    },
+    {
+      "path": "backend/src/database/entities/invoice.entity.ts",
+      "sha256": "593c6dc3b3d6a26cf6b40e1f900bd42001373ea537d1a1a2d44520b016c85199"
+    },
+    {
+      "path": "backend/src/database/entities/notification.entity.ts",
+      "sha256": "cc5703938ef1e80c8f2fef1cea20b599fe69a1c6a46fce89043931c2fb836da2"
+    },
+    {
+      "path": "backend/src/database/entities/numeric.transformer.ts",
+      "sha256": "990cc94e9791f31785ce82a380aab887fb9f761100b22f6b7834773ad0a1fd18"
+    },
+    {
+      "path": "backend/src/database/entities/password-reset-token.entity.ts",
+      "sha256": "5b8b88e63a652d0a74c83796e7a3ec3d957c2b442c5205b6e757d44e04ce238a"
+    },
+    {
+      "path": "backend/src/database/entities/rate-limit.entity.ts",
+      "sha256": "cbc3b5da625c51a0d472d41173c0bad57d68a9985db35fea6689f4685b9eaf45"
+    },
+    {
+      "path": "backend/src/database/entities/refresh-token.entity.ts",
+      "sha256": "a4671854f3c6982ac6e8dc734f5f3132db0c7b6c6a8504a5e9db92bcfcec5e7b"
+    },
+    {
+      "path": "backend/src/database/entities/review.entity.ts",
+      "sha256": "01ca7291e4596db306bff98f551c309059ab703b1ad28239bab584d572a3adc6"
+    },
+    {
+      "path": "backend/src/database/entities/salon-holiday.entity.ts",
+      "sha256": "41fc7bfe58b35b1f5fdda15f6779df91e4b4bc6828f3bf4d6ef0d7a98c78266a"
+    },
+    {
+      "path": "backend/src/database/entities/salon-working-hour.entity.ts",
+      "sha256": "6eb2ecfb4c758f42b8bb2e6c3c3a3b8cbb6a96ceb67bf0401bc9395c60ef9d99"
+    },
+    {
+      "path": "backend/src/database/entities/service-category.entity.ts",
+      "sha256": "a5dd70128510b55ff5f35b9a5bf4df9f07f9164732a4de5e507ea91d94944743"
+    },
+    {
+      "path": "backend/src/database/entities/service-note.entity.ts",
+      "sha256": "426748eb1ee1c0a34f86ab5715d28b8a8c153d53244eceb6f021ee783628672f"
+    },
+    {
+      "path": "backend/src/database/entities/service.entity.ts",
+      "sha256": "777122c3c0cd5070c6049227abd9a009e762d93cc6375143621e789cdc1e1757"
+    },
+    {
+      "path": "backend/src/database/entities/shift-request.entity.ts",
+      "sha256": "0ccb8814f8377a0574e0b2056f57ddafeea13bae08c7c525101294dbc8c25c83"
+    },
+    {
+      "path": "backend/src/database/entities/slot-hold.entity.ts",
+      "sha256": "db15826924f373184ce1abf2fbe59147a4e4f245bf3ad3fbf879c0614f67d8ea"
+    },
+    {
+      "path": "backend/src/database/entities/stylist-service.entity.ts",
+      "sha256": "9a20a92627a8c8d7eaa24ab9c0c12083eb38c72563ea13fa2de46ef1fb7adca5"
+    },
+    {
+      "path": "backend/src/database/entities/stylist-shift.entity.ts",
+      "sha256": "6bbf495aa797c590c389fa5843e624b5cceb210d125b84f941034acd4e8291a8"
+    },
+    {
+      "path": "backend/src/database/entities/stylist-time-off.entity.ts",
+      "sha256": "b15ff4e6b32273ff6fd7ac03f3264091b6cc29bb0e402fea406e33915128ae7f"
+    },
+    {
+      "path": "backend/src/database/entities/stylist.entity.ts",
+      "sha256": "617faba9de33e28f422a4ba9c71f272a3ce05cb3984e9cda4ac914f260ca970d"
+    },
+    {
+      "path": "backend/src/database/entities/user.entity.ts",
+      "sha256": "5b88a00c9877041987a765360454584852ba9bcaa416fee90b374d82f7d5f888"
+    },
+    {
+      "path": "backend/src/database/entities/voucher.entity.ts",
+      "sha256": "a8b60da4951a50af3c00201ea99ab980b6eb9334f175f9693d562b3f3e4f4e44"
+    },
+    {
+      "path": "backend/src/database/migrate.ts",
+      "sha256": "aaad7cb458aa8c6f8cb7dfe636f09a8dfb97e19ab9c4d559f15c5274fee27437"
+    },
+    {
+      "path": "backend/src/database/migration-generate.ts",
+      "sha256": "25b2b61008d73f0cf9a8955a9bb047f0be12f78f777448875035dbafc0be34d0"
+    },
+    {
+      "path": "backend/src/database/migrations/1791158400000-BaselineSchema.ts",
+      "sha256": "805746936b8cc1fcf2004209cae8761074fa3d9bdea6c63176da636ccef5d389"
+    },
+    {
+      "path": "backend/src/database/migrations/1791331200000-ShiftRequests.ts",
+      "sha256": "ba1737d1a21f4aeb35cd3851d5859171b82e14b49e06717cd7bc6b2ee7c40078"
+    },
+    {
+      "path": "backend/src/database/migrations/1791331300000-SlotHolds.ts",
+      "sha256": "0de12308034546f46c1e66565daa22f21b5acf98af1b2e1e1f1b89d4f2dafc56"
+    },
+    {
+      "path": "backend/src/database/migrations/1791417600000-ProtectFinancialHistory.ts",
+      "sha256": "a62f3b35eefcee9f91b844f78eb2dc3688f1eec6dd681e4b61ed2cad51b1a6e6"
+    },
+    {
+      "path": "backend/src/database/run-bootstrap.ts",
+      "sha256": "711638052488974129490765bc97b86f416c21a2056281e17f47578f338b22d7"
+    },
+    {
+      "path": "backend/src/database/run-seed.ts",
+      "sha256": "b23c0498762393275f4d2b804e523b81565a84d3fd2c95df7b239ba5451500c1"
+    },
+    {
+      "path": "backend/src/database/security-check.ts",
+      "sha256": "30549b3f16769684e22cbdc40725b0d437e08205a338e3410142e2fdef2bd5e2"
+    },
+    {
+      "path": "backend/src/database/sql-files.ts",
+      "sha256": "1cf4282cbe094ab322e624976ddf52507c58aff303dfaf8cd3882fff33e33091"
+    },
+    {
+      "path": "backend/src/health.controller.ts",
+      "sha256": "da16eda63e1d9c31c1148504f306aad694f7d5cb94e1f2c821434ac61c148315"
+    },
+    {
+      "path": "backend/src/main.ts",
+      "sha256": "94c594f1f8396f13519a2cc2a564e58b056ed0111b6e7367e7733f0f9d7bdda2"
+    },
+    {
+      "path": "backend/src/modules/analytics/analytics.controller.ts",
+      "sha256": "ca49e94b4e73246f5fa138f0d0bb00dce86a9c3dd3e0e6c27e6a608af3364120"
+    },
+    {
+      "path": "backend/src/modules/analytics/analytics.module.ts",
+      "sha256": "28c163de9a4fd353958a1846cc1f3d280891ff907ebc2fc1ca68592681c29c41"
+    },
+    {
+      "path": "backend/src/modules/analytics/analytics.service.ts",
+      "sha256": "b744d14629e39be8aa81b8618eb2264d0fe5f76b44118f9814dcc74699691c55"
+    },
+    {
+      "path": "backend/src/modules/analytics/dto/analytics.dto.ts",
+      "sha256": "d19ed0b4b7c2283156b056565c9f9850097bec69edd4fa5f366a4372cba51bb4"
+    },
+    {
+      "path": "backend/src/modules/audit/audit.controller.ts",
+      "sha256": "aff0c9b5bb1d43e499da1bb233a3072924a3658d910080a0914e73e41d43973b"
+    },
+    {
+      "path": "backend/src/modules/audit/audit.module.ts",
+      "sha256": "59dd0b7b1715c80d260339adb3e261ee37e5b3c4434e80b74612185fd1153a0e"
+    },
+    {
+      "path": "backend/src/modules/audit/audit.service.ts",
+      "sha256": "03ec37958abb371a46790847125edcf1d53207759a5231075c13b7585a30fbdb"
+    },
+    {
+      "path": "backend/src/modules/auth/auth.controller.ts",
+      "sha256": "4f6a24653b7bdde4ef08f809032839f5762eb615cd12c008ff9e60c9f1583ac6"
+    },
+    {
+      "path": "backend/src/modules/auth/auth.module.ts",
+      "sha256": "eb78be047592229471ae125731a03050b9e353168464dbb184c600e21567a5a5"
+    },
+    {
+      "path": "backend/src/modules/auth/auth.service.ts",
+      "sha256": "d0c63b16d5e921a2f41f68adbb131e3ad0db92bc4d6afbeeee9490018a0a2271"
+    },
+    {
+      "path": "backend/src/modules/auth/dto/auth.dto.ts",
+      "sha256": "44fc2586bf0d3c1b89f8528ede6fd95c64f1179b615ba0f9ed5a60e87880c6ca"
+    },
+    {
+      "path": "backend/src/modules/auth/jwt.strategy.ts",
+      "sha256": "3ee85b3ea494d8b27b09153c9e5629b2d4004cf6378640246432c08583891fc5"
+    },
+    {
+      "path": "backend/src/modules/booking-engine/appointment-guard.ts",
+      "sha256": "78cda53096c8bcb3db5db3befb1717d61f08a1897cc250e8a58df18c008be0e0"
+    },
+    {
+      "path": "backend/src/modules/booking-engine/appointment.mapper.ts",
+      "sha256": "b7619e988e83300cf5cee9c732982b75a20ecb23864ab93a9d755703fc332c63"
+    },
+    {
+      "path": "backend/src/modules/booking-engine/appointments.controller.ts",
+      "sha256": "5a050f1d53203ebab40174f3a6a2a6e29c4960f8bcfd78a53037df8652c7c8f6"
+    },
+    {
+      "path": "backend/src/modules/booking-engine/appointments.service.ts",
+      "sha256": "6da86e373ae195575955f64f5d21a9faa282a15c69f4e66e192787537c7f45a3"
+    },
+    {
+      "path": "backend/src/modules/booking-engine/availability-closed-day.spec.ts",
+      "sha256": "982ba30f9e863b119d648b3a28cf247e0a1bb2d507ce85d5e91192b99545039b"
+    },
+    {
+      "path": "backend/src/modules/booking-engine/availability.service.ts",
+      "sha256": "f5702d847419f5c9a20a2027ebc3e03fcff9b0991382b83d9485ef9febd9a473"
+    },
+    {
+      "path": "backend/src/modules/booking-engine/booking-engine.module.ts",
+      "sha256": "7d2fec23d3191104ea582047c5e49bc567135cea881d7ecf0a0a541c91d22b96"
+    },
+    {
+      "path": "backend/src/modules/booking-engine/booking.service.ts",
+      "sha256": "566bcd895d9f0fe82b19260fe7d4b0f17cfca70a2f607ca161d22c009863bf1c"
+    },
+    {
+      "path": "backend/src/modules/booking-engine/dto/booking.dto.ts",
+      "sha256": "21d9d64a00e15dbd8616c2feb76cabfc61bfa95b3b92f1ff434c643c1bf64f7d"
+    },
+    {
+      "path": "backend/src/modules/booking-engine/public-booking.controller.ts",
+      "sha256": "9fd2fe43d168500c008686c4d9643b978852772efd9d589e07b215888e705fb3"
+    },
+    {
+      "path": "backend/src/modules/booking-engine/slot-calculator.spec.ts",
+      "sha256": "07fade8e28d0ba80ef1de1b17b937f32669903b85587ab2767150f998e7600e2"
+    },
+    {
+      "path": "backend/src/modules/booking-engine/slot-calculator.ts",
+      "sha256": "d228c3253a7eb2829ac682a7653d9d6e0bc33fcfa736dfb395df93f02ae5976d"
+    },
+    {
+      "path": "backend/src/modules/booking-engine/slot-hold.service.ts",
+      "sha256": "bf95ec5fc2850588adac24fc63b32a01e846e2a4d18fcc8d89a465704636a2b9"
+    },
+    {
+      "path": "backend/src/modules/booking-engine/smart-slots.spec.ts",
+      "sha256": "03741ca3be6ffc6616702515195c4f53c9c0ee5f0c994215f75a30d2b52801e0"
+    },
+    {
+      "path": "backend/src/modules/booking-engine/smart-slots.ts",
+      "sha256": "5ef303605972e73c469cd3ac8c47d185d7ef6bd9b2533eaedd1a861f7d896a58"
+    },
+    {
+      "path": "backend/src/modules/customers/customers.controller.ts",
+      "sha256": "f5c739a98ac954c1ffc60b17b657deb50bb1a2031c59ba4c25fbf78cf17861dc"
+    },
+    {
+      "path": "backend/src/modules/customers/customers.module.ts",
+      "sha256": "1abe8525046d5cd255ebff2691a3a083975b51b0fea2e2b26cb5a38876819d19"
+    },
+    {
+      "path": "backend/src/modules/customers/customers.service.ts",
+      "sha256": "ac088f8289eb6ef513ae86f3b61087ae017e6bc9569e19a3f8aaab07e093bb4a"
+    },
+    {
+      "path": "backend/src/modules/customers/dto/customer.dto.ts",
+      "sha256": "a9d5145e69d48daff5c942accbf1cf55936e38a5d86db13fc8f42a1ec46bb288"
+    },
+    {
+      "path": "backend/src/modules/events/events.controller.ts",
+      "sha256": "a00623d547844e6019623d417b4de26bb65f672adb53acc3ccb83053cdfbfa79"
+    },
+    {
+      "path": "backend/src/modules/events/events.module.ts",
+      "sha256": "798ff2e642fe9ffaea3e78524d570b88283227db5a61f37899369ca2741f2eab"
+    },
+    {
+      "path": "backend/src/modules/events/events.service.ts",
+      "sha256": "d4d4b9352dfc044f932527e79ab789696d1a3982989106a9ddbdffafe84845c4"
+    },
+    {
+      "path": "backend/src/modules/events/realtime.interceptor.spec.ts",
+      "sha256": "31db266eb8f903b30752090890dfa8a70fccb8ce38a8a835bd0ad75a498a7e1b"
+    },
+    {
+      "path": "backend/src/modules/events/realtime.interceptor.ts",
+      "sha256": "0aae0ceaa55a8a38d889ff25d782b4e503f3a2bc3982a667f6b3e1a93e1da250"
+    },
+    {
+      "path": "backend/src/modules/invoices/dto/invoice.dto.ts",
+      "sha256": "1dc5b2507012dfc0bdf57a63a15097a3b19877e8d93699e24d6921f23bb9093d"
+    },
+    {
+      "path": "backend/src/modules/invoices/invoices.controller.ts",
+      "sha256": "b8b67ee6f8ff13fc622b4e95a3730f5ad37ebc38596a35bc1fc230e9aaa815d2"
+    },
+    {
+      "path": "backend/src/modules/invoices/invoices.module.ts",
+      "sha256": "91c13c47a1219193f256258e527ec80496b19fac936866f6bba898c222619ce2"
+    },
+    {
+      "path": "backend/src/modules/invoices/invoices.service.ts",
+      "sha256": "b6e789f343853f4b378696afd8aa635e74e37db8463cfb9df246a0550fe7825b"
+    },
+    {
+      "path": "backend/src/modules/maintenance/backup-scheduler.service.ts",
+      "sha256": "68bb2e61c811c14c7bc311a6f15e670239aff2a6eb08b2aba6e3ae9c452645dd"
+    },
+    {
+      "path": "backend/src/modules/maintenance/backup-scheduler.spec.ts",
+      "sha256": "85ec9dc3dd33b1dee8e31b3ded37188537b11fb38da9ebb613557610a8a832e3"
+    },
+    {
+      "path": "backend/src/modules/maintenance/maintenance.module.ts",
+      "sha256": "8896ac1464480b68b22641ed172cc3d1d2a10d138dc71a6fe5c080152a076f55"
+    },
+    {
+      "path": "backend/src/modules/notifications/email-queue.service.ts",
+      "sha256": "c737623c0a0ce0d1bdadf1a990cdbcb2c0f07ac3c56fe49ed99f80a716b3b2e1"
+    },
+    {
+      "path": "backend/src/modules/notifications/mail-templates.ts",
+      "sha256": "238edd58985a978978ae1e4ce84fcaebafc91905e00b4a0f407c31a8868fb075"
+    },
+    {
+      "path": "backend/src/modules/notifications/mail.service.ts",
+      "sha256": "2151759a5b1d24f7b9e31d9ff5dccbc0097f9518d088189a87e8dc48c3d0fbf5"
+    },
+    {
+      "path": "backend/src/modules/notifications/notifications.controller.ts",
+      "sha256": "5b900a261445f50a571332197a917958d78e78932ec33560cd527d34d1e6f759"
+    },
+    {
+      "path": "backend/src/modules/notifications/notifications.module.ts",
+      "sha256": "64a74c2b1701cd4d839ed278f1f544511bd926c5a6c2ffb481f54b78a7d9d8ff"
+    },
+    {
+      "path": "backend/src/modules/notifications/notifications.service.ts",
+      "sha256": "e8753f3db0bfad33a52e655f456c8b072d67b674d64e0dd288907d0b3a6503e6"
+    },
+    {
+      "path": "backend/src/modules/rate-limit/rate-limit.module.ts",
+      "sha256": "00b907c5ba14c5f014d939c143475b4ca173674b023dfaeb90834c6460b5fea0"
+    },
+    {
+      "path": "backend/src/modules/rate-limit/rate-limit.service.ts",
+      "sha256": "67c9bc411f5048b255f0f1b7d7e2591ff6da86f56080c3bae70dfb1f0f2556ad"
+    },
+    {
+      "path": "backend/src/modules/reviews/dto/review.dto.ts",
+      "sha256": "ea3ba7b0c43e65842b68995396889ec821e9665cdfcc8412f36a34339f7609a0"
+    },
+    {
+      "path": "backend/src/modules/reviews/reviews.controller.ts",
+      "sha256": "54463a56b66b67f35a8c4855d047e39b9f66483a9da351fb3c6d0c67444856e4"
+    },
+    {
+      "path": "backend/src/modules/reviews/reviews.module.ts",
+      "sha256": "e70c62afb8a24cd8c2b1ecebc095eac7f78341245826eed4f7e25d0e30b019a5"
+    },
+    {
+      "path": "backend/src/modules/reviews/reviews.service.ts",
+      "sha256": "4e5712c03abe0de776088dba9df42b26f82a72d1a3b61e63d03647eeb4fe131d"
+    },
+    {
+      "path": "backend/src/modules/services/dto/service.dto.ts",
+      "sha256": "9b13cf265bbbd19e275953ddb9e8236af558715850a6ef654ce441dc100d6456"
+    },
+    {
+      "path": "backend/src/modules/services/services.controller.ts",
+      "sha256": "eeea4605861657166ec6794907ac9b1879cc6fd882f72eb7adbc632f464bc6d5"
+    },
+    {
+      "path": "backend/src/modules/services/services.module.ts",
+      "sha256": "afe134c6158d3b0cb438641dc3b0616b833e94d4a75003ea0e1553cc60897023"
+    },
+    {
+      "path": "backend/src/modules/services/services.service.ts",
+      "sha256": "ea8b82562b02ed027b118d84d3415790eb727e6dc22344fa51ad2fac5347e140"
+    },
+    {
+      "path": "backend/src/modules/shift-requests/dto/shift-request.dto.ts",
+      "sha256": "8f3bd6f1f0784b2d6cb4a34dbebe008ba65eb0df0c0b89b5681eddd8c2354e0f"
+    },
+    {
+      "path": "backend/src/modules/shift-requests/shift-requests.controller.ts",
+      "sha256": "822abb9854ea7f7112cfb732fee91c8e0a2f33ec25623fa0faa615f574eb8285"
+    },
+    {
+      "path": "backend/src/modules/shift-requests/shift-requests.module.ts",
+      "sha256": "ebc3030d8c13edc45d094bb5923628a6322379cbbbd7e1371f3258d674d263c5"
+    },
+    {
+      "path": "backend/src/modules/shift-requests/shift-requests.service.ts",
+      "sha256": "a38770f776c7699fc336f43073cdd0920281fe0bf459038d043b7e26589f95ea"
+    },
+    {
+      "path": "backend/src/modules/stylists/coverage.spec.ts",
+      "sha256": "abfe5b2aea9161fec8b80335346b2ec46e4404c309bd93d9395fc863b3bf4ad2"
+    },
+    {
+      "path": "backend/src/modules/stylists/coverage.ts",
+      "sha256": "cd9b95a4be9023e8d9ffdae83a4bc50ad71f563d7b092f304a5f8384c083c0f1"
+    },
+    {
+      "path": "backend/src/modules/stylists/dto/stylist.dto.ts",
+      "sha256": "360d12ef5f88722e2200447017f4d4ca2d5455cb136d8bb94ef2e3e30b33771e"
+    },
+    {
+      "path": "backend/src/modules/stylists/shift-rules.spec.ts",
+      "sha256": "4a9ac55bb72269160c59df642bfe2d02f9c1a7ad64c24c646bbc2e25b58d2433"
+    },
+    {
+      "path": "backend/src/modules/stylists/shift-rules.ts",
+      "sha256": "32a3facdb6f6cdd688191ef9dc61dd8fbb199f82c260132aa896d711e334d6ec"
+    },
+    {
+      "path": "backend/src/modules/stylists/stylists.controller.ts",
+      "sha256": "af966ce6ac0e2a3b1b68742f183244d173b6079253d792c588d8a56baf71ac76"
+    },
+    {
+      "path": "backend/src/modules/stylists/stylists.module.ts",
+      "sha256": "d6f224f1265cd4ab5bd0dd26d2da1cee122671ca7728307806698bd67dc61bac"
+    },
+    {
+      "path": "backend/src/modules/stylists/stylists.service.ts",
+      "sha256": "dac51f7ed7e6432da3d306b4f96df8ec133860c4c4fd80e200bc2936c9a3809e"
+    },
+    {
+      "path": "backend/src/modules/users/dto/user.dto.ts",
+      "sha256": "795aea88134a4eb42ae4ddc1a168a642e76227451ae44dd14b648d291fdf4cbc"
+    },
+    {
+      "path": "backend/src/modules/users/users.controller.ts",
+      "sha256": "ab59cfef485ddd32c09ca3155aa14b25ffe95dcaa7de52fcf3e4c73b544ee222"
+    },
+    {
+      "path": "backend/src/modules/users/users.module.ts",
+      "sha256": "2a7390669676d0e97be3d93c748159becc1e2c4a4f85f040596953fc01926c83"
+    },
+    {
+      "path": "backend/src/modules/users/users.service.ts",
+      "sha256": "4013d6d0f6c1e40451378df78f0cbbbb23275a4a122237d68c3fb788c1d72220"
+    },
+    {
+      "path": "backend/src/modules/working-hours/dto/working-hours.dto.ts",
+      "sha256": "7bab7a7a510d1aa92e0f0559975ba77d5623af4f8862f5372fc403f02811bd18"
+    },
+    {
+      "path": "backend/src/modules/working-hours/holiday-creation.spec.ts",
+      "sha256": "81a17ae679815d670f6178161d2e78dded42e9f045a49964684ae5be855a4c2f"
+    },
+    {
+      "path": "backend/src/modules/working-hours/vn-holidays.spec.ts",
+      "sha256": "a5e2b7255ce7f27046aedfef852578b9b83ca4a370b1dee3d4ef4b2f4948aff0"
+    },
+    {
+      "path": "backend/src/modules/working-hours/vn-holidays.ts",
+      "sha256": "46127d99cb84ca08688da27942bfe0d542c145e892240abd50d780a1c48be67c"
+    },
+    {
+      "path": "backend/src/modules/working-hours/working-hours.controller.ts",
+      "sha256": "276bc921eebc7635d12fabfbef1eba039f74fd9d542972695a10fdc1d6d39023"
+    },
+    {
+      "path": "backend/src/modules/working-hours/working-hours.module.ts",
+      "sha256": "401e28ce89b2bc50b8bf098dc1c06391b68a3490b560a84a087e14ae4fa1e851"
+    },
+    {
+      "path": "backend/src/modules/working-hours/working-hours.service.ts",
+      "sha256": "dbc21708d46b518ee3a7560817ed2b93b9d71fd9d0e4a07118ee68d807202eae"
+    },
+    {
+      "path": "backend/test/auth-rbac.e2e-spec.ts",
+      "sha256": "caac683f385ca5de6313f530dee9e8b9840081cfa7c1d3d2245fdf48e46ff240"
+    },
+    {
+      "path": "backend/test/booking-concurrency.e2e-spec.ts",
+      "sha256": "eb2ec175b95b64c190b90e052e715b01c471c4f3dc37cf49dd32dcd55cef64a5"
+    },
+    {
+      "path": "backend/test/invariants.e2e-spec.ts",
+      "sha256": "352ed3723ffb1540d0a9924d149a2e7d1228c07cc4c2e78e44075c721fa451ba"
+    },
+    {
+      "path": "backend/test/lifecycle.e2e-spec.ts",
+      "sha256": "313e1fff692d9fb5976a3616b2c3303a39e7174568a226534c4adf529d1754a5"
+    },
+    {
+      "path": "backend/test/mentor-sprint2.e2e-spec.ts",
+      "sha256": "5b98a99a09413eb48681f17f59a48bb230f451a93d655b812c8bdef8a51cc856"
+    },
+    {
+      "path": "backend/test/migration-safety.e2e-spec.ts",
+      "sha256": "f5fd5d6abf4defc176b0a558daaa3a343366187510b39bfb90870616bae4170c"
+    },
+    {
+      "path": "backend/test/qa-cancel-rate-limit.e2e-spec.ts",
+      "sha256": "8afbd557a4a3605fea0008fe4f5ef1190e7d6610a1cbc92f7f130d84ae3d92ef"
+    },
+    {
+      "path": "backend/test/qa-input-hardening.e2e-spec.ts",
+      "sha256": "2bf650afd21673e0b5fb306460565ea63f5e3446099bae6744829574f5e39fc3"
+    },
+    {
+      "path": "backend/test/qa-lookup-rate-limit.e2e-spec.ts",
+      "sha256": "edc3c2134dc430ec709305a355c8f25736dcb4ff89dc6fe98f9178614f880fe9"
+    },
+    {
+      "path": "backend/test/qa-regression.e2e-spec.ts",
+      "sha256": "946d34427e01fd0fe29c9ff8c66c5b7d149510b11355ae9a76f1bb6788194a38"
+    },
+    {
+      "path": "backend/test/qa-round2-rules.e2e-spec.ts",
+      "sha256": "547c71beb5d5f0f4094552a5d9ea39486cf1ee1813d2b37cd1f5c6e87ffc0f9b"
+    },
+    {
+      "path": "backend/test/qa-round5-0510.e2e-spec.ts",
+      "sha256": "9026e26c626f6e2668bd7f685bacf2e731ca075f45271cdda028dd557b0dd268"
+    },
+    {
+      "path": "backend/test/realtime-deploy.e2e-spec.ts",
+      "sha256": "31d4444884e432287a9c640924b173240272da7825aa471958302bbfc10f383e"
+    },
+    {
+      "path": "backend/test/setup-app.ts",
+      "sha256": "1a424199d280ce601fd9f3fdfdb350914476b580086a578214f19fff36da8619"
+    },
+    {
+      "path": "backend/test/support/env-setup.ts",
+      "sha256": "779bf82b363eff049a0a3f34db66d5959afbbac1bdefa7faec0fb258338757ac"
+    },
+    {
+      "path": "backend/test/support/global-setup.ts",
+      "sha256": "b0a1ad2fcfa9af541382a04c03320ba5d537c82ccd72ad7a64e4cf36e068c2a7"
+    },
+    {
+      "path": "backend/test/support/global-teardown.ts",
+      "sha256": "1c646aec9c498ab0f72013b6d17aefff4e79c60b0a6d1feb58a248c7eb2a2a4f"
+    },
+    {
+      "path": "backend/test/support/test-db.ts",
+      "sha256": "f6a0bd11bfb65da8b6b7867ff18014072355ba7e8d6d120937ec48ea5b721ff7"
+    },
+    {
+      "path": "backend/test/test-isolation.e2e-spec.ts",
+      "sha256": "f7c6751ee4a3dda6fa5eabafdcbe9ffa25021e4158bbc2473a3eb880d84bf96b"
+    },
+    {
+      "path": "deploy/cloudflared/config.example.yml",
+      "sha256": "1e63bb256fc537ff3e68772c76127ee62ef1b9a61337f38973d4eae636890403"
+    },
+    {
+      "path": "deploy/docker/compose.production.yml",
+      "sha256": "84e507a8c26390f2b49bc2cddef601932d3d2cf4794d45dc10632b072e73017a"
+    },
+    {
+      "path": "deploy/docker/docker-compose.yml",
+      "sha256": "0e6c667569f6587fca3be3f3f108a70ddcfd188602bfb9a646dc5fcae99b8db2"
+    },
+    {
+      "path": "deploy/docker/Dockerfile.production",
+      "sha256": "f5e0e57e97f1c553c036210c84eeb66aa3ca08633108e974676e4c03dfd740d5"
+    },
+    {
+      "path": "deploy/docker/production.env.example",
+      "sha256": "8169c40bdd2479f3da509d82e8d6b09531fb2b1ee3c028d4fe50df68bd21050b"
+    },
+    {
+      "path": "frontend/package-lock.json",
+      "sha256": "c979715cd4c7997b8fcd9fcda8f94ef38e6ace5324f12b02cda64cbc9b150ccb"
+    },
+    {
+      "path": "frontend/package.json",
+      "sha256": "78247d4894822bba8030b3045306d993eafbd46025f5fe0a2d4133fcf1ef987b"
+    },
+    {
+      "path": "frontend/src/api/analytics.api.ts",
+      "sha256": "022214d75966293886ed1144da57555e7054bba87b506c22cd161eba1910ca3a"
+    },
+    {
+      "path": "frontend/src/api/appointments.api.ts",
+      "sha256": "b831c4826d512907301fd94e630b8eb817b781f0bc8abdb58836b286fe589421"
+    },
+    {
+      "path": "frontend/src/api/auth.api.ts",
+      "sha256": "26383c9ed565009f5e54dd4d9ccdfd746da7ba45a5b9bc565f8a13c1b4768c26"
+    },
+    {
+      "path": "frontend/src/api/catalog.api.ts",
+      "sha256": "c88127bed7cfb1eb13e8c41c4d8ffe3278e3d575019d4f2a032e457ded32b764"
+    },
+    {
+      "path": "frontend/src/api/client.ts",
+      "sha256": "97df7a4cdaa071f52383971ff47176a06c735744a7cc79dc85736b2d5a883c59"
+    },
+    {
+      "path": "frontend/src/api/customers.api.ts",
+      "sha256": "a94d3c89b644b38854511d7c49862cd55a410d93f607652f3c615e7b7485c5b2"
+    },
+    {
+      "path": "frontend/src/api/index.ts",
+      "sha256": "a093a83ff7563aed6fbe425518dfb4b4ac20cd9359ebc6137ab63265f7b9ed2e"
+    },
+    {
+      "path": "frontend/src/api/invoices.api.ts",
+      "sha256": "a71818507753c9bed12f4fc60b20f3f34c75ad2752dffe89d89a1e3e9d049049"
+    },
+    {
+      "path": "frontend/src/api/mockBackend.ts",
+      "sha256": "0a5ae37c3ef7930c30aad3b9f86f7a30cf858a8683f54ecc9773202451ce8e42"
+    },
+    {
+      "path": "frontend/src/api/notifications.api.ts",
+      "sha256": "55ce7e98763b763e0fd7f1758f7db7b3d03e7038cb31eb6b9e2f562ece7a79c1"
+    },
+    {
+      "path": "frontend/src/api/public.api.ts",
+      "sha256": "a5894ea090610a2e06ff9c8492767214acf3923bfd823e4cbd4667c029c54257"
+    },
+    {
+      "path": "frontend/src/api/reviews.api.ts",
+      "sha256": "bfb443b93cc3f76407fd640506416c03806b1de6215487914908e495e738b953"
+    },
+    {
+      "path": "frontend/src/api/shiftRequests.api.ts",
+      "sha256": "78b29277fd266444130878deabf91d118bf30c2c95b1b27416cc9da1fbfaae43"
+    },
+    {
+      "path": "frontend/src/api/stylists.api.ts",
+      "sha256": "017061a97de992a0567ad3368150f1c5ad1111cd3bb3b175baf8a77fec398c24"
+    },
+    {
+      "path": "frontend/src/api/users.api.ts",
+      "sha256": "b8ed7e1e7bf934a0cf1b922a659f0bbdce49f244cc12cc76e4a9b30bc610eee8"
+    },
+    {
+      "path": "frontend/src/api/workingHours.api.ts",
+      "sha256": "275de609da5ff89775fd8e491d172ec73eb8c8ab14608c9c3ff31aa6d0f517fd"
+    },
+    {
+      "path": "frontend/src/App.tsx",
+      "sha256": "4515142b7ffc28372d47c503e4a33ee063e63583ba1a834df1f8224a13df4288"
+    },
+    {
+      "path": "frontend/src/components/BackButton.tsx",
+      "sha256": "9c9f066aa6b30ce4c226b32692f8cce261cd4d5196039e624d5a7608b7ff6c88"
+    },
+    {
+      "path": "frontend/src/components/ConfirmDialog.tsx",
+      "sha256": "02c74a3b84d9c32cdcdd023fb09649216bb928ad6afd321f66d4eca4783ebaa8"
+    },
+    {
+      "path": "frontend/src/components/CustomerMetrics.tsx",
+      "sha256": "539960573e2f3e53206fe1b52ee06e47b586359aa291f296fd77a35a651d75b9"
+    },
+    {
+      "path": "frontend/src/components/DateNav.tsx",
+      "sha256": "a2e61bc79cc25e0deb5846fbc51285cbc2876c36f4358554a5d26dfcd10b74ed"
+    },
+    {
+      "path": "frontend/src/components/ErrorBoundary.tsx",
+      "sha256": "132c46c71e809fb05ee3344bdfcb3aa5e076548595495c79f027b7271d58b85a"
+    },
+    {
+      "path": "frontend/src/components/index.ts",
+      "sha256": "7dd7e3c031090fa90c99ec0186e981bdd6926a0d1c95f38bd5a2eae8ccd55684"
+    },
+    {
+      "path": "frontend/src/components/LiveStatus.tsx",
+      "sha256": "9f9447954dacb6fee858ea92df5e6551f952b09b58dd0edf92c235271cb8e070"
+    },
+    {
+      "path": "frontend/src/components/Media.tsx",
+      "sha256": "17e9a45718febef2bf06ccf4ce6f72e729eae60ab546675d34eca30292ef8d11"
+    },
+    {
+      "path": "frontend/src/components/Modal.tsx",
+      "sha256": "ae6d2f1bb134a10ba5a3e428da1e86c12017b19faecdc51b591ed5fac6f12b91"
+    },
+    {
+      "path": "frontend/src/components/NotificationBell.tsx",
+      "sha256": "48b1be6bc740429d1b7cf3bae6c586528576c9b475d302bb1820f0aa89eb7558"
+    },
+    {
+      "path": "frontend/src/components/Pagination.tsx",
+      "sha256": "29c92d8600e6df476e4f804c97a572eef1f685c350f27a8b212449e6c5132d67"
+    },
+    {
+      "path": "frontend/src/components/RoleSwitcher.tsx",
+      "sha256": "41ec278553c1edfeadd8d106f65ee3ba941c0bc3b169172e3c5a077942992598"
+    },
+    {
+      "path": "frontend/src/components/Skeleton.tsx",
+      "sha256": "96caa8a16dbc0db90bb1468405617a9e3b41bf4f2d85d1dc5d3c047141456e9d"
+    },
+    {
+      "path": "frontend/src/components/SmartSlotAssistant.tsx",
+      "sha256": "829c37d3020bba5a9e249dc3ec63b1cbd91b864ba479035d0b880b930eb36806"
+    },
+    {
+      "path": "frontend/src/components/StarRating.tsx",
+      "sha256": "ded1f21d59c21ab902161a642e2aa4bf22261b65924c6223dfed481d01cd4865"
+    },
+    {
+      "path": "frontend/src/components/StatusBadge.tsx",
+      "sha256": "ee709593cce7e2152e65d2495389de92fbfd1c21698530b493623f19a1a50460"
+    },
+    {
+      "path": "frontend/src/components/TempPasswordDialog.tsx",
+      "sha256": "6c9315dcea27a0273cac46afd156b7c1950f206173690c2770d86a0bdb4da595"
+    },
+    {
+      "path": "frontend/src/components/TimeSelect24.tsx",
+      "sha256": "a8fd7af3b53377caa23409fc0929da364b5f480e3ee11970611e2929523adc66"
+    },
+    {
+      "path": "frontend/src/components/ui.tsx",
+      "sha256": "d6fa495cac2d1a58332528105ad98953e5a37fb498143760ab4db9aa820e6d5c"
+    },
+    {
+      "path": "frontend/src/components/UpdateBanner.tsx",
+      "sha256": "1d943edfe3b87d6f89703814c736109968f3d903010377cb40b4c26b974a00de"
+    },
+    {
+      "path": "frontend/src/components/VietQrCode.tsx",
+      "sha256": "88d1985b1fc1ac095a64ede581205349b6529259784abf9482757ac61e0289ab"
+    },
+    {
+      "path": "frontend/src/contexts/AuthContext.tsx",
+      "sha256": "c3cbc0b236b9c15995543309caef439a3f31acc1c91e8a74825ce6388f2123ff"
+    },
+    {
+      "path": "frontend/src/contexts/BookingContext.tsx",
+      "sha256": "d3ddb3d1ba8dded62ad60990325f097f5e79c0023c6da96ccd03a0d9f2cf9130"
+    },
+    {
+      "path": "frontend/src/contexts/ToastContext.tsx",
+      "sha256": "0ed2ee26b704920b2bf576c3a0a9576d2be6e04f6d25fd899b235169da24b1ff"
+    },
+    {
+      "path": "frontend/src/index.css",
+      "sha256": "bd9a28daa05260cf962765b7d3ca79caecf06a893fe9eed9a57177d68529f915"
+    },
+    {
+      "path": "frontend/src/layouts/AdminLayout.tsx",
+      "sha256": "a4a60f9adcf7ca3ab3d79acfd3608e6bc947d10062cb903670fa1675ccaaeb39"
+    },
+    {
+      "path": "frontend/src/layouts/PublicLayout.tsx",
+      "sha256": "ce779d4ba805fd99a8f7d21201e7e064647449c580e6356a72a331facabed2cd"
+    },
+    {
+      "path": "frontend/src/layouts/SiteFooter.tsx",
+      "sha256": "5fb9fe8c8ac7eddf83703a816d81a7e228a1fa88d385e4951b803b4ac83b933f"
+    },
+    {
+      "path": "frontend/src/main.tsx",
+      "sha256": "6f7e9cb87cc55a54cca5b29f0c052cb8f23610711f2b7c47d1f59949a0fc0604"
+    },
+    {
+      "path": "frontend/src/pages/admin/AuditLogsPage.tsx",
+      "sha256": "868ccf0e8150bf35c0d727b2c88861756c2310b02b311c1666cd2c777d013cb3"
+    },
+    {
+      "path": "frontend/src/pages/admin/HolidayAssistantModal.tsx",
+      "sha256": "ecab4f297c1e0ff3a843605d4dca58349a45106dbbf601f0798e627a9680fe6a"
+    },
+    {
+      "path": "frontend/src/pages/admin/PermissionMatrixPage.tsx",
+      "sha256": "af9b17a39ef80446a62cb17689f79d4dfdfee168e9eb5cfae02aeb889cbf0b21"
+    },
+    {
+      "path": "frontend/src/pages/admin/ServicesPage.tsx",
+      "sha256": "659ce8dd71d5bbcf453ba175b3b6266d8690eaa7712c82c4f26729510b6d1025"
+    },
+    {
+      "path": "frontend/src/pages/admin/shifts/CoveragePanel.tsx",
+      "sha256": "2715f648ee48715ac30ddbb4f19b202bcdf38a30e96f3da8b83dffdbc09d2701"
+    },
+    {
+      "path": "frontend/src/pages/admin/shifts/ShiftBoard.tsx",
+      "sha256": "a9785ba6d53e55a7d9c2afcbeae4774acc238faaf254aef60db15588c6133f30"
+    },
+    {
+      "path": "frontend/src/pages/admin/shifts/ShiftRequestsPanel.tsx",
+      "sha256": "6a93d533043ba5095a67d3764656e223d5051c1a82f044c2b557f8c68f9e67b6"
+    },
+    {
+      "path": "frontend/src/pages/admin/ShiftsPage.tsx",
+      "sha256": "0ed236a0519cf6d90c539b3568a2dfca224119871cbd64a959c8cfb6c7f3b81f"
+    },
+    {
+      "path": "frontend/src/pages/admin/StylistsPage.tsx",
+      "sha256": "91d0255c07bb233e172e9deb7a896e01fcfdabd8d3c64a5ab1c4e9f5e4940d6d"
+    },
+    {
+      "path": "frontend/src/pages/admin/UsersPage.tsx",
+      "sha256": "1666db07f3a40b39ffcff8a2b2f2670d30a95c02d5fbe1f15a0b9e38c91e2cf5"
+    },
+    {
+      "path": "frontend/src/pages/admin/VouchersPage.tsx",
+      "sha256": "2289a7c4ced0f09b6b916490430d8dc2402b0cf615f0412b01ce6e0bf0684bc7"
+    },
+    {
+      "path": "frontend/src/pages/admin/WorkingHoursPage.tsx",
+      "sha256": "bb8e254196c1554b6d36de4ece6802545b9f9e1c622347916fa9819dc2808df6"
+    },
+    {
+      "path": "frontend/src/pages/auth/AuthShell.tsx",
+      "sha256": "393996433395252a1dba620a84934ce3069954298cff89055bb6a855c07c0a06"
+    },
+    {
+      "path": "frontend/src/pages/auth/ChangePasswordPage.tsx",
+      "sha256": "d391a2da1e4432e5218139ed2b411d339d1b3d4e215c4b05a885175966c248f8"
+    },
+    {
+      "path": "frontend/src/pages/auth/ForgotPasswordPage.tsx",
+      "sha256": "2f96c3cbd597481f74faa83db997aeb5b94999b619461aa6a6dfb6ae8f25ef58"
+    },
+    {
+      "path": "frontend/src/pages/auth/LoginPage.tsx",
+      "sha256": "917301cdd28ef1abf798878d8dbe9fb253f020e843b0363eb6ef183a2373f889"
+    },
+    {
+      "path": "frontend/src/pages/auth/ResetPasswordPage.tsx",
+      "sha256": "1cf566fafd29e4652341b6a0aaba53a33c0a64fa40ff083f45b8291318fdfb88"
+    },
+    {
+      "path": "frontend/src/pages/owner/DashboardPage.tsx",
+      "sha256": "000200b3ca5e8d89134994fb695e0758063219269a7a0fd7fbaa8fba5709fcfa"
+    },
+    {
+      "path": "frontend/src/pages/owner/RevenuePage.tsx",
+      "sha256": "479fb221d99201f6de17276cd122337686db242853dd857e771c9905129e79c2"
+    },
+    {
+      "path": "frontend/src/pages/owner/SlotDensityPage.tsx",
+      "sha256": "a758df28d65886c421019a45725413d12d65dc98f1a0bd7cd345b44e4325d36a"
+    },
+    {
+      "path": "frontend/src/pages/public/BookingWizard.tsx",
+      "sha256": "c7b8d3f5b5c157d5728c2a7bef3780491591b610eede8b8d948dfb1eb49f45f7"
+    },
+    {
+      "path": "frontend/src/pages/public/HomePage.tsx",
+      "sha256": "ca4ebc4cb91f3c818eedb7c6e070fe2d13a4b536d2ba87e72cef92edeea95050"
+    },
+    {
+      "path": "frontend/src/pages/public/LookupPage.tsx",
+      "sha256": "a9970a1164266b7215abc04e30838e25aa18ebc0c6c61ddc7e3400a04b98329b"
+    },
+    {
+      "path": "frontend/src/pages/public/ReviewPage.tsx",
+      "sha256": "c2712a83af54fdf792277c3bafe2baea989f2c8a24b6fdd432683a3bbb66709b"
+    },
+    {
+      "path": "frontend/src/pages/public/steps/BookingSuccess.tsx",
+      "sha256": "229873f9a74eba27fb27d8356b286e0f51f1500c889b2cf5e434fbf452717a7d"
+    },
+    {
+      "path": "frontend/src/pages/public/steps/HoldBanner.tsx",
+      "sha256": "32fd232a9743ccfb894559d4a5370237478de3426276240cd2d96f7e10d278dc"
+    },
+    {
+      "path": "frontend/src/pages/public/steps/SplitBookingWarning.tsx",
+      "sha256": "fc8ba2c55444e5e1c041c021f72c3b655d2e6227047d0205d1ef8992b0f4663f"
+    },
+    {
+      "path": "frontend/src/pages/public/steps/Step1Services.tsx",
+      "sha256": "438deb22479dcf5550d18864de6c0d916c77916ca96c2fc8f247d9101e5f8cfa"
+    },
+    {
+      "path": "frontend/src/pages/public/steps/Step2Slot.tsx",
+      "sha256": "28575cc6fc1565cff296a8bd87e9621df3bad7647141034e54436f15f6e73af8"
+    },
+    {
+      "path": "frontend/src/pages/public/steps/Step3Stylist.tsx",
+      "sha256": "2df91f263b957bf73ec1021306b89b8bab35b9c2b633e942b4d9093eb055126e"
+    },
+    {
+      "path": "frontend/src/pages/public/steps/Step4Confirm.tsx",
+      "sha256": "4fa6224741d4fb0c2141f6bdfdb814beae404647b36f15a8c356152dc5c3df15"
+    },
+    {
+      "path": "frontend/src/pages/public/useSlotHold.ts",
+      "sha256": "ff6d66de5c7bcf2b8c7c4edd3d101bc640d80495f083c27976e06a21f617bfe1"
+    },
+    {
+      "path": "frontend/src/pages/reception/AppointmentDetailPage.tsx",
+      "sha256": "bc5a9964830ece94a508a412858239de2beaf6b6419cbe7481dac1142994dca5"
+    },
+    {
+      "path": "frontend/src/pages/reception/AppointmentDrawer.tsx",
+      "sha256": "b788c0bdb5d853fb61c0e8a87a0f691c4f9a2130a8745e079acdfc05a2562de5"
+    },
+    {
+      "path": "frontend/src/pages/reception/AppointmentsListPage.tsx",
+      "sha256": "c6f19b33ac94bfc21ea71855def95ee1bb64cecc26d69e2aa6a28da10753ea23"
+    },
+    {
+      "path": "frontend/src/pages/reception/BulkReassignPage.tsx",
+      "sha256": "507854009db109356b799cafd0d0a387f2aed4633cb18d8d580dc7f7da259ee5"
+    },
+    {
+      "path": "frontend/src/pages/reception/CustomersPage.tsx",
+      "sha256": "ebe5da71ca682b90232c738cfa601a374ae00bb2a7484d8790efa486948a82cf"
+    },
+    {
+      "path": "frontend/src/pages/reception/DayTimelinePage.tsx",
+      "sha256": "aebff1497e909ad782285a93bb12f6e4a90cbd42ca6f54af3f33ca563ab816ea"
+    },
+    {
+      "path": "frontend/src/pages/reception/InvoiceListPage.tsx",
+      "sha256": "238b757976002f230dc460f8cc7dc38a1c6de8e1969a36be86969d5b8c5c542c"
+    },
+    {
+      "path": "frontend/src/pages/reception/InvoicePage.tsx",
+      "sha256": "9cec8224aa148a71bcaceb677db51b48fc0b5b50ae941908786dda67a76425ba"
+    },
+    {
+      "path": "frontend/src/pages/reception/PendingPage.tsx",
+      "sha256": "881d76c1ff2640c1feff1b889b213d192eea9ce4b0de61d34765ed8fd489fdac"
+    },
+    {
+      "path": "frontend/src/pages/reception/WalkInPage.tsx",
+      "sha256": "24c452a7b837b63655350402badfa80abe38c87802760191641205a60b141965"
+    },
+    {
+      "path": "frontend/src/pages/stylist/MySchedulePage.tsx",
+      "sha256": "8a6c3fbd04e5af0f777bdf4e9e846458cfc3cd025b902a1a53aa3532a5368a1b"
+    },
+    {
+      "path": "frontend/src/pages/stylist/ShiftRegistrationPage.tsx",
+      "sha256": "5e0c429eb35c9f223916991828d95cd785f1b6fc58f4fd26aa51543c487c04de"
+    },
+    {
+      "path": "frontend/src/types/index.ts",
+      "sha256": "e2e5f7213132e5ab721b1be3994bdca5771e4fa01fbe6f35ffd176ca69ad48b5"
+    },
+    {
+      "path": "frontend/src/utils/constants.ts",
+      "sha256": "2cf275567c1c9470096de05da03dbf600522a33b0bd0014f4194df82feecd051"
+    },
+    {
+      "path": "frontend/src/utils/customerMetrics.ts",
+      "sha256": "c20c1b88b74219d83ee03b82a69b7c580cb6cc9d7ea73bb389dbfc4be5db2dbc"
+    },
+    {
+      "path": "frontend/src/utils/format.ts",
+      "sha256": "bbd88ca4bbe0da5ee0dc3fe4186e34ad7bfc97e05168879b3a01bff1ef547520"
+    },
+    {
+      "path": "frontend/src/utils/images.ts",
+      "sha256": "8a9dd14744e88694495363b174bacfd4316f914a6f905cdf5f47d84ce4ab4217"
+    },
+    {
+      "path": "frontend/src/utils/liveSync.ts",
+      "sha256": "8b19a9537318834b06ca7674c6d5a508eaedfc08c3f3afb370b860c9c8000518"
+    },
+    {
+      "path": "frontend/src/utils/realtime.ts",
+      "sha256": "05eae72849b9cdec5f98edbd73465e75eac323ad1c5c65d000ed6189188186e6"
+    },
+    {
+      "path": "frontend/src/utils/salonInfo.ts",
+      "sha256": "138b87e4de9c8cefcf07d46275e580c22cd738e2fd3b0f4d77e0c5273aca9bc6"
+    },
+    {
+      "path": "frontend/src/utils/validators.ts",
+      "sha256": "1bfd4e4102ae9566101730bd543a79e09bfc41e6ba152d5aec2be123c1daa926"
+    },
+    {
+      "path": "frontend/src/utils/vietqr.ts",
+      "sha256": "95661053773611f3ccc6bc60deeea55015d0535c727e41a4da74f94d40f00516"
+    },
+    {
+      "path": "frontend/src/vite-env.d.ts",
+      "sha256": "9c621a2f6fcf9b3460eaf59b74b6911f80a7de7ce47868c1740dc0901d468046"
+    },
+    {
+      "path": "frontend/test/holidays.test.mjs",
+      "sha256": "7b5f8435f3cdd2f2d57200ad664f1cc193836a884192191c7b9bae04b31cbc00"
+    },
+    {
+      "path": "package-lock.json",
+      "sha256": "bc9b5fd8a195390b194eb3d3c5bb54108b0d000d511528391c81fa840856e888"
+    },
+    {
+      "path": "package.json",
+      "sha256": "0da48540d10ebf730ad4cc37ac26f9e51d2ebc3a06bd8620e4fe30af34ba729f"
+    },
+    {
+      "path": "scripts/ai/ai_autonomous_explorer.mjs",
+      "sha256": "a8db608e4203e9fdd3614c927f86caeacaac64e935c189e4d03c9ac3a178cb96"
+    },
+    {
+      "path": "scripts/ai/ai_deep_dive_explorer.mjs",
+      "sha256": "d1822ad6894f467d7323be5c3e5e875ba815d2b79f99f4a7f6f22b7cbc46ea44"
+    },
+    {
+      "path": "scripts/ai/generate_word_report.py",
+      "sha256": "bde472d580485637b37285d5d5f4c3bb124ad89670568c6e9e2161cd5414238f"
+    },
+    {
+      "path": "scripts/backup.mjs",
+      "sha256": "b3723abfabf5998e00d5ea01a67a6eab54353a662efad95c7ea7b7d54f9360d4"
+    },
+    {
+      "path": "scripts/git/branch-cleanup.mjs",
+      "sha256": "a4901c15d67694ac54821faef3430d6189c4f8397b48ad4a7a465c43a0f1e887"
+    },
+    {
+      "path": "scripts/git/setup_git_workflow.bat",
+      "sha256": "a52f6ccf4b5ff27a1071f0e91ac56df3dc3c4827ef5e9d0da97b3240a4459cef"
+    },
+    {
+      "path": "scripts/git/setup_git_workflow.sh",
+      "sha256": "dd35cd90ef69f4443a057dfa40fe191e0aaa49170c023a8a0a3a9bff4f94713a"
+    },
+    {
+      "path": "scripts/hoyo/launcher-ui.mjs",
+      "sha256": "eb43608d3ebcce4b9ba1defdf5ca2e2630e1f3168e7f648d002d717693ce9568"
+    },
+    {
+      "path": "scripts/hoyo/ui/hoyosalon.ico",
+      "sha256": "3967efb809c8564e5264fd2b12d36fd057d46546e59ba56e93645b9f5b90b52b"
+    },
+    {
+      "path": "scripts/hoyo/ui/index.html",
+      "sha256": "293dfdb54e64a572208e5c548ac7231a658b24664108ed176d93612736fe7e14"
+    },
+    {
+      "path": "scripts/launcher.mjs",
+      "sha256": "08a77623ea74f437554a48865de7a3125f20f4c83424c7d0ba154fee993066e6"
+    },
+    {
+      "path": "scripts/lib/dependencies.mjs",
+      "sha256": "90665493114cdc021ac78a05a6abb38a0e02fbbfa431df4413ea8d231143ed93"
+    },
+    {
+      "path": "scripts/lib/diagnostics.mjs",
+      "sha256": "af15d54c594509f4613f40e1687c6d3cee2a00baecd7baa6e2813eb2e7814623"
+    },
+    {
+      "path": "scripts/lib/git-repair.mjs",
+      "sha256": "38f777e93113db49f149030575b985a62d0e734324858d22e11a6e1f4d19cdea"
+    },
+    {
+      "path": "scripts/lib/macos-app.mjs",
+      "sha256": "c2a80038ae74ffc7b4b1c7276475856c47302aa87a0c0fdd38ddd4b29c9e2e40"
+    },
+    {
+      "path": "scripts/lib/platform.mjs",
+      "sha256": "3da6889f6b7b865488698e3bfe37876215012cc16906377e18f74a4256080ddb"
+    },
+    {
+      "path": "scripts/lib/ports.mjs",
+      "sha256": "5117fa6f6356b4b4c19861799346e7e64ae12a3f0b1399dc6b03cfcd68dbbd0b"
+    },
+    {
+      "path": "scripts/lib/shop-config.mjs",
+      "sha256": "d268b639e54e078bcd1a34604a2b3ef87bb2f13f3dc9f372e1159373db92e8ee"
+    },
+    {
+      "path": "scripts/lib/test/dependencies.test.mjs",
+      "sha256": "89619dc448d7c9e9102ccd0e3591791f3cced4c72a4eac3dc89ddb178103fd3a"
+    },
+    {
+      "path": "scripts/lib/test/lib.test.mjs",
+      "sha256": "13f871e94015b7051f9998a849ca50da3f051a47777a3ec5c8549e864030d667"
+    },
+    {
+      "path": "scripts/lib/version.mjs",
+      "sha256": "06f1110cd64e9c673c2cfce5aeae9a7c58c8aa9eb6012833f34a77a9a13c5609"
+    },
+    {
+      "path": "scripts/release_evidence.py",
+      "sha256": "7a43fcfc91b78da268b0a46bb22b86e9b8fc87f3d314a8091109c0f64a4d5711"
+    },
+    {
+      "path": "scripts/test_release_evidence.py",
+      "sha256": "f77946f76eefece1dadff3db51bee4cf44009d047b9a48a6bd497ae50bb12c5f"
+    },
+    {
+      "path": "scripts/unix/run_project.sh",
+      "sha256": "59d87a1e74f1e09b4d745a359f769eb4ff03bca516749ebfd761becf8297418c"
+    },
+    {
+      "path": "scripts/unix/start_server.sh",
+      "sha256": "1892aa4be2e2c4519864476819497efb1560cc7c37f19241d0242c96af3934b9"
+    },
+    {
+      "path": "scripts/unix/start_tunnel.sh",
+      "sha256": "0780f771bc057cc615c77e15718060509da1529d27c1ba46833b3c004d2f898a"
+    },
+    {
+      "path": "scripts/unix/update_project.sh",
+      "sha256": "61c59b487d813e711c35529bb2a38f73f6efc40658158d74559a1f2dd2b5345e"
+    },
+    {
+      "path": "scripts/update.mjs",
+      "sha256": "6acd9d05a1f4971bbd25ea74afa9f33263567cd3f083ae37d61e69932f892963"
+    },
+    {
+      "path": "scripts/windows/1-Click-AI-Explore-And-Generate-Word-Report.bat",
+      "sha256": "166d097832a76f1f30d1f12f2417f082f5ded9429f75ea872df2b1de61fadc9b"
+    },
+    {
+      "path": "scripts/windows/1-Click-Interactive-Explore.bat",
+      "sha256": "1d9a666ec394efcfb57326c4918c969903e444546bf63d79fac2d9ac7ab88827"
+    },
+    {
+      "path": "scripts/windows/1-Click-Run-AI-Agent.bat",
+      "sha256": "3b289345a7bde9475babd909980bc0c4bb18f9185ac5a317d8577a3a266f10de"
+    },
+    {
+      "path": "scripts/windows/1-Click-Run-E2E-Tests.bat",
+      "sha256": "9e0e52add7ada6829ccd651fb3c4f287441a45d4d673df5438c3e8e1a3d4a1db"
+    },
+    {
+      "path": "scripts/windows/1-Click-Run-Headed-UI.bat",
+      "sha256": "28a5f22f925868d9539eeb6aa9488001c9b4281bbd47f309285a35c18bc8d219"
+    },
+    {
+      "path": "scripts/windows/HoYoSalon.vbs",
+      "sha256": "c4474727776ec388315babba1fcb2cfde0523095e853e896059b1536a5bfeecb"
+    },
+    {
+      "path": "scripts/windows/run_project.bat",
+      "sha256": "34a4e298bb88bac1edc31e0d6e99228eabb12261f908ebe41fccc121752e58d9"
+    },
+    {
+      "path": "scripts/windows/start_server.bat",
+      "sha256": "a68d488f7f64869e08db41998dafc304eadac66bf08aca495c427fa571bd6085"
+    },
+    {
+      "path": "scripts/windows/start_tunnel.bat",
+      "sha256": "06507d3a5daef888d7d4c643413d3859d6f2537423ebaaccd3e4934b311e317e"
+    },
+    {
+      "path": "scripts/windows/update_project.bat",
+      "sha256": "6fb263f42a011e27ac56a222e8ab145bb534f9312a9b975ffc01354e5b6d3f0b"
+    }
+  ]
+}
