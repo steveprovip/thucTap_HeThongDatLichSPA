@@ -42,6 +42,7 @@ import { composeServices, ensureToolPath } from './lib/platform.mjs';
 import { adoptRepo, gitLogin } from './lib/git-repair.mjs';
 import { classifyGitError, problemOf } from './lib/version.mjs';
 import { cwdInside, mentionsRoot, parseNetstatListeners, parsePidList } from './lib/ports.mjs';
+import { installLockedDependencies } from './lib/dependencies.mjs';
 
 // macOS mở từ Finder không có PATH của Terminal: bổ sung để thấy docker / npm / git (xem lib/platform.mjs)
 ensureToolPath();
@@ -189,24 +190,11 @@ function npmCapture(args, { cwd, label, heartbeat = true }) {
 }
 
 /**
- * Cài gói của MỘT thư mục. node_modules chưa có + có package-lock.json -> `npm ci` (nhanh hơn, đúng phiên bản đã khoá);
- * ci lỗi (lệch khoá) hoặc đã có node_modules -> `npm install`. --prefer-offline dùng lại bộ nhớ đệm npm.
+ * Cài đúng gói đã khoá bằng npm ci, kể cả khi node_modules đã tồn tại.
+ * Lỗi hoặc thiếu lockfile thì dừng; không tự đổi phiên bản trên máy khách.
  */
 async function installDir(abs, label) {
-  const fast = ['--no-fund', '--no-audit', '--progress=false', '--prefer-offline'];
-  const clean = !existsSync(join(abs, 'node_modules')) && existsSync(join(abs, 'package-lock.json'));
-  if (clean) {
-    const r = await npmCapture(['ci', ...fast], { cwd: abs, label });
-    if (r.status === 0) return true;
-    log(`      ${label}: npm ci không khớp package-lock.json, chuyển sang npm install ...`);
-  }
-  const r = await npmCapture(['install', ...fast], { cwd: abs, label });
-  if (r.status !== 0) {
-    err(`[LỖI] npm install thất bại trong ${label}. Kiểm tra kết nối mạng rồi chạy lại. Chi tiết:`);
-    err(r.out.split('\n').slice(-25).join('\n'));
-    return false;
-  }
-  return true;
+  return installLockedDependencies(abs, label, { run: npmCapture, error: err });
 }
 
 /**
@@ -1071,7 +1059,7 @@ async function serve() {
   const [dbOk, buildOk] = await Promise.all([dbJob, buildJob]);
   if (!dbOk || !buildOk) return 1;
   log('[5/6] Cấu trúc CSDL ...');
-  const mig = await timed('Migration + tài khoản quản trị', () => migrateAndBootstrap(process.env.MIGRATION_BACKUP ?? 'auto', built ? 'dist-next' : 'dist'));
+  const mig = await timed('Migration + tài khoản quản trị', () => migrateAndBootstrap(process.env.MIGRATION_BACKUP ?? 'required', built ? 'dist-next' : 'dist'));
   if (!mig.ok) {
     err('[LỖI] Không cập nhật được cấu trúc CSDL. Máy chủ KHÔNG khởi động để tránh chạy sai dữ liệu. Xem lỗi phía trên.');
     return 1;
@@ -1363,6 +1351,11 @@ async function updateApply() {
   const fail = async (...lines) => {
     for (const l of lines) err(l);
     revertCode();
+    // npm ci may have replaced dependencies before the new build failed. Restore the old lockfile's packages first.
+    if (wasRunning && stopped && !(await ensureDeps())) {
+      err('      Chưa khôi phục được gói của bản cũ. Không bật bản cũ với bộ gói khác phiên bản; cần người vận hành xử lý log.');
+      return 1;
+    }
     await restartOld();
     return 1;
   };

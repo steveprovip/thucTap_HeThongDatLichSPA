@@ -3,7 +3,8 @@ import { Cron } from '@nestjs/schedule';
 import { spawn } from 'child_process';
 import { existsSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
-import { backupDir } from '../../database/backup';
+import { backupDir, backupPrefix } from '../../database/backup';
+import { resolveDbConnection } from '../../config/db-connection';
 
 /** Bản build production có sẵn công cụ sao lưu (chế độ phát triển ts-node thì không có). */
 const BACKUP_CLI = join(__dirname, '..', '..', 'database', 'backup-cli.js');
@@ -48,8 +49,10 @@ export class BackupSchedulerService implements OnApplicationBootstrap, OnApplica
   lastAutoBackupAt(): Date | null {
     try {
       const dir = backupDir();
+      const connection = resolveDbConnection();
+      const prefix = backupPrefix(connection.database, connection);
       const times = readdirSync(dir)
-        .filter((f) => f.endsWith('_tu_dong.dump'))
+        .filter((f) => f.startsWith(prefix) && f.endsWith('_tu_dong.dump'))
         .map((f) => statSync(join(dir, f)).mtime.getTime());
       return times.length ? new Date(Math.max(...times)) : null;
     } catch {

@@ -3,7 +3,7 @@
 ## 1. Tổng Quan Dự Án & Phạm Vi
 - **Tên dự án**: Hệ Thống Đặt Lịch & Quản Lý Salon Spa (`thucTap_HeThongDatLichSPA` tại `F:\hoc_tap\thuc_tap\du_an`).
 - **Phạm vi**: 4 Sprints · 39 User Stories · 165 Story Points (`docs/BACKLOG-MAPPING.md`).
-- **Công nghệ**: NestJS 10 (Backend) + TypeORM + PostgreSQL 16 + React 18 / Vite (Frontend) + Tailwind CSS + Lucide Icons.
+- **Công nghệ**: NestJS 10 (Backend) + TypeORM + PostgreSQL 15 (đúng đề tài; CI thêm PostgreSQL 16 để kiểm tra tương thích) + React 18 / Vite (Frontend) + Tailwind CSS + Lucide Icons.
 
 ## 2. Integrated Agent Skills (`.agents/skills/`)
 1. **`salon-spa-deep-auditor`**: Master audit & bug reproduction protocol for 23 QA items and 39 User Stories.

@@ -7,6 +7,11 @@ vòng đời lịch hẹn từ lúc đặt đến lúc thu tiền và nhận đ�
 Toàn bộ 39 user story / 6 epic / 165 point trong Product Backlog đều đã được cài đặt —
 xem bảng đối chiếu tại [`docs/BACKLOG-MAPPING.md`](docs/BACKLOG-MAPPING.md).
 
+**Bản kiểm định vận hành 08/10/2026:** ưu tiên web trên máy chủ, giữ tuỳ chọn cài tại tiệm.
+Xem [runbook máy chủ, cập nhật, sao lưu và các chặn nghiệm thu](docs/operations/PRODUCTION-READINESS-2026-10-08.md).
+Có sẵn Docker production candidate với dữ liệu/ảnh/sao lưu trên volume riêng; chưa xác nhận chạy thật
+do Docker Engine của máy kiểm định đang tắt. Ánh xạ 39 story không thay cho nghiệm thu nghiệp vụ và diễn tập phục hồi.
+
 ---
 
 ## Chạy dự án bằng MỘT cú nhấp — HoYoSalon Launcher

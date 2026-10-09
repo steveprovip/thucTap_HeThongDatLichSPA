@@ -1,0 +1,25 @@
+{
+  "manifest_sha256": "726faa8fab6264048683143ec3238f6f1482d47c99e0a773c1e4a90d61af255f",
+  "files": [
+    {
+      "path": "docs/release/STATUS.md",
+      "sha256": "65e245fbdeb5d31618c7224748a16e31c29d176137b18474d1d55b930fbedd16"
+    },
+    {
+      "path": "docs/release/README.md",
+      "sha256": "bccc624c88a12a51f5100f69fc2c1d77ef98d6dcff8ccc5b49f00eb736314540"
+    },
+    {
+      "path": "docs/release/PROJECT_MAP.md",
+      "sha256": "4dcf0f91cee7c673facf1a8e5c61bc6320881c6d1cb81e94b03f5766449fd898"
+    },
+    {
+      "path": "docs/release/RUNBOOK.md",
+      "sha256": "93fbeb5be554e652fd34fc15088a387afad5bbc39d10020e5909476518329643"
+    },
+    {
+      "path": "docs/release/PhatHanh_2026-10-08.pptx",
+      "sha256": "c6e80f9a77c4c7fe80a8753b561c8229cd438d419779ad42d6f03433aeb624d7"
+    }
+  ]
+}

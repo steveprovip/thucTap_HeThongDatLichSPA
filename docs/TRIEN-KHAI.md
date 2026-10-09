@@ -1,5 +1,9 @@
 # Triển khai, đồng bộ thời gian thực và cập nhật 1 chạm
 
+**Cập nhật 08/10/2026:** phương án web trên máy chủ với dữ liệu bền vững, bản Docker candidate,
+quy trình khôi phục và giới hạn kiểm chứng hiện tại nằm trong [runbook vận hành](operations/PRODUCTION-READINESS-2026-10-08.md).
+Các gói miễn phí và Quick Tunnel dưới đây phục vụ thử nghiệm; chưa phải cấu hình phát hành đã nghiệm thu.
+
 Tài liệu này mô tả cách đưa hệ thống ra chạy thật mà **không tốn tiền**, làm sao để máy bàn, laptop và điện thoại
 luôn thấy **cùng một dữ liệu**, và cách cập nhật phiên bản mới chỉ bằng một lần bấm.
 
@@ -86,7 +90,7 @@ Bộ sinh tự bỏ các câu lệnh về ràng buộc và chỉ mục vì chún
 Những điều **không được làm**: sửa `schema.sql`; sửa một migration đã được chạy ở máy khác (hãy thêm migration mới); đưa `seed.sql` vào migration; bật `synchronize`.
 
 **Sao lưu tự động.** `migration:run` chỉ sao lưu khi CSDL **đã có dữ liệu thật và có migration chờ chạy**, dùng `pg_dump` trên máy hoặc `docker exec salon_postgres pg_dump`,
-lưu ở `backups/` (đổi bằng `BACKUP_DIR`, giữ 15 bản mới nhất). Chế độ `MIGRATION_BACKUP`: `auto` (mặc định, không sao lưu được thì cảnh báo rồi tiếp tục),
+lưu ở `backups/` (đổi bằng `BACKUP_DIR`, giữ 14 bản mới nhất cho từng CSDL). Chế độ `MIGRATION_BACKUP`: `auto` (mặc định, không sao lưu được thì cảnh báo rồi tiếp tục),
 `required` (không sao lưu được thì **dừng, chưa đổi gì**; `update_project` dùng chế độ này), `off`. Mỗi migration chạy trong một giao dịch riêng nên migration lỗi tự hoàn tác.
 
 ---
@@ -246,7 +250,7 @@ Tài liệu Cloudflare không nói rõ Tunnel có tên có giữ được luồn
 
 ### 4.5 Sao lưu
 
-- Tự động: mỗi lần cập nhật có đổi cấu trúc, hệ thống sao lưu trước vào `backups/` (giữ 15 bản).
+- Tự động: mỗi lần cập nhật có đổi cấu trúc, hệ thống sao lưu trước vào `backups/` (giữ 14 bản cho từng CSDL).
 - Thủ công bất cứ lúc nào: `npm run db:backup` (tạo `backups/salon_booking_…_thu_cong.dump`). Nên chép thư mục `backups/` sang USB hoặc ổ đám mây định kỳ: bản sao nằm cùng ổ đĩa với dữ liệu không chống được hỏng ổ cứng.
 - Khôi phục (dừng máy chủ trước): `docker cp backups\<tệp>.dump salon_postgres:/tmp/s.dump` rồi
   `docker exec salon_postgres pg_restore -U salon -d salon_booking --clean --if-exists /tmp/s.dump`.

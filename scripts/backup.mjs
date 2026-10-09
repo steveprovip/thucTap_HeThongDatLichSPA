@@ -2,7 +2,7 @@
 /**
  * Sao lưu CSDL PostgreSQL bằng MỘT lệnh (dùng chung cho Windows / macOS / Linux):
  *
- *   node scripts/backup.mjs        sao lưu ngay -> backups/<csdl>_<thời điểm>_thu_cong.dump (giữ 15 bản mới nhất)
+ *   node scripts/backup.mjs        sao lưu ngay -> backups/<csdl-hash>_<thời điểm>_<id>_thu_cong.dump (giữ 14 bản mới nhất/CSDL)
  *
  * Ưu tiên bản backend ĐÃ build (dist/, không cần ts-node, chạy được trên máy vận hành); chưa build thì dùng mã nguồn.
  * Logic sao lưu thật nằm ở backend/src/database/backup.ts (pg_dump trong container salon_postgres hoặc pg_dump của máy).
