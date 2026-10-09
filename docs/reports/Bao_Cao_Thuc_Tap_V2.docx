@@ -1,0 +1,1037 @@
+CHƯƠNG 1. TỔNG QUAN VỀ ĐỀ TÀI
+1.1. Bối cảnh đề tài
+1.1.1. Tên đề tài
+Hệ thống đặt lịch Salon – Spa Hương Sen
+Đề tài tập trung xây dựng một ứng dụng web hỗ trợ quản lý hoạt động đặt lịch và vận hành tại salon – spa. Hệ thống được định hướng giải quyết toàn bộ vòng đời của một lịch hẹn, bắt đầu từ thời điểm khách hàng lựa chọn dịch vụ và khung giờ trên trang đặt lịch công khai, tiếp tục qua các bước xác nhận lịch, check-in, thực hiện dịch vụ, thanh toán, đánh giá sau dịch vụ và kết thúc bằng việc tổng hợp dữ liệu phục vụ hoạt động quản lý của chủ tiệm.
+Khác với một website giới thiệu dịch vụ thông thường, hệ thống không chỉ cung cấp chức năng đặt lịch mà còn hướng đến việc số hóa quá trình vận hành hằng ngày của salon. Các thông tin về dịch vụ, thời lượng thực hiện, kỹ năng của từng thợ, ca làm việc, ngày nghỉ và những lịch hẹn đã tồn tại được sử dụng làm dữ liệu đầu vào cho bộ tính toán khung giờ trống. Nhờ đó, hệ thống có thể đề xuất những thời điểm mà salon thực sự có khả năng tiếp nhận khách thay vì chỉ hiển thị các mốc thời gian cố định.
+1.1.2. Thông tin tổng quan của dự án 
+
+Nội dung
+Giá trị
+Tên hệ thống
+Hệ thống đặt lịch Salon – Spa Hương Sen
+Loại hệ thống
+Ứng dụng Web quản lý đặt lịch và vận hành salon spa
+Phương pháp phát triển
+Agile/Scrum
+Thời gian kế hoạch
+4 tuần
+Số Sprint
+4 Sprint × 1 tuần
+Số Epic
+6
+Số User Story
+39
+Tổng Story Point
+165 Point
+Velocity mục tiêu
+Khoảng 38–44 Point/Sprint
+Nhóm người dùng chính
+Khách hàng, Thợ, Lễ tân, Chủ tiệm, Quản trị hệ thống
+Frontend
+React 18, TypeScript, Vite
+Backend
+Node.js, NestJS
+ORM
+TypeORM
+Cơ sở dữ liệu
+PostgreSQL 15
+Kiểu kiến trúc giao tiếp
+REST API
+Môi trường hỗ trợ
+Docker Compose, pgAdmin, Maildev
+
+1.2. Bối cảnh và bài toán thực tế
+1.2.1. Bối cảnh nghiệp vụ
+Trong hoạt động của các salon – spa quy mô nhỏ và vừa, lịch hẹn thường được tiếp nhận thông qua nhiều kênh khác nhau. Khách hàng có thể liên hệ với salon bằng điện thoại, nhắn tin qua mạng xã hội hoặc liên hệ trực tiếp với người thợ quen. Khi những kênh tiếp nhận này không được đồng bộ vào một hệ thống duy nhất, việc quản lý lịch phụ thuộc nhiều vào thao tác thủ công của lễ tân hoặc nhân viên.
+Bối cảnh được đặt ra cho đề tài là một salon có khoảng 6–8 thợ, hiện tiếp nhận lịch hẹn chủ yếu qua ba hình thức: khách nhắn cho trang của tiệm, khách gọi điện trực tiếp cho lễ tân và khách quen liên hệ trực tiếp với thợ. Sau khi tiếp nhận thông tin, lễ tân phải ghi lịch vào sổ theo ngày.
+Cách quản lý này tương đối đơn giản khi lượng khách thấp, tuy nhiên bắt đầu phát sinh nhiều vấn đề khi số lượng lịch tăng lên, đặc biệt vào cuối tuần hoặc các khung giờ cao điểm.
+Một trong những vấn đề quan trọng là các dịch vụ tại salon có thời lượng rất khác nhau. Ví dụ, một dịch vụ đơn giản có thể chỉ cần khoảng 30 phút trong khi các dịch vụ phức tạp hơn có thể kéo dài 120 phút hoặc lâu hơn. Nếu việc quản lý chỉ ghi thời điểm bắt đầu mà không quản lý chính xác thời lượng, lễ tân phải tự ước lượng xem một thợ còn đủ thời gian tiếp nhận khách tiếp theo hay không.
+Bài toán càng phức tạp khi một khách lựa chọn nhiều dịch vụ trong cùng một lần hẹn. Khi đó hệ thống phải xét tổng thời gian thực hiện, kỹ năng của thợ, ca làm việc, giờ mở cửa, ngày nghỉ và các lịch đã tồn tại trước khi xác định một khoảng thời gian là khả dụng.
+Ngoài ra, lịch làm việc của nhân viên không hoàn toàn cố định. Thợ có thể làm theo ca khác nhau giữa các ngày, có ngày nghỉ riêng hoặc có thể nghỉ đột xuất. Nếu sử dụng phương pháp ghi chép thủ công, việc thay đổi lịch của một thợ có thể buộc lễ tân phải rà soát lại nhiều lịch hẹn và liên hệ từng khách hàng để điều chỉnh.
+Như vậy, bài toán của đề tài không đơn thuần là xây dựng chức năng “đặt lịch online”, mà là giải quyết bài toán lập lịch tài nguyên theo thời gian, trong đó thợ là tài nguyên, dịch vụ quyết định thời lượng cần thiết và mỗi lịch hẹn chiếm một khoảng thời gian cụ thể của tài nguyên đó.
+1.3. Các vấn đề của phương thức quản lý hiện tại
+Vấn đề
+Nguyên nhân
+Hệ quả
+Đặt trùng lịch của thợ
+Lịch đến từ nhiều nguồn và không có cơ chế khóa khung giờ tập trung
+Hai khách có thể cùng được hẹn với một thợ tại cùng thời điểm
+Phân bổ thời gian chưa tối ưu
+Lễ tân phải ước lượng thời lượng dịch vụ bằng kinh nghiệm
+Có thể chứa quá nhiều thời gian giữa các lịch, gây lãng phí công suất
+Khó xử lý nhiều dịch vụ
+Một khách có thể chọn nhiều dịch vụ với tổng thời lượng khác nhau
+Khó xác định chính xác khung giờ phù hợp
+Quản lý ca làm phức tạp
+Ca làm của thợ có thể thay đổi theo tuần
+Dễ đề xuất lịch vào thời điểm thợ không làm việc
+Khó xử lý nghỉ đột xuất
+Không có công cụ tìm lịch bị ảnh hưởng
+Lễ tân phải rà soát và liên hệ từng khách
+Khách không đến
+Không có cơ chế nhắc lịch và thống kê
+Khung giờ đã giữ nhưng không tạo ra doanh thu
+Tra cứu lịch chậm
+Thông tin nằm trong sổ hoặc tin nhắn
+Lễ tân phải tìm kiếm thủ công
+Thiếu lịch sử khách hàng
+Thông tin dịch vụ phụ thuộc trí nhớ của thợ
+Khó phục vụ khách quay lại khi thay đổi nhân viên
+Báo cáo doanh thu thủ công
+Dữ liệu lịch và thanh toán không được liên kết
+Chủ tiệm phải tổng hợp bằng tay
+Thiếu khả năng truy vết
+Không có nhật ký thay đổi dữ liệu
+Khó xác định người thực hiện khi xảy ra sai sót
+
+1.4. Lý do lựa chọn đề tài
+Việc lựa chọn đề tài “Hệ thống đặt lịch Salon – Spa” xuất phát đồng thời từ nhu cầu thực tế và giá trị chuyên môn đối với ngành Công nghệ thông tin.
+Trước hết, bài toán đặt lịch là một bài toán phổ biến trong nhiều lĩnh vực dịch vụ như salon, spa, phòng khám, trung tâm tư vấn, bảo dưỡng phương tiện và các dịch vụ cung cấp theo khung thời gian. Vì vậy, việc nghiên cứu và xây dựng hệ thống đặt lịch có giá trị thực tiễn cao và các kiến thức thu được có khả năng áp dụng cho nhiều bài toán tương tự.
+Thứ hai, đề tài không chỉ bao gồm các thao tác CRUD đơn giản. Phần quan trọng của hệ thống là việc xử lý mối quan hệ giữa dịch vụ – thời lượng – kỹ năng của thợ – ca làm – ngày nghỉ – lịch hẹn hiện tại để xác định được một khung giờ hợp lệ.
+Đặc biệt, hệ thống còn phải xử lý trường hợp nhiều người dùng đồng thời lựa chọn cùng một khung giờ. Nếu hai yêu cầu đặt lịch được gửi gần như cùng lúc, việc chỉ kiểm tra dữ liệu tại tầng giao diện hoặc backend thông thường vẫn có khả năng dẫn đến tình trạng đặt trùng. Do đó, dự án cần sử dụng cơ chế transaction, locking và các ràng buộc ở tầng cơ sở dữ liệu để đảm bảo tính nhất quán.
+Thứ ba, đề tài cho phép áp dụng tương đối đầy đủ kiến thức của chuyên ngành Công nghệ thông tin, bao gồm phân tích yêu cầu, thiết kế hệ thống, thiết kế cơ sở dữ liệu, lập trình frontend, backend, REST API, xác thực, phân quyền, kiểm thử, bảo mật, quản lý mã nguồn, container hóa và triển khai phần mềm.
+Cuối cùng, hệ thống có nhiều nhóm người dùng với quyền hạn khác nhau. Điều này tạo điều kiện để nhóm thực hiện nghiên cứu và triển khai cơ chế Role-Based Access Control – RBAC, là một nội dung quan trọng trong các hệ thống phần mềm doanh nghiệp.
+Vì các lý do trên, đề tài vừa có tính thực tế, vừa có đủ độ phức tạp kỹ thuật để thể hiện quá trình phân tích, thiết kế và xây dựng một hệ thống phần mềm theo đúng định hướng chuyên ngành Công nghệ thông tin.
+1.5. Mục tiêu của đề tài
+1.5.1. Mục tiêu tổng quát
+Mục tiêu tổng quát của đề tài là xây dựng một hệ thống web hỗ trợ quản lý hoạt động đặt lịch và vận hành của salon – spa, trong đó dữ liệu được quản lý tập trung và lịch hẹn được xử lý xuyên suốt từ thời điểm khách hàng lựa chọn dịch vụ cho đến khi hoàn tất thanh toán và đánh giá.
+Hệ thống hướng tới việc giảm các thao tác thủ công của lễ tân, hạn chế xung đột lịch, tận dụng hiệu quả thời gian làm việc của nhân viên, giúp khách hàng chủ động lựa chọn thời gian phù hợp và cung cấp cho chủ tiệm dữ liệu phục vụ công tác quản lý.
+1.5.2. Mục tiêu nghiệp vụ
+Hệ thống cần hỗ trợ một quy trình nghiệp vụ xuyên suốt như sau:
+Khách hàng lựa chọn dịch vụ → hệ thống tính tổng thời lượng → xác định thợ phù hợp → tính khung giờ trống → khách đặt lịch → salon xác nhận → hệ thống nhắc lịch → khách check-in → thợ thực hiện dịch vụ → hoàn tất → lập phiếu tính tiền → khách đánh giá → dữ liệu được tổng hợp vào báo cáo.
+Điểm quan trọng của quy trình trên là dữ liệu chỉ được nhập một lần và được kế thừa giữa các bước. Ví dụ, các dịch vụ khách lựa chọn khi đặt lịch có thể tiếp tục được sử dụng khi thợ xem lịch và khi lễ tân lập phiếu thanh toán.
+1.5.3. Mục tiêu định lượng
+Đề tài đã xác định một số tiêu chí có thể đo lường để phục vụ việc nghiệm thu. 
+Mục tiêu
+Chỉ tiêu đánh giá
+Hoàn thành luồng nghiệp vụ end-to-end
+Một lịch hẹn đi từ đặt lịch đến đánh giá mà không cần thực hiện bước nghiệp vụ nào bên ngoài hệ thống
+Chống đặt trùng thợ
+Không xuất hiện hai lịch chồng thời gian trên cùng một thợ trong bộ kiểm thử 200 lượt đặt, bao gồm 20 yêu cầu đồng thời vào cùng khung giờ
+Tính đúng khung giờ trống
+Không sai trên bộ 30 trường hợp kiểm thử với các dịch vụ có thời lượng 30, 60 và 120 phút
+Tối ưu thao tác lễ tân
+Thời gian từ lúc mở lịch ngày đến khi hoàn thành check-in một khách dưới 60 giây
+Báo cáo doanh thu
+Kết quả trả về dưới 3 giây và khớp với dữ liệu phiếu tính tiền đã đóng
+Giao diện công khai
+Thời gian tải mục tiêu dưới 2 giây trên kết nối 4G
+Truy vấn lịch trống
+Dưới 800 ms trong điều kiện dữ liệu mục tiêu của đề tài
+
+1.6. Đối tượng sử dụng hệ thống
+Hệ thống được thiết kế cho năm nhóm người dùng chính. Việc phân chia rõ vai trò ngay từ đầu là cơ sở cho thiết kế giao diện, REST API và cơ chế phân quyền sau này. 
+Vai trò
+Đặc điểm
+Nhu cầu chính
+Khách hàng 
+Người sử dụng dịch vụ của salon, chủ yếu thao tác qua điện thoại
+Xem dịch vụ, lựa chọn dịch vụ, tìm giờ trống, đặt lịch, tra cứu, hủy lịch và đánh giá
+Thợ 
+Nhân viên trực tiếp cung cấp dịch vụ
+Xem lịch cá nhân, xem thông tin cần thiết của khách, bắt đầu và hoàn thành dịch vụ
+Lễ tân 
+Nhân viên điều phối hoạt động tại quầy
+Quản lý lịch ngày, xác nhận lịch, check-in, đổi thợ, dời lịch, xử lý khách vãng lai, tính tiền
+Chủ tiệm 
+Người quản lý hoạt động kinh doanh
+Quản lý dịch vụ, nhân viên, ca làm, giá, theo dõi dashboard và báo cáo doanh thu
+Quản trị hệ thống 
+Người chịu trách nhiệm quản trị kỹ thuật
+Quản lý tài khoản, vai trò và kiểm tra nhật ký hoạt động
+
+Một điểm thiết kế đáng chú ý là khách hàng không bắt buộc tạo tài khoản. Sau khi đặt lịch, khách sử dụng thông tin liên hệ và mã tra cứu để kiểm tra lịch. Cách tiếp cận này giúp giảm số bước cần thực hiện, đặc biệt khi phần lớn thao tác đặt lịch diễn ra trên điện thoại.
+Ngược lại, các chức năng nội bộ của salon yêu cầu người dùng đăng nhập và được xác thực vai trò trước khi truy cập.
+1.7. Phạm vi của đề tài
+Việc xác định phạm vi là cần thiết vì thời gian phát triển của dự án được giới hạn trong bốn Sprint. Phạm vi được chia thành chức năng thực hiện trong phiên bản hiện tại và những chức năng chưa được đưa vào dự án. 
+1.7.1. Phạm vi thực hiện
+
+Nhóm
+Nội dung
+Tài khoản
+Đăng nhập, quản trị tài khoản nhân sự và phân quyền theo năm vai trò
+Dịch vụ
+Quản lý nhóm dịch vụ, dịch vụ, giá và thời lượng
+Nhân sự
+Quản lý hồ sơ thợ và kỹ năng dịch vụ của từng thợ
+Hoạt động salon
+Quản lý giờ mở cửa
+Lịch làm
+Quản lý ca làm theo tuần, ngày nghỉ của salon và ngày nghỉ riêng của thợ
+Đặt lịch
+Trang công khai để khách chọn nhiều dịch vụ, chọn thợ hoặc để hệ thống phân thợ
+Tính lịch trống
+Xác định khung giờ dựa trên tổng thời lượng, kỹ năng, ca làm và lịch hiện có
+Chống xung đột
+Ngăn nhiều lịch hẹn chiếm cùng khoảng thời gian của một thợ
+Vận hành
+Xác nhận, check-in, dời lịch, đổi thợ, hủy, no-show và khách vãng lai
+Xử lý nghỉ đột xuất
+Hỗ trợ chuyển các lịch bị ảnh hưởng khi một thợ nghỉ
+Khách hàng
+Hồ sơ khách được tổng hợp theo số điện thoại và lưu lịch sử dịch vụ
+Thanh toán
+Lập phiếu tính tiền khi dịch vụ hoàn tất
+Đánh giá
+Khách hàng đánh giá sau dịch vụ
+Thông báo
+Email xác nhận, nhắc lịch và thông báo trong ứng dụng
+Báo cáo
+Dashboard và báo cáo doanh thu theo thợ, dịch vụ và khoảng thời gian
+Nhật ký
+Ghi nhận các thao tác thay đổi dữ liệu quan trọng
+
+1.7.2. Ngoài phạm vi
+
+Nội dung
+Giới hạn của phiên bản hiện tại
+Thanh toán trực tuyến
+Không kết nối ngân hàng hoặc ví điện tử
+Mobile App native
+Không xây dựng ứng dụng iOS/Android riêng; sử dụng web responsive
+SMS/Zalo OA
+Chưa tích hợp dịch vụ SMS hoặc Zalo thương mại
+Quản lý kho
+Không xử lý xuất nhập tồn mỹ phẩm, thuốc hoặc nguyên vật liệu
+Thành viên nâng cao
+Không xây dựng nhiều cấp thành viên hoặc tích điểm phức tạp
+Nhiều chi nhánh
+Chỉ phục vụ một cơ sở salon
+Tính lương
+Không xử lý chấm công, lương và hoa hồng chi tiết
+AI/ML
+Không sử dụng học máy để dự báo lượng khách hoặc tự động đề xuất lịch
+
+1.8. Giả định và giới hạn của hệ thống
+Bên cạnh phạm vi chức năng, quá trình thiết kế hiện tại dựa trên một số giả định nghiệp vụ quan trọng. Nếu các giả định này thay đổi, kiến trúc hoặc mô hình dữ liệu của hệ thống cũng có thể phải thay đổi đáng kể.
+Thứ nhất, hệ thống được xây dựng cho một cơ sở salon duy nhất. Vì vậy dữ liệu hiện tại chưa cần xử lý vấn đề phân chi nhánh hoặc chuyển lịch giữa nhiều cơ sở.
+Thứ hai, mỗi lượt dịch vụ được giả định do một thợ thực hiện từ đầu đến cuối. Hệ thống hiện chưa xử lý trường hợp một dịch vụ phải cần đồng thời nhiều thợ.
+Thứ ba, thời lượng của dịch vụ được định nghĩa theo dịch vụ và được coi là thống nhất giữa các thợ. Ví dụ, nếu một dịch vụ được cấu hình là 60 phút thì bộ tính lịch sử dụng 60 phút bất kể người thợ thực hiện.
+Thứ tư, khách hàng không cần tài khoản. Số điện thoại và mã tra cứu lịch được sử dụng làm cơ sở để khách kiểm tra thông tin đặt lịch.
+Thứ năm, trong phạm vi dự án hiện tại, email được lựa chọn làm kênh gửi xác nhận và nhắc lịch chính; SMS và Zalo OA chưa được tích hợp.
+1.9. Tầm nhìn sản phẩm
+Tầm nhìn của sản phẩm là xây dựng một hệ thống quản lý lịch hẹn tập trung dành cho salon – spa quy mô vừa, giúp khách hàng chủ động lựa chọn dịch vụ và thời gian phù hợp trong khi salon có khả năng kiểm soát chính xác năng lực phục vụ.
+Đối với khách hàng, hệ thống cần tạo ra trải nghiệm đặt lịch đơn giản, đặc biệt trên điện thoại. Người dùng không phải gọi cho lễ tân để hỏi từng giờ còn trống mà có thể xem trực tiếp những khung giờ thực sự khả dụng.
+Đối với lễ tân, mục tiêu là chuyển từ phương thức ghi nhớ và điều phối thủ công sang một màn hình lịch tập trung. Lễ tân có thể quan sát lịch của các thợ trong ngày, xử lý lịch mới, khách đến, lịch thay đổi và các tình huống phát sinh.
+Đối với thợ, hệ thống cung cấp lịch cá nhân và thông tin cần thiết để chuẩn bị trước cho từng lượt khách.
+Đối với chủ tiệm, dữ liệu vận hành được chuyển thành các thông tin có khả năng thống kê như số lượng lịch, doanh thu theo thợ, doanh thu theo dịch vụ và mật độ lịch theo thời gian.
+Do đó, giá trị cốt lõi của sản phẩm không chỉ là đặt lịch trực tuyến, mà là hình thành một nguồn dữ liệu thống nhất cho toàn bộ hoạt động của salon.
+1.10. Yêu cầu phi chức năng tổng quát
+Bên cạnh chức năng nghiệp vụ, hệ thống còn xác định một số yêu cầu liên quan đến hiệu năng, bảo mật, khả năng sử dụng và vận hành.  
+Nhóm
+Yêu cầu định hướng
+Hiệu năng
+Trang đặt lịch công khai mục tiêu tải dưới 2 giây trên 4G
+Booking Engine
+Truy vấn khung giờ trống mục tiêu dưới 800 ms trong điều kiện dữ liệu xác định
+Báo cáo
+Báo cáo doanh thu một tháng mục tiêu trả về dưới 3 giây
+Quy mô
+Khoảng 10 thợ, 200 lịch/tuần và 20.000 lịch tích lũy
+Đồng thời
+Khoảng 30 người dùng đồng thời trên trang công khai
+Responsive
+Hỗ trợ màn hình từ 360 px
+Màn hình nghiệp vụ
+Lịch lễ tân được tối ưu cho màn hình desktop khoảng 1366px
+Ngôn ngữ
+Giao diện sử dụng tiếng Việt
+Tiền tệ
+VND
+Múi giờ
+Asia/Ho_Chi_Minh
+Phân quyền
+Kiểm tra quyền ở backend
+Đăng nhập
+Khóa tạm thời sau nhiều lần đăng nhập sai
+Dữ liệu cá nhân
+Hạn chế quyền xem thông tin khách theo vai trò
+Audit
+Ghi lại các thao tác thay đổi dữ liệu quan trọng
+Backup
+Sao lưu CSDL tự động theo định kỳ
+
+Một điểm đáng chú ý là dữ liệu về số điện thoại khách hàng được xem là thông tin cần bảo vệ. Vai trò thợ không nhất thiết phải nhìn thấy đầy đủ số điện thoại, trong khi lễ tân và chủ tiệm có nhu cầu nghiệp vụ lớn hơn. Đây là lý do phân quyền trong hệ thống không chỉ dựa trên màn hình mà còn phải kiểm soát dữ liệu trả về từ backend.
+1.11. Cấu trúc chức năng tổng quát
+Dựa trên Product Backlog, phạm vi hệ thống được tổ chức thành 6 Epic. 3. Hệ thống đặt lịch Salon Spa
+Epic
+Nội dung
+EP-01
+Tài khoản và phân quyền
+EP-02
+Dịch vụ, thợ và lịch làm việc
+EP-03
+Đặt lịch công khai và tính khung giờ trống
+EP-04
+Vận hành lịch hẹn hằng ngày
+EP-05
+Thanh toán và hồ sơ khách hàng
+EP-06
+Nhắc lịch, thông báo và báo cáo
+
+1.12. Ý nghĩa của đề tài
+1.12.1. Ý nghĩa thực tiễn
+Đối với salon, hệ thống giúp tập trung dữ liệu lịch hẹn vào một nơi, giảm phụ thuộc vào sổ giấy và thông tin nằm rải rác trên nhiều kênh.
+Đối với khách hàng, hệ thống tăng tính chủ động khi cho phép xem dịch vụ và khung giờ phù hợp mà không nhất thiết phải liên hệ trực tiếp với lễ tân.
+Đối với nhân viên, thông tin lịch làm việc trở nên minh bạch và dễ tra cứu hơn.
+Đối với chủ tiệm, dữ liệu phát sinh trong quá trình vận hành có thể được khai thác cho báo cáo thay vì tổng hợp bằng tay.
+1.12.2. Ý nghĩa chuyên môn
+Về mặt chuyên ngành Công nghệ thông tin, đề tài tạo điều kiện áp dụng một chuỗi kiến thức tương đối đầy đủ:
+Phân tích nghiệp vụ → quản lý yêu cầu → mô hình hóa hệ thống → thiết kế CSDL → lập trình frontend/backend → REST API → xác thực và phân quyền → xử lý giao dịch → kiểm thử → container hóa → triển khai → giám sát và bảo trì.
+Điều này giúp sản phẩm không dừng lại ở một bài tập xây dựng giao diện hoặc CRUD mà có thể được trình bày như một dự án phát triển hệ thống phần mềm hoàn chỉnh.
+CHƯƠNG 2. KHẢO SÁT VÀ PHÂN TÍCH YÊU CẦU HỆ THỐNG
+2.1. Mục đích phân tích yêu cầu
+Phân tích yêu cầu là bước chuyển tiếp giữa việc xác định bài toán thực tế và quá trình thiết kế, xây dựng phần mềm. Đối với hệ thống đặt lịch Salon – Spa, mục tiêu của giai đoạn này là xác định rõ hệ thống cần phục vụ những đối tượng nào, mỗi đối tượng có nhu cầu gì, dữ liệu nào cần được quản lý, các quy tắc nghiệp vụ phải được tuân thủ và những điều kiện nào quyết định một chức năng được xem là đúng.
+Nếu yêu cầu không được xác định rõ ngay từ đầu, những phần phức tạp như tính khung giờ trống, phân thợ, đổi lịch hoặc chống đặt trùng rất dễ được xử lý khác nhau giữa frontend, backend và cơ sở dữ liệu. Vì vậy, chương này tập trung chuẩn hóa các yêu cầu thành một mô hình thống nhất trước khi chuyển sang thiết kế kỹ thuật.
+2.2. Phân tích các vấn đề của quy trình hiện tại
+Các nhóm vấn đề chính.
+2.2.1. Quản lý lịch hẹn thiếu tính nhất quán
+Lịch được tiếp nhận từ nhiều nguồn nhưng không có một cơ sở dữ liệu tập trung làm nguồn dữ liệu duy nhất.
+Điều này làm phát sinh trường hợp hai khách được hẹn vào cùng một thời điểm với cùng một thợ.
+Đặc biệt, nếu hai người cùng tiếp nhận lịch hoặc một khách liên hệ trực tiếp với thợ trong khi lễ tân đang nhận lịch khác, khả năng xảy ra xung đột càng cao.
+2.2.2. Khả năng sử dụng thời gian của thợ chưa tối ưu
+Do không có hệ thống tính toán thời lượng tự động, lễ tân có xu hướng chừa dư thời gian để đảm bảo an toàn.
+Một lịch thực tế chỉ cần 30 phút có thể được giữ khoảng một giờ. Khi nhiều lịch được xử lý theo cách này, salon mất một phần khả năng tiếp nhận khách mặc dù thợ thực tế vẫn còn thời gian trống.
+2.2.3. Khó quản lý lịch làm việc của nhân viên
+Thợ có thể có nhiều ca trong một ngày, ca làm thay đổi theo tuần, có thời gian nghỉ giữa ca hoặc nghỉ riêng.
+Nếu tất cả thông tin này chỉ nằm trong bảng ca hoặc trí nhớ của lễ tân thì việc xác định một thợ thực sự rảnh ở một thời điểm cụ thể trở nên phức tạp.
+2.2.4. Thông tin khách hàng không được kế thừa
+Lịch sử dịch vụ chủ yếu phụ thuộc vào trí nhớ của nhân viên.
+Khi khách quay lại, salon khó tra cứu nhanh những thông tin như dịch vụ lần trước, người thợ thực hiện hoặc ghi chú kỹ thuật.
+Điều này đặc biệt bất tiện khi thợ cũ nghỉ hoặc khách được chuyển sang một thợ khác.
+2.2.5. Thiếu dữ liệu phục vụ quản lý
+Doanh thu, số lịch, tỷ lệ khách không đến, số lượt thực hiện của từng thợ và cơ cấu dịch vụ chưa được tổng hợp tự động.
+Chủ tiệm phải xử lý dữ liệu thủ công nên khó theo dõi chính xác hoạt động kinh doanh trong từng khoảng thời gian. 3. Hệ thống đặt lịch Salon Spa
+2.3. Xác định các tác nhân của hệ thống
+Dự án xác định 5 vai trò chính gồm Khách hàng, Thợ, Lễ tân, Chủ tiệmvà Admin. 
+2.3.1. Khách hàng – Customer
+Khách hàng là người sử dụng dịch vụ của salon.
+Đây là nhóm người dùng chủ yếu truy cập hệ thống thông qua điện thoại và không bắt buộc phải tạo tài khoản.
+Khách hàng thực hiện được các nghiệp vụ:
+Xem danh sách dịch vụ;
+Chọn một hoặc nhiều dịch vụ;
+Xem tổng thời gian và chi phí tạm tính;
+Lựa chọn ngày;
+Lựa chọn thợ hoặc thợ bất kỳ;
+Xem khung giờ còn trống;
+Đặt lịch;
+Tra cứu lịch;
+Tự hủy lịch trong thời gian cho phép;
+Nhận email xác nhận và nhắc lịch;
+Đánh giá sau khi hoàn thành dịch vụ.
+Khách hàng chỉ được truy cập dữ liệu liên quan đến lịch hẹn của chính mình.
+2.3.2. Thợ – Stylist
+Thợ là người trực tiếp thực hiện dịch vụ.
+Mỗi thợ có một hồ sơ nghề nghiệp, danh sách dịch vụ có khả năng thực hiện và lịch làm việc theo từng ngày.
+Thợ có nhu cầu:
+Xem lịch làm việc cá nhân;
+Xem những khách sắp tới;
+Xem dịch vụ cần thực hiện;
+Xem ghi chú của khách;
+Đánh dấu bắt đầu;
+Đánh dấu hoàn thành;
+Xem lịch sử dịch vụ cần thiết của khách;
+Nhập ghi chú kỹ thuật;
+Nhận thông báo khi lịch của mình thay đổi.
+Thợ không được phép xem toàn bộ lịch của các thợ khác hoặc các thông tin quản trị như doanh thu tổng thể của salon.
+2.3.3. Lễ tân – Receptionist
+Lễ tân là người trực tiếp điều phối hoạt động hằng ngày của salon.
+Đây là một trong những vai trò sử dụng hệ thống nhiều nhất.
+Lễ tân cần:
+Xem lịch của toàn salon;
+Xác nhận hoặc từ chối lịch online;
+Check-in khách;
+Dời thời gian hẹn;
+Đổi thợ;
+Nhập khách vãng lai;
+Đánh dấu khách không đến;
+Xử lý tình huống thợ nghỉ;
+Tra cứu hồ sơ khách;
+Tạo phiếu thanh toán;
+Xử lý các điều chỉnh cần thiết trong quá trình vận hành.
+2.3.4. Chủ tiệm – Owner
+Chủ tiệm là người chịu trách nhiệm cấu hình nghiệp vụ và theo dõi hoạt động kinh doanh.
+Các nghiệp vụ chính gồm:
+Quản lý danh mục dịch vụ;
+Quản lý nhóm dịch vụ;
+Quản lý giá và thời lượng;
+Quản lý hồ sơ thợ;
+Gán kỹ năng cho thợ;
+Cấu hình giờ mở cửa;
+Xếp ca;
+Khai báo ngày nghỉ;
+Xem lịch toàn salon;
+Xem hồ sơ khách;
+Xem dashboard;
+Xem báo cáo doanh thu;
+Quản lý chương trình giảm giá trong phạm vi của dự án.
+2.3.5. Quản trị hệ thống – Admin
+Admin chịu trách nhiệm quản lý tài khoản và hỗ trợ vận hành kỹ thuật của hệ thống.
+Admin có khả năng:
+Tạo tài khoản nhân sự;
+Sửa tài khoản;
+Khóa/ngưng hoạt động tài khoản;
+Gán vai trò;
+Kiểm tra phân quyền;
+Xem audit log;
+Hỗ trợ kiểm tra staging và dữ liệu mẫu.
+Admin không được hiểu là người sở hữu toàn bộ nghiệp vụ kinh doanh. Các thao tác liên quan đến giá, dịch vụ hoặc doanh thu vẫn được phân quyền theo thiết kế nghiệp vụ.
+2.4. Phân tích yêu cầu chức năng
+Để thuận lợi cho việc thiết kế, kiểm thử và truy vết sau này, các yêu cầu chức năng được gán mã từ FR-01 trở đi.
+2.4.1. Nhóm tài khoản và phân quyền
+Mã
+Yêu cầu chức năng
+Actor chính
+FR-01
+Hệ thống cho phép nhân sự đăng nhập bằng email và mật khẩu
+Admin, Chủ tiệm, Thợ, Lễ tân
+FR-02
+Hệ thống cấp và làm mới phiên đăng nhập
+Nhân viên
+FR-03
+Hệ thống khóa tạm tài khoản sau nhiều lần đăng nhập sai
+Hệ thống
+FR-04
+Admin được tạo, sửa và ngưng hoạt động tài khoản nhân sự
+Admin
+FR-05
+Admin được gán vai trò cho tài khoản
+Admin
+FR-06
+Người dùng được đổi mật khẩu
+Nhân viên
+FR-07
+Người dùng được yêu cầu đặt lại mật khẩu khi quên
+Nhân viên
+FR-08
+Hệ thống kiểm soát quyền ở cả giao diện và API
+Hệ thống
+FR-09
+Hệ thống ghi nhật ký các thao tác dữ liệu quan trọng
+Hệ thống
+
+2.4.2. Nhóm dịch vụ và danh mục
+Mã
+Yêu cầu
+Actor
+FR-10
+Quản lý nhóm dịch vụ
+Chủ tiệm
+FR-11
+Quản lý danh sách dịch vụ
+Chủ tiệm
+FR-12
+Khai báo thời lượng chuẩn của dịch vụ
+Chủ tiệm
+FR-13
+Khai báo giá dịch vụ
+Chủ tiệm
+FR-14
+Bật/ngừng bán dịch vụ
+Chủ tiệm
+FR-15
+Hiển thị dịch vụ công khai theo nhóm
+Khách hàng
+FR-16
+Tìm kiếm dịch vụ theo tên
+Khách hàng
+
+Mỗi dịch vụ phải chứa các thông tin cơ bản gồm tên, nhóm, thời lượng, giá, mô tả và trạng thái.
+Thời lượng dịch vụ được giới hạn từ 15 đến 240 phút và phải là bội số của 15 phút.
+Giá dịch vụ phải là số nguyên dương không vượt quá 20.000.000 đồng.
+Dịch vụ đã được tham chiếu bởi lịch hẹn cũ không được xóa vật lý mà chỉ chuyển sang trạng thái ngừng bán. Việc thay đổi thời lượng hoặc giá của dịch vụ sau này không được làm thay đổi dữ liệu của những lịch hẹn đã tồn tại trước đó. 3. Hệ thống đặt lịch Salon Spa
+2.4.3. Nhóm quản lý thợ và lịch làm việc
+Mã
+Yêu cầu
+Actor
+FR-17
+Quản lý hồ sơ thợ
+Chủ tiệm
+FR-18
+Gán dịch vụ/kỹ năng cho thợ
+Chủ tiệm
+FR-19
+Khai báo giờ mở cửa
+Chủ tiệm
+FR-20
+Xếp nhiều ca cho một thợ trong một ngày
+Chủ tiệm
+FR-21
+Sao chép ca làm sang tuần tiếp theo
+Chủ tiệm
+FR-22
+Khai báo ngày nghỉ toàn salon
+Chủ tiệm
+FR-23
+Khai báo ngày nghỉ riêng của từng thợ
+Chủ tiệm
+FR-24
+Cảnh báo lịch bị ảnh hưởng khi khai báo ngày nghỉ
+Chủ tiệm
+
+Một thợ có thể thực hiện nhiều dịch vụ và một dịch vụ có thể được thực hiện bởi nhiều thợ.
+Các ca của cùng một thợ không được phép chồng lấn.
+Ca làm phải nằm trong giờ mở cửa của salon.
+Nếu một ca đã chứa lịch hẹn thì hệ thống không cho phép xóa trực tiếp mà phải xử lý những lịch liên quan trước.
+2.4.4. Nhóm đặt lịch công khai
+Đây là nhóm chức năng trung tâm của hệ thống.
+Mã
+Yêu cầu
+Actor
+FR-25
+Khách xem dịch vụ công khai
+Người dùng
+FR-26
+Khách chọn nhiều dịch vụ
+Người dùng
+FR-27
+Hệ thống tính tổng thời lượng
+Hệ thống
+FR-28
+Hệ thống tính tổng tiền tạm tính
+Hệ thống
+FR-29
+Khách chọn ngày
+Người dùng
+FR-30
+Hệ thống tìm các thợ đủ kỹ năng
+Hệ thống
+FR-31
+Hệ thống tính khung giờ khả dụng
+Hệ thống
+FR-32
+Khách chọn thợ cụ thể
+Người dùng
+FR-33
+Khách chọn “thợ bất kỳ”
+Người dùng
+FR-34
+Khách nhập thông tin liên hệ
+Người dùng
+FR-35
+Khách chốt lịch
+Người dùng
+FR-36
+Hệ thống sinh mã tra cứu
+Hệ thống
+FR-37
+Hệ thống chống đặt trùng
+Hệ thống
+FR-38
+Khách tra cứu lịch
+Người dùng
+
+Khách được chọn tối đa 5 dịch vụ trong một lượt đặt.
+Khung giờ được chia theo bước 15 phút.
+Ngoài ra, đối với đặt lịch online, thời điểm bắt đầu phải cách thời điểm hiện tại ít nhất 60 phút. 3. Hệ thống đặt lịch Salon Spa
+2.4.5. Nhóm vận hành lịch hẹn
+Mã
+Yêu cầu
+Actor
+FR-39
+Xem lịch ngày của toàn salon
+Lễ tân
+FR-40
+Xem lịch cá nhân
+Thợ
+FR-41
+Xác nhận lịch online
+Lễ tân
+FR-42
+Từ chối lịch online
+Lễ tân
+FR-43
+Check-in khách
+Lễ tân
+FR-44
+Dời thời gian lịch hẹn
+Lễ tân
+FR-45
+Đổi thợ
+Lễ tân
+FR-46
+Khách tự hủy lịch
+Khách hàng
+FR-47
+Đánh dấu khách không đến
+Lễ tân
+FR-48
+Tạo lịch cho khách vãng lai
+Lễ tân
+FR-49
+Xử lý thợ nghỉ đột xuất
+Lễ tân
+FR-50
+Thợ bắt đầu thực hiện dịch vụ
+Thợ
+FR-51
+Thợ hoàn tất dịch vụ
+Thợ
+
+Màn hình lễ tân hiển thị lịch theo ngày với mỗi thợ là một cột và thời gian được chia theo các khoảng 15 phút.
+Khoảng thời gian ngoài ca hoặc ngày nghỉ cần được biểu diễn khác biệt rõ ràng và không cho phép tạo lịch.
+2.4.6. Nhóm quản lý khách hàng
+Mã
+Yêu cầu
+Actor
+FR-52
+Tự động tạo/khớp hồ sơ khách theo số điện thoại
+Hệ thống
+FR-53
+Tìm kiếm khách theo tên hoặc số điện thoại
+Lễ tân
+FR-54
+Xem lịch sử dịch vụ
+Thợ, Lễ tân, Chủ tiệm
+FR-55
+Ghi chú kỹ thuật cho lượt dịch vụ
+Thợ
+FR-56
+Theo dõi số lần khách không đến
+Hệ thống
+
+Số điện thoại là thông tin chính dùng để liên kết nhiều lần đặt lịch của cùng một khách.
+Tuy nhiên, việc khớp dữ liệu cần tránh tự động ghi đè các thông tin đã tồn tại nếu thông tin ở lần đặt mới khác với hồ sơ hiện tại.
+2.4.7. Nhóm thanh toán
+Mã
+Yêu cầu
+Actor
+FR-57
+Tạo phiếu tính tiền từ lịch hẹn
+Lễ tân
+FR-58
+Tự động nạp dịch vụ và đơn giá
+Hệ thống
+FR-59
+Cho phép bổ sung dịch vụ phát sinh
+Lễ tân
+FR-60
+Tính tổng tiền
+Hệ thống
+FR-61
+Ghi nhận hình thức thanh toán
+Lễ tân
+FR-62
+Áp dụng mã giảm giá
+Chủ tiệm, Lễ tân 
+FR-63
+Đóng lịch hẹn sau thanh toán
+Lễ tân
+FR-64
+Tạo phiếu điều chỉnh khi cần sửa phiếu đã đóng
+Người có quyền
+
+Phiếu tính tiền phải sử dụng đơn giá tại thời điểm phát sinh lịch, không lấy giá mới nếu chủ tiệm đã thay đổi giá dịch vụ sau khi khách đặt.
+2.4.8. Nhóm đánh giá và phản hồi
+Mã
+Yêu cầu
+Actor
+FR-65
+Khách chấm từ 1–5 sao
+Khách hàng
+FR-66
+Khách gửi nhận xét
+Khách hàng
+FR-67
+Hệ thống giới hạn một lượt đánh giá cho mỗi lịch
+Hệ thống
+FR-68
+Hệ thống tính điểm trung bình của thợ
+Hệ thống
+
+Liên kết đánh giá chỉ sử dụng được một lần và có thời hạn 7 ngày.
+Điểm trung bình của thợ chỉ nên được hiển thị khi đạt số lượng đánh giá tối thiểu theo yêu cầu dự án.
+2.4.9. Nhóm thông báo và email
+Mã
+Yêu cầu
+Actor
+FR-69
+Gửi email xác nhận lịch
+Hệ thống
+FR-70
+Gửi email nhắc lịch
+Hệ thống
+FR-71
+Gửi email khi lịch thay đổi
+Hệ thống
+FR-72
+Gửi thông báo trong ứng dụng cho thợ
+Hệ thống
+FR-73
+Đánh dấu thông báo đã đọc
+Thợ
+FR-74
+Tự động dọn thông báo cũ
+Hệ thống
+
+Email xác nhận cần được gửi trong vòng 2 phút sau khi lịch được chốt.
+Email nhắc được gửi trước giờ hẹn khoảng 24 giờ.
+Nếu gửi thất bại, hệ thống thử lại tối đa ba lần với khoảng cách 10 phút. 3. Hệ thống đặt lịch Salon Spa
+2.6.10. Nhóm báo cáo và thống kê
+Mã
+Yêu cầu
+Actor
+FR-75
+Dashboard hoạt động trong ngày
+Chủ tiệm
+FR-76
+Báo cáo doanh thu theo thợ
+Chủ tiệm
+FR-77
+Báo cáo doanh thu theo dịch vụ
+Chủ tiệm
+FR-78
+Thống kê tỷ lệ không đến
+Chủ tiệm
+FR-79
+Thống kê tỷ lệ hủy
+Chủ tiệm
+FR-80
+Thống kê mật độ lịch theo khung giờ
+Chủ tiệm
+FR-81
+Xuất dữ liệu báo cáo CSV
+Chủ tiệm
+
+Báo cáo chỉ tính doanh thu từ những phiếu đã được đóng và phải khớp với dữ liệu thanh toán thực tế.
+2.5. Yêu cầu phi chức năng
+Ngoài các chức năng nghiệp vụ, dự án đã xác định các yêu cầu phi chức năng liên quan đến hiệu năng, bảo mật, giao diện và khả năng vận hành. 3. Hệ thống đặt lịch Salon Spa
+2.5.1. Hiệu năng
+NFR-01: Trang đặt lịch công khai phải hoàn tất tải trong khoảng dưới 2 giây trên điều kiện mạng 4G mục tiêu.
+NFR-02: Truy vấn khung giờ trống cho một ngày cần trả kết quả trong khoảng dưới 800 ms trong môi trường dữ liệu mục tiêu của dự án.
+NFR-03: Màn hình lịch ngày phải tải trong khoảng dưới 2 giây với dữ liệu kiểm thử gồm 8 thợ và khoảng 60 lịch trong ngày.
+NFR-04: Báo cáo doanh thu một tháng cần trả kết quả trong khoảng dưới 3 giây.
+NFR-05: Tìm kiếm hồ sơ khách cần phản hồi dưới 1 giây với khoảng 5.000 hồ sơ.
+2.5.2. Khả năng chịu tải
+NFR-06: Hệ thống được thiết kế cho một cơ sở với quy mô khoảng 10 thợ.
+NFR-07: Hệ thống cần hỗ trợ khoảng 200 lịch hẹn mỗi tuần.
+NFR-08: Cơ sở dữ liệu được định hướng đáp ứng ít nhất khoảng 20.000 bản ghi lịch tích lũy.
+NFR-09: Trang công khai hỗ trợ khoảng 30 người dùng đồng thời trong phạm vi thử nghiệm.
+2.5.3. Bảo mật
+NFR-10: Tất cả API nội bộ phải được kiểm tra xác thực và phân quyền tại backend.
+NFR-11: Sau 5 lần nhập sai mật khẩu liên tiếp, tài khoản bị khóa tạm 15 phút.
+NFR-12: Access token có thời hạn 30 phút.
+NFR-13: Refresh token có thời hạn 7 ngày.
+NFR-14: Mật khẩu phải được lưu dưới dạng đã băm, không lưu plain text.
+NFR-15: Mã tra cứu lịch phải khó đoán và có độ dài tối thiểu 8 ký tự.
+2.5.4. Bảo vệ dữ liệu cá nhân
+NFR-16: Thợ không được nhìn thấy đầy đủ số điện thoại khách; số giữa phải được che.
+NFR-17: Lễ tân và chủ tiệm mới được xem thông tin liên hệ đầy đủ theo nhu cầu nghiệp vụ.
+NFR-18: Các thao tác truy cập hoặc thay đổi dữ liệu quan trọng cần được ghi audit log.
+NFR-19: Hệ thống phải có cơ chế xử lý yêu cầu xóa dữ liệu khách trong phạm vi chính sách đã xác định.
+2.5.5. Giao diện và khả năng sử dụng
+NFR-20: Trang công khai responsive từ chiều rộng khoảng 360 px.
+NFR-21: Màn hình lễ tân được tối ưu cho màn hình desktop khoảng 1366 px.
+NFR-22: Toàn bộ thông báo lỗi nghiệp vụ cần hiển thị bằng tiếng Việt và giải thích được nguyên nhân.
+NFR-23: Tiền tệ sử dụng VND.
+Ví dụ:
+250.000 đ
+450.000 đ
+1.200.000 đ
+NFR-24: Thời gian được hiển thị theo múi giờ Asia/Ho_Chi_Minh.
+2.5.6. Khả năng sao lưu và phục hồi
+NFR-25: Cơ sở dữ liệu được sao lưu tự động mỗi ngày.
+NFR-26: Giữ tối thiểu 14 bản sao lưu gần nhất.
+NFR-27: Quy trình khôi phục phải được kiểm thử ít nhất một lần trước nghiệm thu.
+2.6. Quy tắc nghiệp vụ
+Các Business Rule được chuẩn hóa thành mã BR để sử dụng xuyên suốt báo cáo, thiết kế cơ sở dữ liệu và test case.
+Mã
+Quy tắc nghiệp vụ
+BR-01
+Hệ thống có 5 vai trò: Khách hàng, Thợ, Lễ tân, Chủ tiệm và Admin
+BR-02
+Mỗi tài khoản nội bộ có đúng một vai trò tại một thời điểm
+BR-03
+Khách hàng không bắt buộc phải có tài khoản
+BR-04
+Dịch vụ có thời lượng từ 15–240 phút
+BR-05
+Thời lượng dịch vụ phải là bội số của 15 phút
+BR-06
+Giá dịch vụ là số nguyên dương và không vượt 20.000.000 đồng
+BR-07
+Dịch vụ đã phát sinh lịch lịch sử không được xóa vật lý
+BR-08
+Một thợ có thể làm nhiều dịch vụ và một dịch vụ có thể có nhiều thợ
+BR-09
+Thợ nghỉ việc không được xuất hiện khi tạo lịch mới
+BR-10
+Giờ đóng cửa phải sau giờ mở ít nhất 60 phút
+BR-11
+Các ca của một thợ không được chồng lấn
+BR-12
+Ca làm phải nằm trong giờ mở cửa
+BR-13
+Không được xóa ca đang chứa lịch hẹn
+BR-14
+Khách được chọn tối đa 5 dịch vụ trong một lượt
+BR-15
+Khung giờ đặt lịch chia theo khoảng 15 phút
+BR-16
+Một thợ chỉ được đề xuất nếu làm được toàn bộ dịch vụ khách chọn
+BR-17
+Khoảng thời gian còn trống phải đủ chứa toàn bộ tổng thời lượng
+BR-18
+Không được tạo lịch trong ngày nghỉ hoặc khoảng nghỉ của thợ
+BR-19
+Không đặt online vào thời điểm trong quá khứ
+BR-20
+Đặt online phải trước giờ bắt đầu tối thiểu 60 phút
+BR-21
+Một số điện thoại giữ tối đa 3 lịch chưa hoàn tất
+BR-22
+Không được có hai lịch chồng thời gian trên cùng một thợ
+BR-23
+Khách chỉ tự hủy khi còn cách giờ hẹn tối thiểu 120 phút
+BR-24
+No-show chỉ được đánh dấu sau giờ hẹn ít nhất 30 phút
+BR-25
+Check-in chỉ thực hiện với lịch đã xác nhận
+BR-26
+Thợ chỉ được bắt đầu lịch đã check-in
+BR-27
+Thợ chỉ được hoàn thành lịch đã bắt đầu
+BR-28
+Lịch chỉ được đóng khi dịch vụ đã hoàn tất và phiếu đã thanh toán
+BR-29
+Phiếu đã đóng không sửa trực tiếp
+BR-30
+Một phiếu chỉ sử dụng tối đa một mã giảm giá
+BR-31
+Mỗi lịch chỉ được gửi một đánh giá hợp lệ
+BR-32
+Liên kết đánh giá hết hạn sau 7 ngày
+BR-33
+Email nhắc không được gửi cho lịch đã hủy hoặc lịch đã đổi sang giờ khác
+BR-34
+Báo cáo doanh thu chỉ tính phiếu đã đóng
+BR-35
+Audit log là dữ liệu chỉ đọc, không được sửa hoặc xóa bởi người dùng
+
+2.7. Ma trận phân quyền
+Theo tài liệu dự án:
+F – Full: toàn quyền.
+W – Write: được thao tác trong phạm vi cho phép.
+R – Read: chỉ xem.
+–: không truy cập.
+*: chỉ được thao tác trên dữ liệu thuộc phạm vi cá nhân.
+
+Module
+Khách hàng
+Thợ
+Lễ tân
+Chủ tiệm
+Admin
+Tài khoản và phân quyền
+–
+–
+–
+R
+F
+Dịch vụ và giá
+R
+R
+R
+F
+R
+Hồ sơ thợ và ca làm
+R
+R*
+W
+F
+R
+Đặt lịch công khai
+W*
+–
+F
+F
+R
+Lịch hẹn và check-in
+R*
+W*
+F
+F
+R
+Phiếu tính tiền
+R*
+R*
+F
+F
+R
+Hồ sơ khách
+R*
+R*
+W
+F
+R
+Báo cáo
+–
+–
+R
+F
+F
+
+2.8. Mô hình Use Case tổng quát
+Use Case Diagram tổng thể nên chứa 5 actor và các nhóm nghiệp vụ chính sau:
+
+2.9. Đặc tả các Use Case cốt lõi
+2.9.1. UC-01 – Đăng nhập
+
+Thuộc tính
+Nội dung
+ID
+UC-01
+Tên
+Đăng nhập
+Actor
+Admin, Thợ, Lễ tân, Chủ tiệm
+Mục tiêu
+Xác thực người dùng trước khi sử dụng chức năng nội bộ
+Tiền điều kiện
+Người dùng có tài khoản đang hoạt động
+Hậu điều kiện
+Người dùng có phiên đăng nhập hợp lệ
+Kích hoạt
+Người dùng mở trang đăng nhập
+
+Luồng chính:
+Người dùng nhập email.
+Người dùng nhập mật khẩu.
+Hệ thống kiểm tra dữ liệu.
+Hệ thống xác thực tài khoản.
+Hệ thống kiểm tra trạng thái tài khoản.
+Hệ thống tạo access token và refresh token.
+Hệ thống xác định vai trò.
+Người dùng được chuyển tới giao diện tương ứng.
+Luồng ngoại lệ:
+Sai email hoặc mật khẩu → thông báo đăng nhập không thành công.
+Sai 5 lần liên tiếp → khóa 15 phút.
+Tài khoản ngừng hoạt động → từ chối đăng nhập.
+Token hết hạn và không thể refresh → chuyển về trang đăng nhập.
+2.9.2. UC-03 – Quản lý dịch vụ
+
+Thuộc tính
+Nội dung
+Actor
+Chủ tiệm
+Mục tiêu
+Quản lý danh sách dịch vụ làm cơ sở cho đặt lịch
+Tiền điều kiện
+Owner đã đăng nhập
+Hậu điều kiện
+Danh mục dịch vụ được cập nhật
+
+Luồng chính:
+Chủ tiệm mở danh sách dịch vụ.
+Chọn tạo mới.
+Nhập tên.
+Chọn nhóm dịch vụ.
+Nhập thời lượng.
+Nhập giá.
+Nhập mô tả.
+Chọn trạng thái.
+Hệ thống kiểm tra hợp lệ.
+Hệ thống lưu.
+Dịch vụ xuất hiện trên danh sách.
+Các trường hợp bị từ chối gồm thời lượng không phải bội 15 phút, thời lượng ngoài khoảng quy định hoặc giá không hợp lệ.
+2.9.3. UC-04 – Xếp ca làm
+Actor: Chủ tiệm.
+Mục tiêu: Thiết lập khoảng thời gian làm việc thực tế của từng thợ.
+Luồng chính:
+Chủ tiệm chọn tuần.
+Chọn thợ.
+Chọn ngày.
+Nhập giờ bắt đầu.
+Nhập giờ kết thúc.
+Khai báo thời gian nghỉ nếu có.
+Hệ thống kiểm tra giờ mở cửa.
+Hệ thống kiểm tra xung đột với ca khác.
+Lưu ca.
+Nếu ca nằm ngoài giờ mở cửa hoặc chồng ca đã tồn tại, hệ thống từ chối lưu.
+Nếu ca đang có lịch hẹn thì việc xóa ca bị chặn.
+2.9.4. UC-05 – Tính khung giờ trống
+Đây là một trong những Use Case quan trọng nhất của dự án.
+Thuộc tính
+Nội dung
+Actor khởi tạo
+Khách hàng
+Xử lý chính
+Hệ thống
+Input
+Dịch vụ, ngày, thợ tùy chọn
+Output
+Danh sách khung giờ hợp lệ
+
+Tiền điều kiện
+Khách đã chọn tối thiểu một dịch vụ.
+Các dịch vụ đang hoạt động.
+Có thợ đủ khả năng thực hiện.
+Luồng xử lý
+Hệ thống tính tổng thời lượng các dịch vụ.
+Lấy giờ mở cửa của ngày.
+Lấy danh sách thợ làm được toàn bộ dịch vụ.
+Nếu khách chỉ định thợ thì chỉ giữ người đó.
+Lấy ca làm của từng thợ.
+Loại ngày nghỉ.
+Loại thời gian nghỉ trong ca.
+Lấy lịch hẹn đang chiếm thời gian.
+Xác định các khoảng trống liên tục.
+Chia khoảng trống thành các mốc 15 phút.
+Kiểm tra xem từ mỗi mốc có đủ tổng thời lượng không.
+Loại các mốc quá khứ.
+Loại mốc cách thời điểm hiện tại dưới 60 phút.
+Trả kết quả.
+2.9.5. UC-06 – Đặt lịch
+Actor: Khách hàng
+Tiền điều kiện
+Khách đã chọn:
+ít nhất một dịch vụ;
+ngày;
+khung giờ;
+thợ hoặc chế độ thợ bất kỳ.
+Luồng chính
+Khách nhập họ tên.
+Nhập số điện thoại.
+Nhập email nếu muốn.
+Nhập ghi chú.
+Nhấn xác nhận.
+Hệ thống validate.
+Hệ thống kiểm tra lại khung giờ.
+Hệ thống khóa tài nguyên cần thiết.
+Hệ thống kiểm tra lần cuối xem lịch có bị trùng không.
+Tạo lịch.
+Sinh mã tra cứu 8 ký tự.
+Hiển thị thông tin xác nhận.
+Gửi email nếu khách cung cấp địa chỉ email.
+Ngoại lệ
+Nếu khung giờ vừa được người khác đặt:
+Giao dịch bị từ chối.
+Không tạo lịch trùng.
+Khách nhận thông báo.
+Danh sách khung giờ được tải lại.
+2.9.12. UC-07 – Đánh giá
+Actor: Khách hàng.
+Điều kiện:
+lịch đã hoàn tất;
+chưa có đánh giá hợp lệ trước đó.
+Luồng:
+Khách mở liên kết.
+Chọn từ 1 đến 5 sao.
+Có thể nhập nhận xét.
+Hệ thống kiểm tra token.
+Lưu đánh giá.
+Token hết hiệu lực.
+Liên kết chỉ sử dụng được một lần và có hiệu lực trong 7 ngày.
+2.9.13. UC-08 – Xem báo cáo doanh thu
+Actor: Chủ tiệm, Lễ tân.
+Luồng:
+Chọn khoảng ngày.
+Hệ thống kiểm tra khoảng ngày không quá giới hạn.
+Đọc các phiếu đã đóng.
+Tổng hợp theo thợ.
+Tổng hợp theo dịch vụ.
+Tính tổng thực thu.
+Hiển thị dữ liệu.
+Người dùng có thể xuất CSV.
+Khoảng báo cáo tối đa theo yêu cầu hiện tại là 365 ngày cho một lần truy vấn. 3. Hệ thống đặt lịch Salon Spa
