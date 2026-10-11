@@ -2,6 +2,7 @@ import { api, unwrap } from './client';
 import type {
   Appointment, AppointmentStatus, Availability, DayTimeline, Paginated, SmartSlotsResult, VisitHistoryItem,
 } from '@/types';
+import { normalizePage, sortPending, type PendingSort } from '@/utils/opsHelpers';
 
 export interface WalkInPayload {
   serviceIds: string[];
@@ -31,9 +32,19 @@ export const appointmentsApi = {
   async pending(): Promise<Appointment[]> {
     return unwrap<Appointment[]>(await api.get('/appointments/pending'));
   },
-  /** TASK v3 · NV2: phân trang ở máy chủ; lịch quá hạn 12 giờ luôn đứng đầu (trang 1). */
-  async pendingPage(params: { page: number; limit: number; sort: 'start_asc' | 'start_desc' | 'name_asc' }): Promise<Paginated<Appointment> & { overdueCount: number }> {
-    return unwrap(await api.get('/appointments/pending', { params }));
+  /**
+   * TASK v3 · NV2: phân trang ở máy chủ; lịch quá hạn 12 giờ luôn đứng đầu (trang 1).
+   * TASK v4 · NV3: máy chủ cũ trả MẢNG (không phân trang) → tự sắp xếp + cắt trang ở trình duyệt, không bao giờ sập trang.
+   */
+  async pendingPage(params: { page: number; limit: number; sort: PendingSort }): Promise<Paginated<Appointment> & { overdueCount: number }> {
+    const raw = unwrap<unknown>(await api.get('/appointments/pending', { params }));
+    if (Array.isArray(raw)) {
+      const all = sortPending(raw as Appointment[], params.sort);
+      return { ...normalizePage<Appointment>(all, params.page, params.limit), overdueCount: all.filter((a) => a.pendingOverdue).length };
+    }
+    const page = normalizePage<Appointment>(raw, params.page, params.limit);
+    const overdue = (raw as { overdueCount?: unknown } | null)?.overdueCount;
+    return { ...page, overdueCount: typeof overdue === 'number' ? overdue : page.items.filter((a) => a.pendingOverdue).length };
   },
   async rejectReasons(): Promise<string[]> {
     return unwrap<string[]>(await api.get('/appointments/reject-reasons'));
@@ -41,8 +52,12 @@ export const appointmentsApi = {
   async list(params: {
     from?: string; to?: string; status?: AppointmentStatus; stylistId?: string;
     search?: string; page?: number; limit?: number; cursor?: string;
+    /** TASK v4 · NV3: lọc khách vãng lai / đặt online; order=asc cho danh sách lịch sắp tới. */
+    source?: 'online' | 'walk_in'; order?: 'asc' | 'desc';
   }): Promise<Paginated<Appointment> & { nextCursor?: string | null }> {
-    return unwrap<Paginated<Appointment>>(await api.get('/appointments', { params }));
+    const raw = unwrap<unknown>(await api.get('/appointments', { params }));
+    const nextCursor = (raw as { nextCursor?: unknown } | null)?.nextCursor;
+    return { ...normalizePage<Appointment>(raw, params.page ?? 1, params.limit ?? 50), nextCursor: typeof nextCursor === 'string' ? nextCursor : null };
   },
   /**
    * Lấy TOÀN BỘ lịch hẹn trong khoảng ngày: máy chủ giới hạn tối đa 200 dòng/trang (PaginationDto),
@@ -50,7 +65,7 @@ export const appointmentsApi = {
    * Part 4: lật bằng con trỏ keyset (`nextCursor`) — không trùng / sót dòng khi có lịch mới chen vào giữa chừng;
    * máy chủ cũ chưa trả `nextCursor` thì lùi về lật theo số trang như trước.
    */
-  async listAll(params: { from?: string; to?: string; status?: AppointmentStatus; stylistId?: string }): Promise<Appointment[]> {
+  async listAll(params: { from?: string; to?: string; status?: AppointmentStatus; stylistId?: string; source?: 'online' | 'walk_in' }): Promise<Appointment[]> {
     const PAGE_SIZE = 200;
     const out: Appointment[] = [];
     let cursor: string | undefined;

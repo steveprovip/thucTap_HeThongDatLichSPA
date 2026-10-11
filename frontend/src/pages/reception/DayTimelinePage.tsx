@@ -4,8 +4,9 @@ import { CalendarX2, RefreshCw, UserPlus } from 'lucide-react';
 import { appointmentsApi, getErrorMessage } from '@/api';
 import type { Appointment, DayTimeline } from '@/types';
 import { Button, DateNav, SectionTitle, StylistAvatar, TimelineSkeleton } from '@/components';
-import { STATUS_BLOCK, STATUS_LABELS, STATUS_STYLES } from '@/utils/constants';
+import { STATUS_BLOCK, STATUS_DOT, STATUS_LABELS, STATUS_STYLES } from '@/utils/constants';
 import { timeToMinutes, todayISO } from '@/utils/format';
+import { stylistColorMap } from '@/utils/stylistColors';
 import { useAppointmentsSync } from '@/utils/liveSync';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
@@ -24,6 +25,11 @@ const salonNowMinutes = (ms: number): number => {
 /** Chiều cao một ô 15 phút (px) — lưới dọc của lịch ngày. */
 const SLOT_H = 30;
 const STEP = 15;
+const COLOR_KEY = 'salon.timelineColorBy';
+type ColorBy = 'stylist' | 'status';
+const readColorBy = (): ColorBy => {
+  try { return localStorage.getItem(COLOR_KEY) === 'status' ? 'status' : 'stylist'; } catch { return 'stylist'; }
+};
 
 /** S3-01: lịch cả ngày dạng cột theo từng thợ, trục dọc chia theo 15 phút. */
 export function DayTimelinePage() {
@@ -39,6 +45,13 @@ export function DayTimelinePage() {
   const toast = useToast();
   const { user } = useAuth();
   const canWalkIn = user?.role === 'receptionist' || user?.role === 'owner';
+  /** TASK v4 · NV4: tô màu khối lịch theo THỢ (mỗi người một màu, kiểu Fresha) hoặc theo TRẠNG THÁI như trước. */
+  const [colorBy, setColorByState] = useState<ColorBy>(readColorBy);
+  const setColorBy = (v: ColorBy) => {
+    setColorByState(v);
+    try { localStorage.setItem(COLOR_KEY, v); } catch { /* chế độ riêng tư: chỉ nhớ trong phiên */ }
+  };
+  const colors = useMemo(() => stylistColorMap(data?.columns.map((c) => c.stylistId) ?? []), [data]);
 
   /** Đổi ngày và giữ ?date= trên URL để quay lại / chia sẻ đúng ngày đang xem. */
   const setDate = useCallback((d: string) => {
@@ -149,7 +162,7 @@ export function DayTimelinePage() {
       <DateNav value={date} onChange={setDate} />
 
       {data && (
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
           {(Object.keys(data.summary) as (keyof typeof data.summary)[])
             .filter((k) => data.summary[k] > 0)
             .map((k) => (
@@ -160,6 +173,14 @@ export function DayTimelinePage() {
           {Object.values(data.summary).every((v) => v === 0) && (
             <span className="text-sm text-ink-muted">Chưa có lịch hẹn nào trong ngày này.</span>
           )}
+          <div role="radiogroup" aria-label="Tô màu khối lịch" className="ml-auto inline-flex rounded-lg border border-slate-200 bg-white p-0.5 text-xs shadow-sm">
+            {([['stylist', 'Màu theo thợ'], ['status', 'Màu theo trạng thái']] as const).map(([v, label]) => (
+              <button key={v} type="button" role="radio" aria-checked={colorBy === v} onClick={() => setColorBy(v)}
+                      className={`rounded-md px-2.5 py-1 font-medium transition ${colorBy === v ? 'bg-teal-600 text-white' : 'text-ink-soft hover:bg-slate-50'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
@@ -212,9 +233,15 @@ export function DayTimelinePage() {
               {/* Mỗi thợ một cột */}
               {data.columns.map((col) => (
                 <div key={col.stylistId} className="w-[176px] shrink-0 border-r border-slate-100 last:border-r-0 lg:min-w-[176px] lg:flex-1">
-                  <div className="sticky top-0 z-10 flex h-14 items-center gap-2.5 border-b border-slate-200 bg-white/95 px-2.5 backdrop-blur">
+                  <div className={`sticky top-0 z-10 flex h-14 items-center gap-2.5 border-b border-t-4 border-b-slate-200 bg-white/95 px-2.5 backdrop-blur ${colors.get(col.stylistId)?.bar ?? 'border-t-transparent'}`}>
                     <StylistAvatar id={col.stylistId} name={col.stylistName} url={col.avatarUrl} gender={col.gender} size="h-8 w-8" className="shadow-sm" />
-                    <span className="min-w-0 truncate text-sm font-semibold text-slate-900">{col.stylistName}</span>
+                    <span className="min-w-0 leading-tight">
+                      <span className="block truncate text-sm font-semibold text-slate-900">{col.stylistName}</span>
+                      <span className="flex items-center gap-1 text-[10px] text-slate-500">
+                        <span className={`h-1.5 w-1.5 rounded-full ${colors.get(col.stylistId)?.dot ?? 'bg-slate-300'}`} aria-hidden />
+                        {col.appointments.filter((a) => a.status !== 'cancelled').length} lịch
+                      </span>
+                    </span>
                   </div>
 
                   <div className="off-shift relative" style={{ height: gridHeight }}>
@@ -258,17 +285,26 @@ export function DayTimelinePage() {
                       </>
                     )}
                     {/* Khối lịch hẹn */}
-                    {col.appointments.map((a, index) => (
+                    {col.appointments.map((a, index) => {
+                      const c = colors.get(col.stylistId);
+                      const tone = colorBy === 'stylist' && c
+                        ? `${c.soft} ${c.edge} ${c.text} ${a.status === 'cancelled' ? 'line-through opacity-60' : a.status === 'no_show' ? 'opacity-60' : ''}`
+                        : STATUS_BLOCK[a.status];
+                      return (
                       <button
                         key={a.id}
                         onClick={() => setSelected(a)}
                         className={`absolute inset-x-1 z-[5] overflow-hidden rounded-md border-l-4 px-2 py-1 text-left
                                     animate-fade-in text-[11px] leading-tight shadow-sm ring-1 ring-slate-900/[0.04] transition-all duration-200 hover:z-[6] hover:-translate-y-px hover:shadow-md active:scale-[0.98]
-                                    ${STATUS_BLOCK[a.status]} ${flashId === a.id ? 'z-[6] animate-pulse-subtle ring-2 ring-teal-500 ring-offset-1' : ''}`}
+                                    ${tone} ${flashId === a.id ? 'z-[6] animate-pulse-subtle ring-2 ring-teal-500 ring-offset-1' : ''}`}
                         style={{ top: topOf(a.startTime) + 1, height: heightOf(a.totalDurationMinutes) - 2, animationDelay: `${index * 40}ms` }}
-                        title={`${a.startTime}–${a.endTime} · ${a.customer.fullName} · ${a.services.map((s) => s.name).join(', ')}`}
+                        title={`${a.startTime}–${a.endTime} · ${a.customer.fullName} · ${a.services.map((s) => s.name).join(', ')} · ${STATUS_LABELS[a.status]}`}
                       >
-                        <span className="flex items-center gap-1 truncate font-semibold">{a.status === 'in_progress' && (
+                        <span className="flex items-center gap-1 truncate font-semibold">
+                        {colorBy === 'stylist' && a.status !== 'in_progress' && (
+                          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${STATUS_DOT[a.status]}`} aria-label={STATUS_LABELS[a.status]} />
+                        )}
+                        {a.status === 'in_progress' && (
                           <span className="relative flex h-1.5 w-1.5 shrink-0"><span className="animate-ping-soft absolute inline-flex h-full w-full rounded-full bg-cyan-500" /><span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-cyan-600" /></span>
                         )}{a.startTime} {a.customer.fullName}</span>
                         {a.totalDurationMinutes >= 30 && (
@@ -280,7 +316,8 @@ export function DayTimelinePage() {
                           <span className="block font-semibold">Trễ {a.lateMinutes}′</span>
                         )}
                       </button>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               ))}

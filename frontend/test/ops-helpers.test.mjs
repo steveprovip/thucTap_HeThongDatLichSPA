@@ -70,3 +70,24 @@ test('bảng ca: phân loại ca, ca mẫu một chạm cắt theo giờ mở c�
     { closedReason: 'Nghỉ lễ', openMinutes: 0, coveredMinutes: 0 },
   ]), 92);
 });
+
+test('TASK v4 · NV3: chuẩn hoá phân trang — mảng (máy chủ cũ), trang (máy chủ mới), dữ liệu hỏng đều không sập trang', () => {
+  const { normalizePage, paginate } = module.exports;
+  const plain = (v) => JSON.parse(JSON.stringify(v));
+  const list = Array.from({ length: 45 }, (_, i) => ({ id: i + 1 }));
+  // Máy chủ cũ trả MẢNG → tự cắt trang ở trình duyệt
+  assert.deepEqual(plain(normalizePage(list, 3, 20)), { items: list.slice(40, 45), total: 45, page: 3, limit: 20, totalPages: 3 });
+  assert.equal(plain(normalizePage(list, 99, 20)).page, 3, 'trang vượt quá → về trang cuối');
+  // Máy chủ mới trả trang
+  const server = { items: [{ id: 1 }], total: 135, page: 2, limit: 20, totalPages: 7, overdueCount: 2 };
+  assert.deepEqual(plain(normalizePage(server, 2, 20)), { items: [{ id: 1 }], total: 135, page: 2, limit: 20, totalPages: 7 });
+  // Phản hồi rỗng / sai dạng → trang trống an toàn, không ném lỗi
+  for (const bad of [null, undefined, 'lỗi', 42, {}, { items: 'x' }]) {
+    const r = plain(normalizePage(bad, 1, 20));
+    assert.deepEqual(r.items, []);
+    assert.equal(r.total, 0);
+    assert.equal(r.totalPages, 1);
+  }
+  assert.deepEqual(plain(normalizePage({ data: [{ id: 9 }] }, 1, 10)).items, [{ id: 9 }]);
+  assert.deepEqual(plain(paginate(list, 2, 10)).items.map((x) => x.id), [11, 12, 13, 14, 15, 16, 17, 18, 19, 20]);
+});

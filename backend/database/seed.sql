@@ -22,11 +22,11 @@ INSERT INTO users (id, full_name, email, phone, password_hash, role, is_active, 
  ('11111111-1111-4111-8111-000000000001','Quản trị hệ thống','admin@salon.vn','0901000001','$2b$10$4VK1/aOsyRaxTgU8dzYiNuKIfgi1hiqJIQEyaL7z//ZVHUv4aFw0O','admin',TRUE,FALSE),
  ('11111111-1111-4111-8111-000000000002','Nguyễn Hoàng Anh','owner@salon.vn','0901000002','$2b$10$DvZ36dOYRBfmiC4vfwsXqOgRV4MQyqQoMlr9tPuVsROT3rzeAi8W6','owner',TRUE,FALSE),
  ('11111111-1111-4111-8111-000000000003','Đỗ Thanh Mai','reception@salon.vn','0901000003','$2b$10$6xQIx0kWSY7be73XcQIW9OkUv6kvm4jpzl6La9r7hCRF.Xk9oMhX6','receptionist',TRUE,FALSE),
- ('22222222-2222-4222-8222-000000000001','Nguyễn Thu Hà','stylist1@salon.vn','0902000001','$2b$10$dPp/KZphlhhpA5T9TIvcDeFgk2bkhJ/6YNGP63oXh6C23uYSnp.c6','stylist',TRUE,FALSE),
- ('22222222-2222-4222-8222-000000000002','Trần Minh Tuấn','stylist2@salon.vn','0902000002','$2b$10$dPp/KZphlhhpA5T9TIvcDeFgk2bkhJ/6YNGP63oXh6C23uYSnp.c6','stylist',TRUE,FALSE),
- ('22222222-2222-4222-8222-000000000003','Lê Thị Bích Ngọc','stylist3@salon.vn','0902000003','$2b$10$dPp/KZphlhhpA5T9TIvcDeFgk2bkhJ/6YNGP63oXh6C23uYSnp.c6','stylist',TRUE,FALSE),
- ('22222222-2222-4222-8222-000000000004','Phạm Quốc Bảo','stylist4@salon.vn','0902000004','$2b$10$dPp/KZphlhhpA5T9TIvcDeFgk2bkhJ/6YNGP63oXh6C23uYSnp.c6','stylist',TRUE,FALSE),
- ('22222222-2222-4222-8222-000000000005','Võ Kim Chi','stylist5@salon.vn','0902000005','$2b$10$dPp/KZphlhhpA5T9TIvcDeFgk2bkhJ/6YNGP63oXh6C23uYSnp.c6','stylist',TRUE,FALSE)
+ ('22222222-2222-4222-8222-000000000001','Lê Thu Hà','stylist1@salon.vn','0902000001','$2b$10$dPp/KZphlhhpA5T9TIvcDeFgk2bkhJ/6YNGP63oXh6C23uYSnp.c6','stylist',TRUE,FALSE),
+ ('22222222-2222-4222-8222-000000000002','Trần Minh Đức','stylist2@salon.vn','0902000002','$2b$10$dPp/KZphlhhpA5T9TIvcDeFgk2bkhJ/6YNGP63oXh6C23uYSnp.c6','stylist',TRUE,FALSE),
+ ('22222222-2222-4222-8222-000000000003','Nguyễn Bảo Ngọc','stylist3@salon.vn','0902000003','$2b$10$dPp/KZphlhhpA5T9TIvcDeFgk2bkhJ/6YNGP63oXh6C23uYSnp.c6','stylist',TRUE,FALSE),
+ ('22222222-2222-4222-8222-000000000004','Đặng Hoài Nam','stylist4@salon.vn','0902000004','$2b$10$dPp/KZphlhhpA5T9TIvcDeFgk2bkhJ/6YNGP63oXh6C23uYSnp.c6','stylist',TRUE,FALSE),
+ ('22222222-2222-4222-8222-000000000005','Vũ Kim Chi','stylist5@salon.vn','0902000005','$2b$10$dPp/KZphlhhpA5T9TIvcDeFgk2bkhJ/6YNGP63oXh6C23uYSnp.c6','stylist',TRUE,FALSE)
 ON CONFLICT DO NOTHING;
 
 -- Luôn đưa 8 tài khoản mẫu về trạng thái đăng nhập được: đúng mật khẩu trong
@@ -56,40 +56,43 @@ WHERE lower(u.email) = d.email
 -- ---------------------------------------------------------------------------
 -- 2. NHÓM DỊCH VỤ
 -- ---------------------------------------------------------------------------
+-- TASK v4 · NV2: tên nhóm / dịch vụ / thợ thực tế, ảnh Unsplash riêng từng dịch vụ (đã kiểm tra tải được). Lớp dữ liệu
+-- đầy đủ (43 dịch vụ, 14 chuyên viên, khách & lịch hẹn theo giờ cao điểm) nằm ở src/database/seed-realistic.ts.
 INSERT INTO service_categories (id, name, display_order) VALUES
- ('44444444-4444-4444-8444-000000000001','Tóc', 1),
- ('44444444-4444-4444-8444-000000000002','Gội - Dưỡng', 2),
- ('44444444-4444-4444-8444-000000000003','Chăm sóc da', 3),
- ('44444444-4444-4444-8444-000000000004','Trang điểm & Móng', 4)
+ ('44444444-4444-4444-8444-000000000001','Cắt & tạo kiểu tóc', 1),
+ ('44444444-4444-4444-8444-100000000001','Uốn - Nhuộm - Phục hồi', 2),
+ ('44444444-4444-4444-8444-000000000002','Gội đầu dưỡng sinh', 3),
+ ('44444444-4444-4444-8444-000000000003','Chăm sóc da', 4),
+ ('44444444-4444-4444-8444-000000000004','Trang điểm & Nối mi', 7)
 ON CONFLICT DO NOTHING;
 
 -- ---------------------------------------------------------------------------
 -- 3. DỊCH VỤ (12 dịch vụ, thời lượng 30 - 120 phút)
 -- ---------------------------------------------------------------------------
-INSERT INTO services (id, category_id, name, duration_minutes, price, description, is_active) VALUES
- ('55555555-5555-4555-8555-000000000001','44444444-4444-4444-8444-000000000001','Cắt tóc nam',            30,  120000,'Cắt, tạo kiểu và sấy khoẻ cho nam.', TRUE),
- ('55555555-5555-4555-8555-000000000002','44444444-4444-4444-8444-000000000001','Cắt tóc nữ',             45,  180000,'Cắt layer, tỉa mặt và sấy tạo kiểu.', TRUE),
- ('55555555-5555-4555-8555-000000000003','44444444-4444-4444-8444-000000000001','Uốn tóc cao cấp',       120,  850000,'Uốn nhiệt setting, dưỡng phục hồi sau uốn.', TRUE),
- ('55555555-5555-4555-8555-000000000004','44444444-4444-4444-8444-000000000001','Nhuộm tóc thời trang',  120,  950000,'Nhuộm màu thời trang, có tẩy nền nhẹ.', TRUE),
- ('55555555-5555-4555-8555-000000000005','44444444-4444-4444-8444-000000000001','Duỗi tóc Collagen',     120,  900000,'Duỗi phồng chân, ép thẳng tự nhiên.', TRUE),
- ('55555555-5555-4555-8555-000000000006','44444444-4444-4444-8444-000000000002','Gội đầu dưỡng sinh',     45,  150000,'Gội thảo dược, massage đầu thư giãn.', TRUE),
- ('55555555-5555-4555-8555-000000000007','44444444-4444-4444-8444-000000000002','Hấp dầu phục hồi',       60,  320000,'Hấp dầu keratin cho tóc hư tổn.', TRUE),
- ('55555555-5555-4555-8555-000000000008','44444444-4444-4444-8444-000000000002','Gội massage cổ vai gáy', 60,  250000,'Gội kết hợp massage cổ vai gáy 30 phút.', TRUE),
- ('55555555-5555-4555-8555-000000000009','44444444-4444-4444-8444-000000000003','Chăm sóc da cơ bản',     60,  350000,'Làm sạch sâu, tẩy tế bào chết, đắp mặt nạ.', TRUE),
- ('55555555-5555-4555-8555-000000000010','44444444-4444-4444-8444-000000000003','Trị mụn chuyên sâu',     90,  550000,'Lấy nhân mụn chuẩn y khoa, điện di phục hồi.', TRUE),
- ('55555555-5555-4555-8555-000000000011','44444444-4444-4444-8444-000000000003','Massage mặt thư giãn',   45,  280000,'Massage dẫn lưu bạch huyết vùng mặt.', TRUE),
- ('55555555-5555-4555-8555-000000000012','44444444-4444-4444-8444-000000000004','Trang điểm dự tiệc',     60,  450000,'Trang điểm dự tiệc kèm làm tóc nhẹ.', TRUE)
+INSERT INTO services (id, category_id, name, duration_minutes, price, description, image_url, is_active) VALUES
+ ('55555555-5555-4555-8555-000000000001','44444444-4444-4444-8444-000000000001','Cắt tóc nam tạo kiểu Barber',        30,  120000,'Tư vấn kiểu theo khuôn mặt, cắt fade / undercut / side-part, gội và vuốt sáp tạo kiểu.','https://images.unsplash.com/photo-1503951914875-452162b0f3f1?w=800&q=80&auto=format&fit=crop', TRUE),
+ ('55555555-5555-4555-8555-000000000002','44444444-4444-4444-8444-000000000001','Cắt tóc nữ layer tạo kiểu',          45,  180000,'Cắt layer, tỉa mái và sấy phồng tạo kiểu theo dáng mặt, tặng gội thảo dược.','https://images.unsplash.com/photo-1560066984-138dadb4c035?w=800&q=80&auto=format&fit=crop', TRUE),
+ ('55555555-5555-4555-8555-000000000003','44444444-4444-4444-8444-100000000001','Uốn sóng lơi Hàn Quốc',             120,  850000,'Uốn nóng setting tạo sóng lơi tự nhiên, kèm hấp dưỡng phục hồi sau uốn.','https://images.unsplash.com/photo-1580618672591-eb180b1a973f?w=800&q=80&auto=format&fit=crop', TRUE),
+ ('55555555-5555-4555-8555-000000000004','44444444-4444-4444-8444-100000000001','Nhuộm Balayage thời trang',         120,  950000,'Nhuộm loang Balayage chuyển màu mềm mại, tẩy nền nhẹ và ủ dưỡng bảo vệ màu.','https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?w=800&q=80&auto=format&fit=crop', TRUE),
+ ('55555555-5555-4555-8555-000000000005','44444444-4444-4444-8444-100000000001','Duỗi thẳng phồng chân Collagen',    120,  900000,'Duỗi thẳng mượt, giữ phồng chân tóc tự nhiên, bổ sung Collagen chống khô xơ.','https://images.unsplash.com/photo-1582095133179-bfd08e2fc6b3?w=800&q=80&auto=format&fit=crop', TRUE),
+ ('55555555-5555-4555-8555-000000000006','44444444-4444-4444-8444-000000000002','Gội đầu dưỡng sinh thảo dược',       45,  150000,'Gội bồ kết – vỏ bưởi – sả chanh, massage bấm huyệt đầu, cổ, vai thư giãn sâu.','https://images.unsplash.com/photo-1717160675643-53a7a2ebaa9f?w=800&q=80&auto=format&fit=crop', TRUE),
+ ('55555555-5555-4555-8555-000000000007','44444444-4444-4444-8444-100000000001','Phục hồi tóc Keratin Nano',          60,  320000,'Phục hồi tóc hư tổn bằng Keratin dạng nano, tóc mềm mượt và bóng khoẻ ngay sau buổi đầu.','https://images.unsplash.com/photo-1527799820374-dcf8d9d4a388?w=800&q=80&auto=format&fit=crop', TRUE),
+ ('55555555-5555-4555-8555-000000000008','44444444-4444-4444-8444-000000000002','Gội đầu kết hợp massage cổ vai gáy', 60,  250000,'Gội thảo dược kèm 30 phút massage cổ vai gáy, giải toả mỏi mệt dân văn phòng.','https://images.unsplash.com/photo-1519823551278-64ac92734fb1?w=800&q=80&auto=format&fit=crop', TRUE),
+ ('55555555-5555-4555-8555-000000000009','44444444-4444-4444-8444-000000000003','Chăm sóc da chuyên sâu Vitamin C',   60,  350000,'Làm sạch sâu, tẩy da chết, điện di tinh chất Vitamin C giúp da sáng đều màu.','https://images.unsplash.com/photo-1570172619644-dfd03ed5d881?w=800&q=80&auto=format&fit=crop', TRUE),
+ ('55555555-5555-4555-8555-000000000010','44444444-4444-4444-8444-000000000003','Lấy nhân mụn chuẩn y khoa',          90,  550000,'Lấy nhân mụn vô khuẩn chuẩn y khoa, chiếu ánh sáng sinh học và đắp mặt nạ phục hồi.','https://images.unsplash.com/photo-1552693673-1bf958298935?w=800&q=80&auto=format&fit=crop', TRUE),
+ ('55555555-5555-4555-8555-000000000011','44444444-4444-4444-8444-000000000003','Massage mặt nâng cơ thư giãn',       45,  280000,'Massage dẫn lưu bạch huyết, nâng cơ mặt, giảm bọng mắt và căng thẳng.','https://images.unsplash.com/photo-1706795034830-de41aee06afa?w=800&q=80&auto=format&fit=crop', TRUE),
+ ('55555555-5555-4555-8555-000000000012','44444444-4444-4444-8444-000000000004','Trang điểm dự tiệc cao cấp',         60,  450000,'Trang điểm tiệc tối sang trọng hoặc trong trẻo kiểu Hàn, kèm làm tóc nhẹ.','https://images.unsplash.com/photo-1487412947147-5cebf100ffc2?w=800&q=80&auto=format&fit=crop', TRUE)
 ON CONFLICT DO NOTHING;
 
 -- ---------------------------------------------------------------------------
 -- 4. HỒ SƠ THỢ (5 thợ)
 -- ---------------------------------------------------------------------------
 INSERT INTO stylists (id, user_id, full_name, phone, bio, avatar_url, is_active) VALUES
- ('33333333-3333-4333-8333-000000000001','22222222-2222-4222-8222-000000000001','Nguyễn Thu Hà','0902000001','8 năm kinh nghiệm tóc nữ, chuyên uốn và nhuộm thời trang.', NULL, TRUE),
- ('33333333-3333-4333-8333-000000000002','22222222-2222-4222-8222-000000000002','Trần Minh Tuấn','0902000002','Chuyên tóc nam, fade và undercut.', NULL, TRUE),
- ('33333333-3333-4333-8333-000000000003','22222222-2222-4222-8222-000000000003','Lê Thị Bích Ngọc','0902000003','Kỹ thuật viên da liễu, chuyên trị mụn.', NULL, TRUE),
- ('33333333-3333-4333-8333-000000000004','22222222-2222-4222-8222-000000000004','Phạm Quốc Bảo','0902000004','Chuyên gội dưỡng sinh và massage cổ vai gáy.', NULL, TRUE),
- ('33333333-3333-4333-8333-000000000005','22222222-2222-4222-8222-000000000005','Võ Kim Chi','0902000005','Chuyên trang điểm dự tiệc và chăm sóc da.', NULL, TRUE)
+ ('33333333-3333-4333-8333-000000000001','22222222-2222-4222-8222-000000000001','Lê Thu Hà','0902000001','Hair colorist 9 năm kinh nghiệm, chứng chỉ màu nhuộm quốc tế; chuyên Balayage, Ombre và phục hồi tóc hư tổn.', 'https://images.unsplash.com/photo-1581065178047-8ee15951ede6?w=400&h=400&q=80&auto=format&fit=crop&crop=faces', TRUE),
+ ('33333333-3333-4333-8333-000000000002','22222222-2222-4222-8222-000000000002','Trần Minh Đức','0902000002','Barber trưởng 8 năm, chuyên fade, undercut, side-part và uốn con sâu nam.', 'https://images.unsplash.com/photo-1611403119860-57c4937ef987?w=400&h=400&q=80&auto=format&fit=crop&crop=faces', TRUE),
+ ('33333333-3333-4333-8333-000000000003','22222222-2222-4222-8222-000000000003','Nguyễn Bảo Ngọc','0902000003','Chuyên viên chăm sóc da 7 năm, chứng chỉ điều dưỡng da liễu; chuyên lấy nhân mụn chuẩn y khoa.', 'https://images.unsplash.com/photo-1726067438466-df7db360f4e3?w=400&h=400&q=80&auto=format&fit=crop&crop=faces', TRUE),
+ ('33333333-3333-4333-8333-000000000004','22222222-2222-4222-8222-000000000004','Đặng Hoài Nam','0902000004','Kỹ thuật viên massage trị liệu 6 năm, chuyên gội dưỡng sinh và bấm huyệt cổ vai gáy.', 'https://images.unsplash.com/photo-1757744705465-ea08b0ddc38a?w=400&h=400&q=80&auto=format&fit=crop&crop=faces', TRUE),
+ ('33333333-3333-4333-8333-000000000005','22222222-2222-4222-8222-000000000005','Vũ Kim Chi','0902000005','Makeup artist 8 năm, chuyên trang điểm cô dâu, sự kiện và chăm sóc da.', 'https://images.unsplash.com/photo-1585325313343-55a22d8d4db3?w=400&h=400&q=80&auto=format&fit=crop&crop=faces', TRUE)
 ON CONFLICT DO NOTHING;
 
 -- Giới tính 5 thợ mẫu (chạy lại được; không ghi đè giới tính chủ tiệm đã chọn)
@@ -165,10 +168,10 @@ ON CONFLICT DO NOTHING;
 INSERT INTO customers (id, full_name, phone, email, note) VALUES
  ('77777777-7777-4777-8777-000000000001','Trần Bảo Ngân','0911000001','bao.ngan@example.com','Thích màu nâu khói, da đầu nhạy cảm.'),
  ('77777777-7777-4777-8777-000000000002','Lý Gia Huy','0911000002','gia.huy@example.com',NULL),
- ('77777777-7777-4777-8777-000000000003','Phan Thuỳ Linh','0911000003','thuy.linh@example.com','Hay đặt cuối tuần.'),
+ ('77777777-7777-4777-8777-000000000003','Phan Thanh Trúc','0911000003','thanh.truc@example.com','Hay đặt cuối tuần.'),
  ('77777777-7777-4777-8777-000000000004','Ngô Đức Thịnh','0911000004',NULL,NULL),
  ('77777777-7777-4777-8777-000000000005','Bùi Khánh Vy','0911000005','khanh.vy@example.com',NULL),
- ('77777777-7777-4777-8777-000000000006','Đặng Hoài Nam','0911000006',NULL,'Khách quen của anh Tuấn.'),
+ ('77777777-7777-4777-8777-000000000006','Đặng Quốc Trung','0911000006',NULL,'Khách quen của anh Đức.'),
  ('77777777-7777-4777-8777-000000000007','Hồ Mỹ Duyên','0911000007','my.duyen@example.com',NULL),
  ('77777777-7777-4777-8777-000000000008','Vũ Tiến Đạt','0911000008',NULL,NULL),
  ('77777777-7777-4777-8777-000000000009','Trịnh Ngọc Lan','0911000009','ngoc.lan@example.com',NULL),
@@ -198,7 +201,8 @@ DECLARE
   v_be     TIME;
   v_offday INT;
 BEGIN
-  FOR v_st IN SELECT id, full_name FROM stylists ORDER BY full_name LOOP
+  -- Thợ của lớp dữ liệu thực tế (mã ...-1xxxxxxxxxxx) có kiểu ca riêng do seed-realistic.ts sinh → không đè "Ca chuẩn" ở đây
+  FOR v_st IN SELECT id, full_name FROM stylists WHERE id::text NOT LIKE '33333333-3333-4333-8333-1%' ORDER BY full_name LOOP
     v_offday := CASE
       WHEN v_st.id = '33333333-3333-4333-8333-000000000001' THEN 1
       WHEN v_st.id = '33333333-3333-4333-8333-000000000002' THEN 2
@@ -298,6 +302,9 @@ BEGIN
        AND sh.work_date  = v_date
        AND sh.start_time IN (TIME '09:00', TIME '08:30')
       WHERE s.is_active
+        -- CHỈ 5 thợ mẫu của tệp này: thợ chủ tiệm tự thêm / thợ của bộ dữ liệu khác không bị gắn lịch hẹn + phiếu
+        -- tính tiền giả (phiếu đã đóng là lịch sử tài chính, không xoá được nữa)
+        AND s.id::text LIKE '33333333-3333-4333-8333-00000000000%'
       ORDER BY s.full_name
     LOOP
       FOR v_i IN 1..array_length(v_slots, 1) LOOP
@@ -329,12 +336,13 @@ BEGIN
         v_end   := v_start + make_interval(mins => v_dur);
         v_rnd2  := ('x' || substr(md5(v_seed || 'x'), 1, 7))::bit(28)::int % 100;
 
-        -- Chạy lại vào ngày khác: khung giờ mới có thể đã bị lịch hẹn THẬT (tạo trên web)
-        -- chiếm chỗ. Bỏ qua thay vì vi phạm appointments_no_overlap làm hỏng cả lần nạp.
+        -- Chạy lại vào ngày khác: khung giờ mới có thể đã bị lịch hẹn THẬT (tạo trên web) hoặc lịch của
+        -- seed-realistic chiếm chỗ. Bỏ qua thay vì vi phạm appointments_no_overlap làm hỏng cả lần nạp; lịch đã
+        -- hoàn tất / không đến cũng tính là bận (một thợ không thể phục vụ hai khách cùng lúc trong quá khứ).
         CONTINUE WHEN EXISTS (
           SELECT 1 FROM appointments a
           WHERE a.stylist_id = v_st.id
-            AND a.status IN ('pending','confirmed','arrived','in_progress')
+            AND a.status <> 'cancelled'
             AND tstzrange(a.start_at, a.end_at, '[)') && tstzrange(v_start, v_end, '[)')
         );
 
@@ -379,8 +387,11 @@ BEGIN
           CASE WHEN v_status = 'cancelled' THEN 'Khách bận đột xuất' END,
           CASE WHEN v_status = 'no_show' THEN v_start + INTERVAL '30 minutes' END,
           CASE WHEN v_status = 'no_show' THEN v_reception END,
-          CASE WHEN v_cus.email IS NOT NULL THEN v_start - INTERVAL '2 days' END,
-          v_start - INTERVAL '3 days'
+          CASE WHEN v_cus.email IS NOT NULL AND v_status <> 'pending' THEN v_start - INTERVAL '2 days' END,
+          -- Lịch còn chờ xác nhận thường mới đặt trong vài giờ qua (~25% đã chờ quá 12 giờ), không phải 3 ngày trước
+          CASE WHEN v_status = 'pending'
+               THEN LEAST(v_start - INTERVAL '2 hours', now() - make_interval(mins => 30 + v_rnd2 * 9))
+               ELSE v_start - INTERVAL '3 days' END
         ) RETURNING id INTO v_appt_id;
 
         INSERT INTO appointment_services

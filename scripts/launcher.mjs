@@ -309,8 +309,33 @@ function killProcessOnPort(port) {
   } catch { /* không dọn được thì để bước kiểm tra cổng phía sau báo lỗi */ }
 }
 
+/** API (health 200) và giao diện đều đang chạy = hệ thống của dự án đang mở ở cửa sổ / tiến trình khác. */
+async function systemRunning() {
+  return (await portInUse(API_PORT)) && (await portInUse(WEB_PORT)) && (await httpStatus(HEALTH_URL)) === 200;
+}
+
+/**
+ * TASK v4 · NV1 — nguyên nhân gốc lỗi "Cannot POST /api/public/assistant/chat": bấm Bắt đầu lần nữa khi hệ thống ĐANG chạy
+ * (vừa chuyển nhánh → package.json đổi) làm launcher `npm install` đè node_modules ngay dưới `nest start --watch`; tiến trình
+ * theo dõi hỏng ("Cannot find module …") và API kẹt ở bản biên dịch cũ trong khi Vite đã nạp giao diện mới. Giờ: đang chạy thì
+ * KHÔNG cài gói, chỉ mở trình duyệt và nhắc Dừng → Bắt đầu lại nếu gói đã đổi.
+ */
+function noticeAlreadyRunning() {
+  log('');
+  log(`[!] Hệ thống ĐANG chạy ở một cửa sổ khác. Mở ${APP_URL} ...`);
+  if (staleDeps().some((d) => d !== '.')) {
+    log('    Gói npm đã thay đổi (vừa chuyển nhánh / cập nhật mã) nên KHÔNG cài lúc hệ thống đang chạy.');
+    log('    Bấm DỪNG rồi BẮT ĐẦU lại để cài gói mới và khởi động máy chủ với mã mới nhất.');
+  }
+  openBrowser(APP_URL);
+}
+
 async function prepare({ root = true } = {}) {
   ensureEnvFiles();
+  if (await systemRunning()) {
+    noticeAlreadyRunning();
+    return 10;
+  }
   if (!(await ensureDeps({ root }))) return 1;
 
   let apiBusy = await portInUse(API_PORT);
@@ -564,6 +589,13 @@ async function start() {
   log(`[1/6] Node.js ${process.version}`);
   log('[2/6] Chuẩn bị tệp .env (luôn chạy với API thật, không dùng chế độ Demo) ...');
   ensureEnvFiles();
+  // Đang chạy rồi thì dừng ở đây: KHÔNG cài lại gói npm dưới chân máy chủ đang chạy (xem noticeAlreadyRunning)
+  if (await systemRunning()) {
+    noticeAlreadyRunning();
+    log('Cửa sổ này có thể đóng.');
+    await waitForEnter();
+    return 0;
+  }
   log('[3/6] Docker + PostgreSQL và gói npm chạy song song ...');
   const [dbOk, depsOk] = await Promise.all([
     timed('Docker + PostgreSQL', () => ensureDatabase()),

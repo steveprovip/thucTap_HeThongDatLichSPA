@@ -1,20 +1,31 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
-import { Bot, CalendarHeart, Clock3, Loader2, Send, Sparkles, UserPlus, Users, X } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import {
+  BarChart3, CalendarHeart, ClipboardList, Clock3, Gauge, Loader2, MessageCircle, Send, Sparkles, UserPlus, Users, X,
+} from 'lucide-react';
 import { assistantApi, getErrorMessage, stylistsApi, workingHoursApi } from '@/api';
-import type { AssistantChatReply, AssistantInsights, AssistantShiftGap, HolidaySuggestion } from '@/types';
+import type {
+  AppointmentStatus, AssistantChatReply, AssistantInsights, AssistantShiftGap, AssistantStatus, AssistantToday, HolidaySuggestion,
+} from '@/types';
+import { STATUS_LABELS } from '@/utils/constants';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 
-type Tab = 'chat' | 'shifts' | 'holidays' | 'golden';
+/** TASK v4 · NV1: hai chế độ rõ ràng — trò chuyện tự nhiên, hoặc xem bảng phân tích (giờ vàng, số liệu, ca, ngày lễ). */
+type Mode = 'chat' | 'insights';
+type Panel = 'today' | 'golden' | 'shifts' | 'holidays';
+type Tab = 'chat' | Panel;
 interface ChatLine { from: 'me' | 'bot'; text: string; meta?: string }
 
 const QUICK = [
+  'Tình hình hôm nay thế nào?',
   'Bạn là ai?',
+  'Hướng dẫn tôi dùng trợ lý',
   'Giờ vàng tuần này là khi nào?',
-  'Khách gọi đặt cắt tóc, nên gợi ý combo gì?',
   '7 ngày tới thiếu thợ ca nào?',
-  'Còn ngày lễ nào chưa thêm vào lịch nghỉ?',
 ];
+
+const firstName = (full?: string | null) => (full ?? '').trim().split(/\s+/).pop() ?? '';
 
 const fmtDay = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
 
@@ -34,7 +45,12 @@ export function SmartAiAssistant() {
   const allowed = user?.role === 'owner' || user?.role === 'receptionist';
 
   const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState<Tab>('chat');
+  const [mode, setMode] = useState<Mode>('chat');
+  const [panel, setPanel] = useState<Panel>('today');
+  const tab: Tab = mode === 'chat' ? 'chat' : panel;
+  /** TASK v4 · NV5: đang trả lời bằng AI local (Spark-X2.5-4B) hay Smart Rule Assistant. */
+  const [aiStatus, setAiStatus] = useState<AssistantStatus | null>(null);
+  const [today, setToday] = useState<AssistantToday | null>(null);
   const [lines, setLines] = useState<ChatLine[]>([]);
   const [draft, setDraft] = useState('');
   const [asking, setAsking] = useState(false);
@@ -55,9 +71,18 @@ export function SmartAiAssistant() {
   // Tự gợi ý khi thiếu nhân sự: kiểm tra một lần khi vào trang quản lý (nhẹ, ~1 truy vấn tổng hợp)
   useEffect(() => { if (allowed) void loadGaps(); }, [allowed, loadGaps]);
 
+  // Mỗi lần mở trợ lý: hỏi máy chủ đang dùng AI local hay luật (bật / tắt model là chip trạng thái đổi theo)
+  useEffect(() => {
+    if (!open) return;
+    assistantApi.status().then(setAiStatus).catch(() => setAiStatus(null));
+  }, [open]);
+
   useEffect(() => {
     if (!open) return;
     setError(null);
+    if (tab === 'today') {
+      assistantApi.today().then(setToday).catch((e: unknown) => setError(getErrorMessage(e)));
+    }
     if (tab === 'golden' && !insights) {
       assistantApi.insights().then(setInsights).catch((e: unknown) => setError(getErrorMessage(e)));
     }
@@ -80,8 +105,10 @@ export function SmartAiAssistant() {
     setAsking(true);
     try {
       const r: AssistantChatReply = await assistantApi.chat(q, past);
-      setLines((l) => [...l, { from: 'bot', text: r.answer, meta: r.source === 'llm' ? `AI · ${r.model}` : 'Trợ lý của tiệm' }]);
+      setLines((l) => [...l, { from: 'bot', text: r.answer, meta: r.source === 'llm' ? `AI local · ${r.model}` : 'Trợ lý thông minh' }]);
       if (r.quickReplies?.length) setFollowUps(r.quickReplies);
+      // AI local vừa bật / tắt giữa chừng → cập nhật chip trạng thái cho khớp nguồn câu trả lời
+      if ((r.source === 'llm') !== (aiStatus?.mode === 'llm')) assistantApi.status().then(setAiStatus).catch(() => undefined);
     } catch (e) {
       setLines((l) => [...l, { from: 'bot', text: getErrorMessage(e), meta: 'Lỗi' }]);
     } finally {
@@ -119,12 +146,18 @@ export function SmartAiAssistant() {
 
   const onSubmit = (e: FormEvent) => { e.preventDefault(); void ask(draft); };
   const gapCount = gaps?.length ?? 0;
-  const TABS: { id: Tab; label: string; icon: JSX.Element }[] = [
-    { id: 'chat', label: 'Hỏi nhanh', icon: <Bot size={14} /> },
-    { id: 'shifts', label: `Ca thiếu${gapCount ? ` (${gapCount})` : ''}`, icon: <Users size={14} /> },
-    { id: 'holidays', label: 'Ngày lễ', icon: <CalendarHeart size={14} /> },
-    { id: 'golden', label: 'Giờ vàng', icon: <Clock3 size={14} /> },
+  const PANELS: { id: Panel; label: string; icon: JSX.Element }[] = [
+    { id: 'today', label: 'Hôm nay', icon: <Gauge size={13} /> },
+    { id: 'golden', label: 'Giờ vàng & combo', icon: <Clock3 size={13} /> },
+    { id: 'shifts', label: `Ca thiếu${gapCount ? ` (${gapCount})` : ''}`, icon: <Users size={13} /> },
+    { id: 'holidays', label: 'Ngày lễ', icon: <CalendarHeart size={13} /> },
   ];
+  const usingLlm = aiStatus?.mode === 'llm';
+  const chip = usingLlm
+    ? { dot: 'bg-emerald-500', text: `AI local · ${aiStatus?.model ?? ''}`, title: 'Câu hỏi đang được trả lời bởi mô hình AI chạy ngay trên máy này' }
+    : { dot: 'bg-slate-400', text: 'Trợ lý thông minh', title: aiStatus?.localUrl
+      ? `Chưa bật AI local (${aiStatus.localUrl}) — trợ lý trả lời theo luật dựa trên số liệu thật. Bật AI: chạy model_AI_local\\chay_ai_local.cmd`
+      : 'Trợ lý trả lời theo luật dựa trên số liệu thật của tiệm' };
 
   return (
     <div className="no-print">
@@ -141,20 +174,40 @@ export function SmartAiAssistant() {
       {open && (
         <section role="dialog" aria-label="Trợ lý AI"
                  className="fixed bottom-20 right-4 z-40 flex h-[min(560px,72vh)] w-[min(400px,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
-          <header className="flex items-center gap-2 border-b border-slate-100 bg-teal-50/60 px-3 py-2">
-            <Sparkles size={16} className="text-teal-700" />
-            <p className="text-sm font-semibold text-ink">Trợ lý vận hành</p>
+          <header className="flex items-center gap-2.5 border-b border-slate-100 bg-gradient-to-r from-teal-50 to-white px-3 py-2.5">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-teal-600 text-white shadow-sm"><Sparkles size={16} /></span>
+            <div className="min-w-0 leading-tight">
+              <p className="text-sm font-semibold text-ink">Trợ lý vận hành</p>
+              <p className="flex items-center gap-1 text-[11px] text-ink-muted" title={chip.title}>
+                <span className={`h-1.5 w-1.5 rounded-full ${chip.dot}`} aria-hidden /> <span className="truncate">{chip.text}</span>
+              </p>
+            </div>
             <button type="button" onClick={() => setOpen(false)} aria-label="Đóng trợ lý"
                     className="ml-auto inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-500 hover:bg-white"><X size={15} /></button>
           </header>
-          <nav className="flex gap-1 border-b border-slate-100 px-2 py-1.5" aria-label="Chức năng trợ lý">
-            {TABS.map((t) => (
-              <button key={t.id} type="button" onClick={() => setTab(t.id)} aria-pressed={tab === t.id}
-                      className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium ${tab === t.id ? 'bg-teal-600 text-white' : 'text-ink-soft hover:bg-slate-100'}`}>
-                {t.icon}{t.label}
-              </button>
-            ))}
-          </nav>
+          <div className="border-b border-slate-100 px-2.5 py-2">
+            <div role="tablist" aria-label="Chế độ trợ lý" className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1">
+              {([['chat', 'Tư vấn đàm thoại', <MessageCircle key="c" size={14} />], ['insights', 'Phân tích & số liệu', <BarChart3 key="i" size={14} />]] as const)
+                .map(([id, label, icon]) => (
+                  <button key={id} type="button" role="tab" aria-selected={mode === id} onClick={() => setMode(id)}
+                          className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold transition
+                            ${mode === id ? 'bg-white text-teal-800 shadow-sm' : 'text-ink-soft hover:text-ink'}`}>
+                    {icon}{label}
+                  </button>
+                ))}
+            </div>
+            {mode === 'insights' && (
+              <nav className="mt-2 flex gap-1 overflow-x-auto thin-scroll" aria-label="Bảng phân tích">
+                {PANELS.map((p) => (
+                  <button key={p.id} type="button" onClick={() => setPanel(p.id)} aria-pressed={panel === p.id}
+                          className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium transition
+                            ${panel === p.id ? 'border-teal-600 bg-teal-600 text-white' : 'border-slate-200 text-ink-soft hover:border-teal-300'}`}>
+                    {p.icon}{p.label}
+                  </button>
+                ))}
+              </nav>
+            )}
+          </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2 text-sm thin-scroll" ref={tab === 'chat' ? logRef : undefined}>
             {error && <p className="mb-2 rounded-lg bg-red-50 px-2.5 py-1.5 text-xs text-red-700">{error}</p>}
@@ -163,7 +216,12 @@ export function SmartAiAssistant() {
               <div className="space-y-2">
                 {!lines.length && (
                   <div className="space-y-1.5">
-                    <p className="text-xs text-ink-muted">Hỏi về giờ vàng, combo dịch vụ, ca thiếu thợ, ngày lễ… Chọn nhanh:</p>
+                    <div className="max-w-[92%] rounded-xl rounded-bl-md bg-slate-100 px-2.5 py-2 text-[13px] text-ink">
+                      Chào {firstName(user?.fullName) || 'bạn'}! Mình là trợ lý vận hành của tiệm 👋 Bạn cứ hỏi tự nhiên như nói chuyện với
+                      đồng nghiệp — chào hỏi, nhờ hướng dẫn, hay hỏi tình hình hôm nay, giờ vàng, ca thiếu thợ đều được.
+                      <span className="mt-1 block text-[10px] opacity-60">{chip.text}</span>
+                    </div>
+                    <p className="pt-1 text-xs text-ink-muted">Gợi ý nhanh:</p>
                     {QUICK.map((q) => (
                       <button key={q} type="button" onClick={() => void ask(q)}
                               className="block w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-left text-xs hover:border-teal-400 hover:bg-teal-50">{q}</button>
@@ -188,6 +246,35 @@ export function SmartAiAssistant() {
                   </div>
                 )}
               </div>
+            )}
+
+            {tab === 'today' && (
+              !today ? <p className="text-xs text-ink-muted">Đang tải số liệu hôm nay…</p> : (
+                <div className="space-y-3 text-xs">
+                  <p className="font-semibold text-ink">Hôm nay · {today.dayText}</p>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {[['Lịch hẹn', String(today.total)], ['Đã thu', today.revenueText], ['Chờ xác nhận', String(today.pendingTotal)]].map(([k, v]) => (
+                      <div key={k} className="rounded-xl border border-slate-100 bg-slate-50/70 px-2 py-2">
+                        <p className="text-[10px] uppercase tracking-wide text-ink-muted">{k}</p>
+                        <p className="mt-0.5 truncate text-sm font-bold tabular-nums text-ink" title={v}>{v}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {Object.entries(today.byStatus).filter(([, n]) => n > 0).map(([s, n]) => (
+                      <span key={s} className="rounded-full bg-slate-100 px-2 py-0.5">{STATUS_LABELS[s as AppointmentStatus] ?? s}: <strong>{n}</strong></span>
+                    ))}
+                    {!today.total && <span className="text-ink-muted">Chưa có lịch hẹn nào hôm nay.</span>}
+                  </div>
+                  {today.pendingTotal > 0 && (
+                    <Link to="/quan-ly/cho-xac-nhan" onClick={() => setOpen(false)}
+                          className={`flex items-center gap-1.5 rounded-xl px-2.5 py-2 font-semibold ${today.pendingOverdue ? 'bg-amber-50 text-amber-900' : 'bg-teal-50 text-teal-800'}`}>
+                      <ClipboardList size={14} /> Xử lý {today.pendingTotal} lịch chờ xác nhận
+                      {today.pendingOverdue > 0 && <span className="font-normal">({today.pendingOverdue} lịch đã chờ quá 12 giờ)</span>}
+                    </Link>
+                  )}
+                </div>
+              )
             )}
 
             {tab === 'shifts' && (

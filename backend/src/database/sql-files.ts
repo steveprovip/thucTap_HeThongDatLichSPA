@@ -22,7 +22,6 @@ export const findSqlDir = (): string => {
 
 export const readSchemaSql = (): string => readFileSync(join(findSqlDir(), 'schema.sql'), 'utf8');
 export const readSeedSql = (): string => readFileSync(join(findSqlDir(), 'seed.sql'), 'utf8');
-export const readScaleSeedSql = (): string => readFileSync(join(findSqlDir(), 'seed-scale.sql'), 'utf8');
 
 /**
  * Thư mục gốc của dự án (chứa backend/ và frontend/). Dùng cho những thứ thuộc về CẢ dự án như backups/,

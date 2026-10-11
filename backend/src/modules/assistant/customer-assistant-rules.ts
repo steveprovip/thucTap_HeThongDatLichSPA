@@ -3,7 +3,7 @@
  * cấu hình mô hình ngôn ngữ. Chỉ dùng DANH MỤC CÔNG KHAI (tên, thời lượng, giá) + giờ mở cửa + hotline — không có dữ liệu
  * cá nhân nào. Câu trả lời luôn kèm dịch vụ gợi ý để khách bấm một chạm điền vào wizard đặt lịch.
  */
-import { fold, smallTalkIntent } from './assistant-rules';
+import { fold, partOfDay, smallTalkIntent } from './assistant-rules';
 
 export interface CatalogItem {
   id: string;
@@ -13,6 +13,8 @@ export interface CatalogItem {
   price: number;
   priceText: string;
   description: string | null;
+  /** TASK v4: ảnh riêng của dịch vụ để thẻ gợi ý trong khung chat có hình. */
+  imageUrl?: string | null;
 }
 
 export interface SalonFacts {
@@ -23,7 +25,7 @@ export interface SalonFacts {
 }
 
 export type CustomerIntent =
-  | 'greeting' | 'identity' | 'help' | 'thanks' | 'price_list' | 'hot' | 'book' | 'hours' | 'contact' | 'need' | 'unknown';
+  | 'greeting' | 'identity' | 'help' | 'thanks' | 'bye' | 'price_list' | 'hot' | 'book' | 'hours' | 'contact' | 'need' | 'unknown';
 
 export interface CustomerReply {
   intent: CustomerIntent;
@@ -34,11 +36,12 @@ export interface CustomerReply {
 
 /** Nhu cầu → từ khoá (không dấu). Khớp với tên / nhóm / mô tả dịch vụ trong danh mục THẬT của tiệm. */
 const NEEDS: { label: string; ask: RegExp; words: string[] }[] = [
-  { label: 'tóc', ask: /\b(toc|cat|goi dau|goi|nhuom|uon|duoi|phuc hoi|hu ton|xoan|tay toc|highlight|rung toc)\b/, words: ['toc', 'cat', 'goi', 'nhuom', 'uon', 'duoi', 'phuc hoi', 'hap'] },
-  { label: 'da', ask: /\b(da|da mat|mat na|mun|tham mun|lam sang|duong da|facial|cham soc da|lo chan long|kho da|da dau)\b/, words: ['da', 'mat', 'facial', 'mun', 'duong', 'sang'] },
-  { label: 'massage', ask: /\b(massage|mat xa|matxa|thu gian|dau lung|moi vai|co vai gay|vai gay|body|xong hoi|da nong|bam huyet)\b/, words: ['massage', 'mat xa', 'thu gian', 'body', 'vai gay', 'xong', 'da nong', 'bam huyet'] },
-  { label: 'móng', ask: /\b(nail|mong|son gel|son mong|ve mong|mong tay|mong chan)\b/, words: ['nail', 'mong', 'son'] },
-  { label: 'gội dưỡng', ask: /\b(goi duong|goi thao duoc|u toc|hap dau|duong toc)\b/, words: ['goi', 'duong', 'u toc', 'hap'] },
+  { label: 'tóc', ask: /\b(toc|cat|goi dau|goi|nhuom|uon|duoi|phuc hoi|hu ton|xoan|tay toc|highlight|balayage|ombre|phu bac|toc bac|keratin|olaplex|rung toc|barber|rau)\b/, words: ['toc', 'cat', 'goi', 'nhuom', 'uon', 'duoi', 'phuc hoi', 'hap', 'barber', 'rau'] },
+  { label: 'da', ask: /\b(da|da mat|mat na|mun|tham mun|lam sang|duong da|facial|cham soc da|lo chan long|kho da|da dau|cap am|dien di|peel|tre hoa|vitamin c)\b/, words: ['da', 'mat', 'facial', 'mun', 'duong', 'sang', 'cap am', 'peel', 'collagen'] },
+  { label: 'massage', ask: /\b(massage|mat xa|matxa|thu gian|dau lung|moi vai|co vai gay|vai gay|body|xong hoi|da nong|bam huyet|tam trang|phi thuyen|ngam chan)\b/, words: ['massage', 'mat xa', 'thu gian', 'body', 'vai gay', 'xong', 'da nong', 'bam huyet', 'tam trang'] },
+  { label: 'móng', ask: /\b(nail|mong|son gel|son mong|ve mong|mong tay|mong chan|dap bot|up mong|manicure|pedicure)\b/, words: ['nail', 'mong', 'son', 'manicure', 'pedicure'] },
+  { label: 'gội dưỡng', ask: /\b(goi duong|goi thao duoc|u toc|hap dau|duong toc|gau|da dau)\b/, words: ['goi', 'duong', 'u toc', 'hap', 'da dau'] },
+  { label: 'trang điểm', ask: /\b(trang diem|make ?up|co dau|ky yeu|noi mi|long mi)\b/, words: ['trang diem', 'co dau', 'ky yeu', 'mi'] },
 ];
 
 /** Triệu chứng cụ thể → dịch vụ chuyên trị (trọng số cao hơn nhu cầu chung "tóc" / "da"). */
@@ -98,7 +101,7 @@ const QUICK = ['Xem bảng giá', 'Dịch vụ hot', 'Đặt lịch ngay'];
 const line = (s: CatalogItem): string => `• ${s.name} — ${s.durationMinutes} phút · ${s.priceText}`;
 
 export function customerRuleReply(
-  message: string, catalog: CatalogItem[], hotIds: string[], facts: SalonFacts,
+  message: string, catalog: CatalogItem[], hotIds: string[], facts: SalonFacts, now?: Date,
 ): CustomerReply {
   const { intent, matches } = detectCustomerIntent(message, catalog);
   const hot = hotIds.map((id) => catalog.find((c) => c.id === id)).filter((c): c is CatalogItem => !!c);
@@ -109,8 +112,11 @@ export function customerRuleReply(
 
   switch (intent) {
     case 'greeting':
-      return reply(`Chào bạn! Mình là trợ lý tư vấn của ${shop} 🌿 Bạn đang muốn chăm sóc tóc, da, massage thư giãn hay làm móng? `
+      return reply(`Chào bạn!${now ? ` Chúc bạn buổi ${partOfDay(now)} thật thư thái.` : ''} Mình là chuyên viên tư vấn của ${shop} 🌿 `
+        + 'Bạn đang muốn chăm sóc tóc, da, massage thư giãn hay làm móng? '
         + 'Kể mình nghe nhu cầu, mình gợi ý dịch vụ kèm giá và thời lượng nhé.', [], ['Tư vấn chăm sóc tóc', 'Tư vấn chăm sóc da', 'Massage thư giãn']);
+    case 'bye':
+      return reply(`Cảm ơn bạn đã ghé ${shop}! Hẹn gặp bạn tại tiệm — khi cần cứ bấm "Đặt lịch ngay" hoặc nhắn mình nhé 🌸`);
     case 'identity':
       return reply(`Mình là trợ lý tư vấn tự động của ${shop}. Mình giúp bạn chọn dịch vụ hợp nhu cầu, báo giá và thời lượng, `
         + 'rồi điền sẵn vào phiếu đặt lịch — bạn chỉ cần chọn giờ và để lại số điện thoại. Mình không cần tài khoản hay thông tin cá nhân của bạn.');

@@ -110,11 +110,14 @@ const configuration = () => ({
   },
   /** Part 5 — Trợ lý AI: mô hình nhỏ tuỳ chọn (Ollama cục bộ / API tương thích OpenAI). Trống = chỉ dùng luật. */
   ai: {
-    provider: (process.env.AI_PROVIDER ?? '').trim().toLowerCase(),
+    // TASK v4 · NV5: để trống = 'auto' — tự dò AI local (model_AI_local) tại AI_BASE_URL, không có thì trả lời theo luật.
+    // 'off' = luôn theo luật; 'ollama' | 'openai' = cấu hình cố định như trước.
+    provider: (process.env.AI_PROVIDER ?? '').trim().toLowerCase() || 'auto',
     baseUrl: process.env.AI_BASE_URL ?? '',
-    model: process.env.AI_MODEL || 'qwen2.5:3b',
+    // Trống: chế độ auto lấy model máy chủ local đang nạp; chế độ cố định dùng qwen2.5:3b như trước
+    model: (process.env.AI_MODEL ?? '').trim(),
     apiKey: process.env.AI_API_KEY ?? '',
-    timeoutMs: int(process.env.AI_TIMEOUT_MS, 15000),
+    timeoutMs: int(process.env.AI_TIMEOUT_MS, 25000),
   },
   upload: {
     dir: process.env.UPLOAD_DIR ?? 'uploads',

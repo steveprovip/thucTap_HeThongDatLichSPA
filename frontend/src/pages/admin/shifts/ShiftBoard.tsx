@@ -6,6 +6,7 @@ import { StylistAvatar, TimeSelect24 } from '@/components';
 import { DOW_LABELS } from '@/utils/constants';
 import { timeToMinutes } from '@/utils/format';
 import { presetShift, SHIFT_PRESETS, shiftKind, type ShiftKind } from '@/utils/opsHelpers';
+import { stylistColorMap } from '@/utils/stylistColors';
 
 /** Số phút làm thực tế của ca (trừ nghỉ giữa ca). */
 export const shiftWorkMinutes = (s: Pick<Shift, 'startTime' | 'endTime' | 'breakStart' | 'breakEnd'>): number => {
@@ -110,6 +111,9 @@ export function ShiftBoard({
   for (const r of pendingRequests) reqByCell.set(`${r.stylistId}|${r.workDate}`, [...(reqByCell.get(`${r.stylistId}|${r.workDate}`) ?? []), r]);
   const weekHours = (id: string) => Math.round((shifts.filter((s) => s.stylistId === id).reduce((a, s) => a + shiftWorkMinutes(s), 0) / 60) * 10) / 10;
   const staffCount = (date: string) => new Set(shifts.filter((s) => s.workDate === date).map((s) => s.stylistId)).size;
+  // TASK v4 · NV4: cùng một màu cho mỗi thợ ở Bảng ca và Lịch ngày
+  const colors = stylistColorMap(stylists.map((s) => s.id));
+  const hoursText = (m: number) => `${Math.floor(m / 60)}h${m % 60 ? String(m % 60).padStart(2, '0') : ''}`;
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -150,11 +154,14 @@ export function ShiftBoard({
           <tbody>
             {stylists.map((st) => (
               <tr key={st.id} className="group/row">
-                <th scope="row" className="sticky left-0 z-10 border-b border-slate-100 bg-white px-3 py-1.5 text-left font-normal">
+                <th scope="row" className="sticky left-0 z-10 border-b border-slate-100 bg-white py-1.5 pl-0 pr-3 text-left font-normal">
                   <div className="flex items-center gap-2">
+                    <span className={`h-9 w-1 shrink-0 rounded-r-full ${colors.get(st.id)?.dot ?? 'bg-slate-200'}`} aria-hidden />
                     <StylistAvatar id={st.id} name={st.fullName} url={st.avatarUrl} gender={st.gender} size="h-7 w-7" />
-                    <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-ink" title={st.fullName}>{st.fullName}</span>
-                    <span className="shrink-0 text-[12px] tabular-nums text-ink-muted">· {weekHours(st.id)}h</span>
+                    <span className="min-w-0 flex-1 leading-tight">
+                      <span className="block truncate text-[13px] font-semibold text-ink" title={st.fullName}>{st.fullName}</span>
+                      <span className="block text-[11px] tabular-nums text-ink-muted">{weekHours(st.id)} giờ / tuần</span>
+                    </span>
                   </div>
                 </th>
                 {days.map((d) => {
@@ -194,9 +201,12 @@ export function ShiftBoard({
                                       setEdit({ start: hhmm(sh.startTime), end: hhmm(sh.endTime) });
                                       setPop({ kind: 'edit', stylist: st, shift: sh, anchor: e.currentTarget.getBoundingClientRect() });
                                     }}
-                                    className={`flex w-full items-center justify-center gap-1 rounded-md px-2 py-1 text-[12px] font-medium tabular-nums ring-1 ring-inset transition disabled:cursor-default ${KIND_STYLE[k].pill}`}>
-                              {hhmm(sh.startTime)} – {hhmm(sh.endTime)}
-                              {brk && <Coffee size={11} className="opacity-50" aria-label={brk} />}
+                                    className={`flex w-full flex-col items-center rounded-lg px-2 py-1 text-[12px] font-semibold tabular-nums ring-1 ring-inset transition hover:shadow-sm disabled:cursor-default ${KIND_STYLE[k].pill}`}>
+                              <span className="flex items-center gap-1">
+                                {hhmm(sh.startTime)} – {hhmm(sh.endTime)}
+                                {brk && <Coffee size={11} className="opacity-50" aria-label={brk} />}
+                              </span>
+                              <span className="text-[10px] font-medium opacity-70">{KIND_STYLE[k].label} · {hoursText(shiftWorkMinutes(sh))}</span>
                             </button>
                           );
                         })}

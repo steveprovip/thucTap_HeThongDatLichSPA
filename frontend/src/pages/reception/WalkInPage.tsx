@@ -9,9 +9,10 @@ import type {
 } from '@/types';
 import {
   EmailText,
-  Button, Card, CustomerMetrics, EmptyState, Field, Input, Modal, Notice, SectionTitle, SmartSlotAssistant, Spinner, StatusBadge,
+  Button, Card, CustomerMetrics, EmptyState, Field, Input, Modal, Notice, Pagination, SectionTitle, SmartSlotAssistant, Spinner, StatusBadge,
   Textarea,
 } from '@/components';
+import { paginate } from '@/utils/opsHelpers';
 import {
   addDaysISO, formatDate, formatDuration, formatVnd, matchSearch, minutesToTime, salonClosedMessage, timeToMinutes, todayISO,
   VN_PHONE_MESSAGE, VN_PHONE_REGEX,
@@ -547,11 +548,15 @@ export function WalkInPage() {
   const [selected, setSelected] = useState<Appointment | null>(null);
   const [view, setView] = useState<'today' | 'upcoming'>('today');
   const [flashId, setFlashId] = useState<string | null>(null);
+  /** TASK v4 · NV3: phân trang danh sách vãng lai (10 / 20 / 50 dòng). */
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(20);
 
-  // Lỗi 6: lấy cả lịch vãng lai hẹn NGÀY KHÁC (không chỉ hôm nay) để lịch vừa tạo luôn xuất hiện
+  // Lỗi 6: lấy cả lịch vãng lai hẹn NGÀY KHÁC (không chỉ hôm nay) để lịch vừa tạo luôn xuất hiện.
+  // TASK v4: máy chủ lọc sẵn nguồn = vãng lai (source=walk_in) → không phải tải toàn bộ lịch 30 ngày tới về trình duyệt
   const load = useCallback(async () => {
     try {
-      const items = await appointmentsApi.listAll({ from: todayISO(), to: addDaysISO(todayISO(), UPCOMING_DAYS) });
+      const items = await appointmentsApi.listAll({ from: todayISO(), to: addDaysISO(todayISO(), UPCOMING_DAYS), source: 'walk_in' });
       setAll(items.filter((a) => a.source === 'walk_in').sort(byDateTime));
     } catch (e) {
       toast.error(getErrorMessage(e));
@@ -567,6 +572,9 @@ export function WalkInPage() {
   const todayItems = all.filter((a) => a.date === today);
   const upcomingItems = all.filter((a) => a.date > today);
   const items = view === 'today' ? todayItems : upcomingItems;
+  const paged = paginate(items, page, limit);
+  // Danh sách co lại (lịch bị huỷ / chuyển ngày) → không đứng ở trang rỗng
+  useEffect(() => { if (page > paged.totalPages) setPage(paged.totalPages); }, [page, paged.totalPages]);
 
   const revenue = todayItems.filter((a) => a.status !== 'cancelled' && a.status !== 'no_show')
     .reduce((s, a) => s + a.estimatedTotal, 0);
@@ -575,6 +583,7 @@ export function WalkInPage() {
   const handleCreated = (a: Appointment) => {
     setAll((list) => [a, ...list.filter((x) => x.id !== a.id)].sort(byDateTime));
     setView(a.date === today ? 'today' : 'upcoming');
+    setPage(1);
     setFlashId(a.id);
     window.setTimeout(() => setFlashId((id) => (id === a.id ? null : id)), 4000);
     void load();
@@ -601,7 +610,7 @@ export function WalkInPage() {
 
       <div role="tablist" aria-label="Lọc lịch vãng lai" className="inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
         {([['today', `Hôm nay (${todayItems.length})`], ['upcoming', `Sắp tới (${upcomingItems.length})`]] as const).map(([id, label]) => (
-          <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => setView(id)}
+          <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => { setView(id); setPage(1); }}
                   className={`rounded-lg px-3.5 py-1.5 text-sm font-semibold transition-all duration-200 active:scale-95
                     ${view === id ? 'bg-teal-600 text-white shadow-sm' : 'text-ink-muted hover:bg-slate-100 hover:text-ink'}`}>
             {label}
@@ -615,11 +624,12 @@ export function WalkInPage() {
                     description="Bấm “Tạo lịch vãng lai” khi có khách tới quầy hoặc gọi điện đặt trước."
                     action={<Button size="sm" onClick={() => setOpen(true)}>Tạo lịch vãng lai</Button>} />
       ) : (
+        <>
         <div className="table-wrap animate-fade-in">
           <table className="table">
             <thead><tr><th>Giờ</th><th>Mã</th><th>Khách</th><th>Dịch vụ</th><th>Thợ</th><th>Trạng thái</th><th /></tr></thead>
             <tbody>
-              {items.map((a) => (
+              {paged.items.map((a) => (
                 <tr key={a.id} className={`cursor-pointer ${flashId === a.id ? 'bg-teal-50/80 ring-1 ring-inset ring-teal-300' : ''}`}
                     onClick={() => setSelected(a)}>
                   <td className="whitespace-nowrap font-semibold">
@@ -641,6 +651,9 @@ export function WalkInPage() {
             </tbody>
           </table>
         </div>
+        <Pagination page={paged.page} totalPages={paged.totalPages} total={paged.total} onChange={setPage}
+                    limit={limit} onLimitChange={(n) => { setLimit(n); setPage(1); }} />
+        </>
       )}
 
       <WalkInModal open={open} onClose={() => setOpen(false)} onCreated={handleCreated} />

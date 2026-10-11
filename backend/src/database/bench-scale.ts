@@ -1,5 +1,5 @@
 /**
- * Đo hiệu năng các truy vấn nóng trên dữ liệu tải x10 (chạy sau `npm run seed:scale`):
+ * Đo hiệu năng các truy vấn nóng trên dữ liệu quy mô lớn (chạy sau `npm run seed:scale` = seed-realistic --scale):
  *   npm run bench:scale
  * In số truy vấn SQL và thời gian (ms, trung vị 5 lần) của: tra khung giờ trống, tìm ngày còn chỗ gần nhất,
  * gợi ý khung giờ 7 ngày, chọn thợ tự động, danh sách lịch hẹn (trang đầu / trang sâu / con trỏ), tìm khách.

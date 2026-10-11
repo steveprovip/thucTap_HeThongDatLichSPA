@@ -252,6 +252,7 @@ export class AppointmentsService {
     if (query.from) qb.andWhere('a.start_at >= :from', { from: startOfDay(query.from) });
     if (query.to) qb.andWhere('a.start_at <= :to', { to: endOfDay(query.to) });
     if (query.status) qb.andWhere('a.status = :st', { st: query.status });
+    if (query.source) qb.andWhere('a.source = :src', { src: query.source });
     if (query.search) {
       qb.andWhere(
         '(a.code ILIKE :raw OR c.phone LIKE :raw OR f_unaccent(lower(c.full_name)) LIKE :t)',
@@ -262,17 +263,19 @@ export class AppointmentsService {
     // Part 4 (tải x10): JOIN customers là 1–1 nên dùng OFFSET/LIMIT thẳng (skip/take của TypeORM dựng thêm truy vấn
     // con DISTINCT rất chậm ở 50.000+ lịch). Có `cursor` thì phân trang keyset theo (start_at, id) — luôn dùng chỉ mục,
     // trang sâu nhanh như trang đầu. orderBy dùng tên thuộc tính (startAt) như cũ.
-    if (query.cursor) {
+    // TASK v4 · NV3: order=asc (lịch sắp tới, sớm nhất trước) chỉ lật theo số trang; con trỏ keyset giữ nguyên cho 'desc'
+    const asc = query.order === 'asc';
+    if (query.cursor && !asc) {
       const c = decodeListCursor(query.cursor);
       if (!c) throw new BadRequestException({ message: 'Con trỏ phân trang không hợp lệ', field: 'cursor' });
       qb.andWhere('(a.start_at, a.id) < (:cs, :cid)', { cs: c.startAt, cid: c.id });
     } else {
       qb.offset((query.page - 1) * query.limit);
     }
-    qb.orderBy('a.startAt', 'DESC').addOrderBy('a.id', 'DESC').limit(query.limit);
+    qb.orderBy('a.startAt', asc ? 'ASC' : 'DESC').addOrderBy('a.id', asc ? 'ASC' : 'DESC').limit(query.limit);
 
     const items = await qb.getMany();
-    const last = items.length === query.limit ? items[items.length - 1] : null;
+    const last = !asc && items.length === query.limit ? items[items.length - 1] : null;
     return {
       ...paginate(await this.decorate(items, user.role), total, query.page, query.limit),
       nextCursor: last ? encodeListCursor(last.startAt, last.id) : null,

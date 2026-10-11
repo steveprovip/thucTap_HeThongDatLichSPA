@@ -21,6 +21,13 @@ export class AssistantController {
     return this.service.status();
   }
 
+  /** TASK v4 · NV1 — số liệu hôm nay cho chế độ "Phân tích & số liệu" của widget. */
+  @Get('today')
+  @Roles(Role.OWNER, Role.RECEPTIONIST)
+  today() {
+    return this.service.todaySnapshot();
+  }
+
   /** Giờ vàng / giờ vắng + combo dịch vụ — lễ tân xem nhanh khi đang nghe điện thoại. */
   @Get('insights')
   @Roles(Role.OWNER, Role.RECEPTIONIST)
@@ -50,7 +57,11 @@ export class AssistantController {
   }
 }
 
-/** TASK v3 · NV1 — AI tư vấn trên trang công khai: không cần đăng nhập, 20 câu / 10 phút / IP, chỉ đọc danh mục công khai. */
+/**
+ * TASK v3 · NV1 — AI tư vấn trên trang công khai: không cần đăng nhập, 20 câu / 10 phút / IP, chỉ đọc danh mục công khai.
+ * Đăng ký trong AssistantModule (controllers) → mount tại POST /api/public/assistant/chat (tiền tố toàn cục API_PREFIX);
+ * @Public() ở cấp lớp để JwtAuthGuard toàn cục bỏ qua mọi route của controller (kiểm thử: test/qa-v4-ai-local.e2e-spec.ts).
+ */
 @Controller('public/assistant')
 @Public()
 export class PublicAssistantController {

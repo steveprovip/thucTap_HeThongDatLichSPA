@@ -86,6 +86,20 @@ export function AdminLayout() {
     [user],
   );
 
+  // TASK v4 · NV4: header gọn — tiêu đề trang hiện tại dạng "Nhóm / Trang" (khớp mục đang chọn ở menu trái)
+  const current = useMemo(() => {
+    const path = location.pathname.replace(/\/+$/, '') || '/quan-ly';
+    let best: { group: string; label: string; len: number } | null = null;
+    for (const g of groups) {
+      for (const i of g.items) {
+        const hit = path === i.to || (i.to !== '/quan-ly' && path.startsWith(`${i.to}/`));
+        if (hit && (!best || i.to.length > best.len)) best = { group: g.group, label: i.label, len: i.to.length };
+      }
+    }
+    return best;
+  }, [groups, location.pathname]);
+  const initialsOf = (name?: string | null) => (name ?? '').trim().split(/\s+/).slice(-2).map((w) => w[0]?.toUpperCase() ?? '').join('');
+
   // Lỗi 8: mọi trang con (không phải trang chính của vai trò) đều có nút "← Quay lại"
   const landing = user ? ROLE_LANDING[user.role] ?? '/quan-ly' : '/quan-ly';
   const showBack = location.pathname.replace(/\/+$/, '') !== landing.replace(/\/+$/, '');
@@ -159,16 +173,29 @@ export function AdminLayout() {
               <Menu size={20} />
             </button>
             <Link to="/" className="btn btn-ghost btn-sm" title="Về trang công khai">
-              <Home size={16} /> <span className="hidden sm:inline">Trang khách</span>
+              <Home size={16} /> <span className="hidden xl:inline">Trang khách</span>
             </Link>
+            {current && (
+              <p className="hidden min-w-0 items-center gap-1.5 truncate text-sm md:flex" aria-label="Vị trí hiện tại">
+                <span className="text-slate-300">/</span>
+                <span className="text-slate-400">{current.group}</span>
+                <span className="text-slate-300">/</span>
+                <span className="truncate font-semibold text-slate-800">{current.label}</span>
+              </p>
+            )}
           </div>
 
           <div className="flex items-center gap-1.5">
             <LiveStatus />
             <NotificationBell />
-            <div className="hidden text-right sm:block">
-              <p className="text-sm font-semibold leading-tight">{user?.fullName}</p>
-              <p className="text-xs text-ink-muted">{user ? ROLE_LABELS[user.role] : ''}</p>
+            <div className="hidden items-center gap-2 rounded-full py-1 pl-1 pr-2.5 sm:flex" title={user?.email}>
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-teal-50 text-xs font-bold text-teal-700 ring-1 ring-teal-100">
+                {initialsOf(user?.fullName)}
+              </span>
+              <span className="text-left leading-tight">
+                <span className="block max-w-[160px] truncate text-sm font-semibold">{user?.fullName}</span>
+                <span className="block text-[11px] text-ink-muted">{user ? ROLE_LABELS[user.role] : ''}</span>
+              </span>
             </div>
             <Link to="/quan-ly/doi-mat-khau" className="tap-44 inline-flex items-center justify-center rounded-xl p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
                   aria-label="Đổi mật khẩu">

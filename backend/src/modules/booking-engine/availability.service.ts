@@ -29,6 +29,8 @@ export interface PublicServiceView {
   price: number;
   priceText: string;
   description: string | null;
+  /** TASK v4 · NV2: ảnh riêng của dịch vụ (null = giao diện tự chọn theo chủ đề). */
+  imageUrl: string | null;
 }
 
 export interface PublicCatalogGroup {
@@ -123,6 +125,7 @@ export class AvailabilityService {
           price: s.price,
           priceText: formatVnd(s.price),
           description: s.description,
+          imageUrl: s.imageUrl ?? null,
         }));
       if (items.length) {
         groups.push({

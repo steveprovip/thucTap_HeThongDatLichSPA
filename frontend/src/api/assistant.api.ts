@@ -1,10 +1,17 @@
 import { api, unwrap } from './client';
-import type { AssistantChatReply, AssistantInsights, AssistantShiftGap, ChatTurn, CustomerAssistantReply } from '@/types';
+import type {
+  AssistantChatReply, AssistantInsights, AssistantShiftGap, AssistantStatus, AssistantToday, ChatTurn, CustomerAssistantReply,
+} from '@/types';
 
 /** Part 5 — API nội bộ của Trợ lý AI (Chủ tiệm, Lễ tân). */
 export const assistantApi = {
-  async status(): Promise<{ provider: string | null; model: string | null }> {
-    return unwrap(await api.get('/assistant/status'));
+  /** TASK v4 · NV5: đang dùng AI local (Spark-X2.5-4B) hay Smart Rule Assistant. */
+  async status(): Promise<AssistantStatus> {
+    return unwrap<AssistantStatus>(await api.get('/assistant/status'));
+  },
+  /** TASK v4 · NV1: số liệu hôm nay cho chế độ "Phân tích & số liệu". */
+  async today(): Promise<AssistantToday> {
+    return unwrap<AssistantToday>(await api.get('/assistant/today'));
   },
   async insights(): Promise<AssistantInsights> {
     return unwrap<AssistantInsights>(await api.get('/assistant/insights'));

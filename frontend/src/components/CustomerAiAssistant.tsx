@@ -1,14 +1,27 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CalendarCheck, Check, Clock3, Loader2, MessageCircleHeart, Plus, Send, Sparkles, X } from 'lucide-react';
+import { CalendarCheck, Check, Clock3, Flower2, Loader2, MessageCircleHeart, Plus, Send, X } from 'lucide-react';
 import { assistantApi, getErrorMessage } from '@/api';
 import type { ChatTurn, CustomerAssistantService } from '@/types';
+import { formatVnd } from '@/utils/format';
+import { serviceImage, serviceMediaKind } from '@/utils/images';
+import { SmartImage } from './Media';
 
 interface Line { from: 'me' | 'bot'; text: string; suggestions?: CustomerAssistantService[]; meta?: string }
 
 const QUICK = ['Xem bảng giá', 'Dịch vụ hot', 'Đặt lịch ngay'];
-const GREETING = 'Chào bạn! Mình là trợ lý tư vấn của tiệm. Bạn muốn chăm sóc tóc, da, massage thư giãn hay làm móng? '
-  + 'Kể nhu cầu, mình gợi ý dịch vụ kèm giá và thời lượng — ưng thì bấm một nút là điền sẵn vào phiếu đặt lịch.';
+/** TASK v4 · NV4: chủ đề tư vấn nhanh như quầy lễ tân spa — bấm là hỏi ngay. */
+const TOPICS: [string, string][] = [
+  ['💇‍♀️ Tóc', 'Tư vấn chăm sóc tóc'], ['✨ Da mặt', 'Tư vấn chăm sóc da'], ['💆 Massage', 'Massage thư giãn'],
+  ['💅 Nail', 'Tư vấn làm móng'], ['💄 Trang điểm', 'Tư vấn trang điểm dự tiệc'],
+];
+const partOfDay = (): string => {
+  const h = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', hour12: false }).format(new Date())) % 24;
+  return h >= 4 && h < 11 ? 'sáng' : h < 13 ? 'trưa' : h < 18 ? 'chiều' : 'tối';
+};
+const greeting = (): string => `Chào bạn, chúc bạn buổi ${partOfDay()} thật thư thái! 🌿 Mình là trợ lý tư vấn sắc đẹp của tiệm. `
+  + 'Bạn muốn chăm sóc tóc, da, massage thư giãn hay làm móng? Kể mình nghe nhu cầu, mình gợi ý dịch vụ kèm giá và thời lượng '
+  + '— ưng thì bấm "Đặt lịch ngay" là phiếu đặt lịch được điền sẵn.';
 
 /**
  * TASK v3 · NV1 — AI tư vấn khách, nút nổi góc phải dưới ở Trang chủ và trang Đặt lịch.
@@ -23,7 +36,7 @@ export function CustomerAiAssistant({ onBook, liftPx = 0 }: {
 }) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
-  const [lines, setLines] = useState<Line[]>([{ from: 'bot', text: GREETING }]);
+  const [lines, setLines] = useState<Line[]>(() => [{ from: 'bot', text: greeting() }]);
   const [quick, setQuick] = useState<string[]>(QUICK);
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
@@ -68,11 +81,17 @@ export function CustomerAiAssistant({ onBook, liftPx = 0 }: {
   return (
     <div className="no-print">
       {!open && (
-        <button type="button" onClick={() => setOpen(true)} aria-label="Mở trợ lý tư vấn"
+        <button type="button" onClick={() => setOpen(true)} aria-label="Mở trợ lý tư vấn sắc đẹp"
                 style={{ bottom }}
-                className="fixed right-4 z-40 inline-flex items-center gap-2 rounded-full bg-gradient-to-br from-teal-600 to-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-lg transition hover:brightness-110 sm:!bottom-6">
-          <MessageCircleHeart size={19} />
-          <span>Tư vấn</span>
+                className="group fixed right-4 z-40 inline-flex items-center gap-2.5 rounded-full bg-white py-1.5 pl-1.5 pr-4 text-sm font-semibold text-slate-800 shadow-lg ring-1 ring-slate-200 transition hover:-translate-y-0.5 hover:shadow-xl sm:!bottom-6">
+          <span className="relative flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-teal-500 to-emerald-600 text-white">
+            <MessageCircleHeart size={18} />
+            <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-emerald-400 ring-2 ring-white" aria-hidden />
+          </span>
+          <span className="leading-tight">
+            <span className="block">Tư vấn sắc đẹp</span>
+            <span className="hidden text-[11px] font-normal text-slate-500 sm:block">Gợi ý dịch vụ · báo giá ngay</span>
+          </span>
         </button>
       )}
 
@@ -80,17 +99,36 @@ export function CustomerAiAssistant({ onBook, liftPx = 0 }: {
         <section role="dialog" aria-label="Trợ lý tư vấn dịch vụ"
                  style={{ bottom }}
                  className="fixed inset-x-3 z-50 flex h-[min(600px,78vh)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl sm:inset-x-auto sm:right-6 sm:!bottom-6 sm:w-[390px]">
-          <header className="flex items-center gap-2 bg-gradient-to-r from-teal-600 to-emerald-600 px-3.5 py-2.5 text-white">
-            <Sparkles size={17} />
+          <header className="flex items-center gap-2.5 bg-gradient-to-r from-teal-700 via-teal-600 to-emerald-600 px-3.5 py-3 text-white">
+            <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/15 ring-2 ring-white/40">
+              <Flower2 size={20} />
+              <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-300 ring-2 ring-teal-700" aria-hidden />
+            </span>
             <div className="min-w-0 leading-tight">
-              <p className="text-sm font-semibold">Trợ lý tư vấn</p>
-              <p className="text-[11px] opacity-80">Gợi ý dịch vụ · báo giá · đặt lịch một chạm</p>
+              <p className="text-sm font-semibold">Trợ lý tư vấn sắc đẹp</p>
+              <p className="text-[11px] opacity-85">Trợ lý tự động · trả lời ngay · giá đúng bảng giá tiệm</p>
             </div>
+            <button type="button"
+                    onClick={() => { if (picked.length) book(picked); else { setOpen(false); if (!onBook) navigate('/dat-lich'); } }}
+                    title={picked.length ? 'Điền các dịch vụ đã chọn vào phiếu đặt lịch' : 'Mở phiếu đặt lịch'}
+                    className="ml-auto hidden rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-teal-800 shadow-sm transition hover:bg-teal-50 sm:inline-flex">
+              Đặt lịch ngay
+            </button>
             <button type="button" onClick={() => setOpen(false)} aria-label="Đóng trợ lý"
-                    className="ml-auto inline-flex h-8 w-8 items-center justify-center rounded-lg hover:bg-white/15"><X size={17} /></button>
+                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg hover:bg-white/15 sm:ml-1"><X size={17} /></button>
           </header>
 
           <div ref={logRef} className="thin-scroll min-h-0 flex-1 space-y-2.5 overflow-y-auto bg-slate-50/60 px-3 py-3 text-[13px]">
+            {lines.length === 1 && (
+              <div className="flex flex-wrap gap-1.5 pb-1" aria-label="Chủ đề tư vấn">
+                {TOPICS.map(([label, q]) => (
+                  <button key={label} type="button" disabled={busy} onClick={() => void ask(q)}
+                          className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition hover:border-teal-400 hover:text-teal-800 disabled:opacity-50">
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
             {lines.map((l, i) => (
               <div key={i} className={l.from === 'me' ? 'flex justify-end' : ''}>
                 <div className={`max-w-[90%] whitespace-pre-line rounded-2xl px-3 py-2 ${l.from === 'me' ? 'rounded-br-md bg-teal-600 text-white' : 'rounded-bl-md bg-white text-slate-800 shadow-sm'}`}>
@@ -102,25 +140,28 @@ export function CustomerAiAssistant({ onBook, liftPx = 0 }: {
                     {l.suggestions.map((s) => {
                       const on = picked.some((x) => x.id === s.id);
                       return (
-                        <li key={s.id} className={`rounded-xl border bg-white px-2.5 py-2 ${on ? 'border-teal-400 ring-1 ring-teal-200' : 'border-slate-200'}`}>
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              <p className="font-semibold text-slate-900">{s.name}</p>
-                              <p className="flex items-center gap-1 text-[11px] text-slate-500">
-                                <Clock3 size={11} /> {s.durationMinutes} phút · {s.categoryName}
-                              </p>
+                        <li key={s.id} className={`flex gap-2.5 rounded-2xl border bg-white p-2 shadow-sm transition ${on ? 'border-teal-400 ring-1 ring-teal-200' : 'border-slate-100 hover:shadow-md'}`}>
+                          <SmartImage src={serviceImage({ id: s.id, name: s.name, categoryName: s.categoryName, imageUrl: s.imageUrl })}
+                                      alt={s.name} loading="lazy" seed={s.id} className="h-[72px] w-[72px] shrink-0 rounded-xl"
+                                      kind={serviceMediaKind({ name: s.name, categoryName: s.categoryName })} />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="line-clamp-2 font-semibold leading-snug text-slate-900">{s.name}</p>
+                              <span className="shrink-0 rounded-full bg-teal-50 px-2 py-0.5 text-xs font-bold text-teal-700">{s.priceText}</span>
                             </div>
-                            <span className="shrink-0 rounded-full bg-teal-50 px-2 py-0.5 text-xs font-bold text-teal-700">{s.priceText}</span>
-                          </div>
-                          <div className="mt-1.5 flex gap-1.5">
-                            <button type="button" onClick={() => toggle(s)} aria-pressed={on}
-                                    className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-semibold ${on ? 'border-teal-500 bg-teal-50 text-teal-800' : 'border-slate-200 text-slate-600 hover:border-teal-400'}`}>
-                              {on ? <Check size={12} /> : <Plus size={12} />} {on ? 'Đã chọn' : 'Chọn'}
-                            </button>
-                            <button type="button" onClick={() => book([s])}
-                                    className="inline-flex items-center gap-1 rounded-lg bg-teal-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-teal-700">
-                              <CalendarCheck size={12} /> Đặt lịch dịch vụ này
-                            </button>
+                            <p className="mt-0.5 flex items-center gap-1 text-[11px] text-slate-500">
+                              <Clock3 size={11} /> {s.durationMinutes} phút · {s.categoryName}
+                            </p>
+                            <div className="mt-1.5 flex gap-1.5">
+                              <button type="button" onClick={() => toggle(s)} aria-pressed={on}
+                                      className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-semibold ${on ? 'border-teal-500 bg-teal-50 text-teal-800' : 'border-slate-200 text-slate-600 hover:border-teal-400'}`}>
+                                {on ? <Check size={12} /> : <Plus size={12} />} {on ? 'Đã chọn' : 'Chọn thêm'}
+                              </button>
+                              <button type="button" onClick={() => book([s])}
+                                      className="inline-flex items-center gap-1 rounded-lg bg-teal-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-teal-700">
+                                <CalendarCheck size={12} /> Đặt lịch ngay
+                              </button>
+                            </div>
                           </div>
                         </li>
                       );
@@ -134,11 +175,14 @@ export function CustomerAiAssistant({ onBook, liftPx = 0 }: {
 
           {picked.length > 0 && (
             <div className="flex items-center gap-2 border-t border-teal-100 bg-teal-50 px-3 py-2 text-xs">
-              <span className="min-w-0 flex-1 truncate text-teal-900">
-                Đã chọn {picked.length}: {picked.map((p) => p.name).join(', ')} · {picked.reduce((a, p) => a + p.durationMinutes, 0)} phút
+              <span className="min-w-0 flex-1 leading-tight text-teal-900">
+                <span className="block truncate font-semibold">Đã chọn {picked.length} dịch vụ · {picked.reduce((a, p) => a + p.durationMinutes, 0)} phút</span>
+                <span className="block truncate">{formatVnd(picked.reduce((a, p) => a + p.price, 0))} · {picked.map((p) => p.name).join(', ')}</span>
               </span>
               <button type="button" onClick={() => book(picked)}
-                      className="shrink-0 rounded-lg bg-teal-600 px-2.5 py-1.5 font-semibold text-white hover:bg-teal-700">Đặt lịch</button>
+                      className="inline-flex shrink-0 items-center gap-1 rounded-xl bg-teal-600 px-3 py-2 font-semibold text-white shadow-sm hover:bg-teal-700">
+                <CalendarCheck size={14} /> Đặt lịch ngay
+              </button>
             </div>
           )}
 

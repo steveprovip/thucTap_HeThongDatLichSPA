@@ -181,6 +181,8 @@ export function AuditLogsPage() {
   const [action, setAction] = useState('');
   const [entityType, setEntityType] = useState('');
   const [page, setPage] = useState(1);
+  /** TASK v4 · NV3: chọn số dòng mỗi trang (10 / 20 / 50) như mọi bảng quản trị khác. */
+  const [limit, setLimit] = useState(20);
   const [users, setUsers] = useState<UserRow[]>([]);
   const [data, setData] = useState<{ items: AuditLogRow[]; total: number; totalPages: number } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -194,7 +196,7 @@ export function AuditLogsPage() {
     setLoading(true);
     try {
       setData(await auditApi.list({
-        from, to, page, limit: 25,
+        from, to, page, limit,
         actor: actor || undefined, action: action || undefined, entityType: entityType || undefined,
       }));
     } catch (e) {
@@ -202,7 +204,7 @@ export function AuditLogsPage() {
     } finally {
       setLoading(false);
     }
-  }, [from, to, page, actor, action, entityType, toast]);
+  }, [from, to, page, limit, actor, action, entityType, toast]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -377,7 +379,8 @@ export function AuditLogsPage() {
               </tbody>
             </table>
           </div>
-          <Pagination page={page} totalPages={data.totalPages} total={data.total} onChange={(p) => { setPage(p); setExpanded(null); }} />
+          <Pagination page={page} totalPages={data.totalPages} total={data.total} onChange={(p) => { setPage(p); setExpanded(null); }}
+                      limit={limit} onLimitChange={(n) => { setLimit(n); setPage(1); setExpanded(null); }} />
         </>
       )}
     </div>

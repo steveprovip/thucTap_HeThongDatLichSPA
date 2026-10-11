@@ -70,4 +70,6 @@ export function applyTestEnv(conn: DbConnection): void {
   process.env.DB_NAME = conn.database;
   process.env.DB_SSL = 'false';
   process.env.DB_STARTUP_TIMEZONE = 'true';
+  // Máy dev có thể đang chạy AI local (model_AI_local) → test luôn kiểm câu trả lời theo luật, trừ khi tự bật lại
+  process.env.AI_PROVIDER = 'off';
 }

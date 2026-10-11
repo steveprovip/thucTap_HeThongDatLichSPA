@@ -45,6 +45,42 @@ describe('Trợ lý AI — luật dự phòng khi không có mô hình ngôn ng�
     expect(quickReplies('golden')).not.toContain('Giờ vàng tuần này?');
   });
 
+  it('TASK v4 · NV1: xưng hô / chào hỏi / hướng dẫn được đáp thân thiện, không bao giờ in bảng giờ vàng', () => {
+    const cases: [string, string][] = [
+      ['bạn là ai', 'identity'], ['Bạn giúp được gì cho mình?', 'identity'], ['hướng dẫn tôi', 'help'], ['chào bạn', 'greeting'],
+      ['alo', 'greeting'], ['alo alo', 'greeting'], ['Bạn khỏe không?', 'greeting'], ['cảm ơn nhé', 'thanks'], ['tạm biệt', 'bye'],
+    ];
+    for (const [q, intent] of cases) {
+      expect(detectIntent(q)).toBe(intent);
+      const answer = ruleAnswer(detectIntent(q), ctx, { userName: 'Đỗ Thanh Mai', now: new Date('2026-10-11T02:00:00Z') });
+      expect(answer).not.toContain('T7 10:00–11:00'); // không đổ số liệu giờ vàng khi chỉ xã giao
+      expect(answer.length).toBeGreaterThan(20);
+    }
+    // 09:00 giờ tiệm → "buổi sáng"; 20:00 → "buổi tối"
+    expect(ruleAnswer('greeting', ctx, { userName: 'Đỗ Thanh Mai', now: new Date('2026-10-11T02:00:00Z') })).toMatch(/^Chào Mai! Chúc bạn buổi sáng/);
+    expect(ruleAnswer('greeting', ctx, { now: new Date('2026-10-11T13:00:00Z') })).toContain('buổi tối');
+    expect(ruleAnswer('help', ctx)).toContain('Chờ xác nhận');
+    expect(ruleAnswer('bye', ctx, { userName: 'Lan' })).toMatch(/^Tạm biệt Lan!/);
+  });
+
+  it('TASK v4 · NV1: "tình hình hôm nay" trả số liệu tổng hợp của ngày, "thời tiết hôm nay" thì không', () => {
+    expect(detectIntent('Hôm nay có bao nhiêu lịch?')).toBe('today');
+    expect(detectIntent('tinh hinh hom nay the nao')).toBe('today');
+    expect(detectIntent('thời tiết hôm nay')).toBe('general');
+    const today = {
+      date: '2026-10-11', dayText: 'CN 11/10', total: 12, revenue: 3_450_000, revenueText: '3.450.000 ₫', pendingTotal: 4, pendingOverdue: 1,
+      byStatus: { pending: 2, confirmed: 5, arrived: 0, in_progress: 1, completed: 4, cancelled: 0, no_show: 0 },
+    };
+    const text = ruleAnswer('today', { ...ctx, today });
+    expect(text).toContain('12 lịch hẹn');
+    expect(text).toContain('5 đã xác nhận');
+    expect(text).toContain('3.450.000 ₫');
+    expect(text).toContain('4 lịch online chờ xác nhận (1 lịch đã chờ quá 12 giờ)');
+    expect(ruleAnswer('today', ctx)).toContain('Lịch ngày');
+    expect(quickReplies('today')).not.toContain('Tình hình hôm nay thế nào?');
+    expect(contextForLlm({ ...ctx, today })).toContain('Hôm nay CN 11/10: 12 lịch');
+  });
+
   it('ngữ cảnh gửi mô hình chỉ gồm số liệu tổng hợp', () => {
     const text = contextForLlm(ctx);
     expect(text).toContain('Giờ vàng: T7 10:00–11:00 (42 lượt)');

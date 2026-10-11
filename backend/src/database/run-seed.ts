@@ -13,6 +13,7 @@ import { config as loadEnv } from 'dotenv';
 import { describeDb, resolveDbConnection } from '../config/db-connection';
 import { connectWithRetry, hintFor, PgError } from './db-tools';
 import { runMigrations } from './migrate';
+import { cleanupJunk, seedRealistic, seedRealisticCustomers } from './seed-realistic';
 import { readSeedSql } from './sql-files';
 
 loadEnv();
@@ -37,10 +38,30 @@ async function main(): Promise<void> {
 
   const client = await connectWithRetry(conn);
   try {
+    const realistic = process.env.SALON_SEED_REALISTIC?.trim().toLowerCase() !== 'off';
+    if (realistic) {
+      // Dọn dữ liệu rác (bộ tải "Tải thử" cũ, bản ghi QA) TRƯỚC seed.sql để seed.sql không sinh ca cho thợ rác
+      const removed = await cleanupJunk(client);
+      const total = Object.values(removed).reduce((a, b) => a + b, 0);
+      if (total) console.log(`> Đã dọn ${total} bản ghi rác: ${Object.entries(removed).filter(([, v]) => v).map(([k, v]) => `${k}=${v}`).join(', ')}`);
+      // Khách thực tế có mặt trước khi seed.sql chọn khách ngẫu nhiên cho lịch mẫu → không dồn hàng trăm lịch vào 15 khách
+      const added = await seedRealisticCustomers(client);
+      if (added) console.log(`> Đã thêm ${added} khách hàng thực tế.`);
+    }
     console.log('> Nạp backend/database/seed.sql ...');
     client.on('notice', (n) => console.log(`  ${n.message}`));
     await client.query(readSeedSql());
     console.log('  Xong.');
+
+    // TASK v4 · NV2: lớp dữ liệu THỰC TẾ (43 dịch vụ có ảnh, 14 chuyên viên, khách & lịch hẹn theo giờ cao điểm) + dọn dữ liệu rác.
+    // Chạy lại nhiều lần không nhân đôi; SALON_SEED_REALISTIC=off để chỉ dùng bộ mẫu tối giản của seed.sql.
+    if (realistic) {
+      console.log('> Nạp dữ liệu thực tế (seed-realistic) ...');
+      const t0 = Date.now();
+      const r = await seedRealistic(client);
+      console.log(`  Xong sau ${((Date.now() - t0) / 1000).toFixed(1)} giây: +${r.customersAdded} khách, +${r.shiftsAdded} ca, `
+        + `+${r.appointmentsAdded} lịch hẹn, +${r.invoicesAdded} phiếu, dọn ${Object.values(r.removed).reduce((a, b) => a + b, 0)} bản ghi rác.`);
+    }
 
     const counts = await client.query(
       `SELECT

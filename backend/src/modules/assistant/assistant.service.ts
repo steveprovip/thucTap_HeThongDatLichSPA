@@ -2,18 +2,32 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import { formatVnd } from '../../common/utils/currency.util';
-import { addDays, todaySalon, toSalon } from '../../common/utils/time.util';
+import { addDays, dayOfWeek, endOfDay, startOfDay, todaySalon, toSalon } from '../../common/utils/time.util';
 import { StylistsService } from '../stylists/stylists.service';
 import { WorkingHoursService } from '../working-hours/working-hours.service';
 import { AvailabilityService } from '../booking-engine/availability.service';
 import {
   AssistantContext, AssistantIntent, ComboInsight, contextForLlm, detectIntent, DOW_VI, fold, GoldenHour, hourLabel,
-  HolidayLite, quickReplies, ruleAnswer, ShiftGapSuggestion, SYSTEM_PROMPT,
+  HolidayLite, quickReplies, ruleAnswer, ShiftGapSuggestion, SYSTEM_PROMPT, TodaySnapshot,
 } from './assistant-rules';
 import {
   CatalogItem, CUSTOMER_SYSTEM_PROMPT, customerContextForLlm, CustomerReply, customerRuleReply, SalonFacts,
 } from './customer-assistant-rules';
-import { callLlm, LlmConfig, LlmMessage } from './llm-client';
+import { callLlm, DEFAULT_LOCAL_AI_URL, LlmConfig, LlmMessage, pickModel, probeLocalServer } from './llm-client';
+
+/** Trạng thái trợ lý cho giao diện: đang trả lời bằng mô hình (local / cố định) hay bằng luật. */
+export interface AssistantStatus {
+  /** 'llm' = câu hỏi đang được chuyển cho mô hình ngôn ngữ; 'rules' = Smart Rule Assistant (không cần mô hình). */
+  mode: 'llm' | 'rules';
+  /** Cấu hình AI_PROVIDER: auto | off | ollama | openai. */
+  setting: string;
+  provider: string | null;
+  model: string | null;
+  /** Chế độ auto: có tìm thấy máy chủ AI local (model_AI_local/chay_ai_local.cmd) đang chạy không. */
+  localDetected: boolean;
+  /** Địa chỉ máy chủ AI local được dò (chế độ auto) — để hướng dẫn bật AI local. */
+  localUrl: string | null;
+}
 
 export interface AssistantInsights {
   windowDays: number;
@@ -42,6 +56,9 @@ export interface AssistantChatResult {
 
 const CACHE_MS = 5 * 60_000;
 const INSIGHT_DAYS = 90;
+/** Dò lại máy chủ AI local sau: 30 giây khi đang chạy, 10 giây khi chưa thấy / vừa lỗi (bật model lên là dùng ngay). */
+const PROBE_OK_MS = 30_000;
+const PROBE_MISS_MS = 10_000;
 
 /**
  * Part 5 — Trợ lý AI cho chủ tiệm & lễ tân. Lõi là SỐ LIỆU THẬT (giờ vàng, combo, khung thiếu thợ, ngày lễ) tính bằng
@@ -61,19 +78,63 @@ export class AssistantService {
     private readonly availability: AvailabilityService,
   ) {}
 
-  private get llm(): LlmConfig {
+  private probe: { at: number; cfg: LlmConfig | null } | null = null;
+
+  private get settings(): LlmConfig {
     return {
-      provider: (this.config.get<string>('ai.provider') ?? '').toLowerCase(),
+      provider: (this.config.get<string>('ai.provider') ?? 'auto').toLowerCase() || 'auto',
       baseUrl: this.config.get<string>('ai.baseUrl') ?? '',
-      model: this.config.get<string>('ai.model') ?? 'qwen2.5:3b',
+      model: this.config.get<string>('ai.model') ?? '',
       apiKey: this.config.get<string>('ai.apiKey') ?? '',
-      timeoutMs: this.config.get<number>('ai.timeoutMs') ?? 15000,
+      timeoutMs: this.config.get<number>('ai.timeoutMs') ?? 25000,
     };
   }
 
-  status(): { provider: string | null; model: string | null } {
-    const { provider, model } = this.llm;
-    return provider ? { provider, model } : { provider: null, model: null };
+  private get localUrl(): string {
+    return (this.settings.baseUrl || DEFAULT_LOCAL_AI_URL).replace(/\/+$/, '');
+  }
+
+  /**
+   * TASK v4 · NV5 — fallback 2 lớp. Trả cấu hình mô hình cần gọi, hoặc null = trả lời bằng luật (Smart Rule Assistant):
+   *  - AI_PROVIDER=off → luôn null; ollama / openai → cấu hình cố định như trước.
+   *  - auto (mặc định) → dò máy chủ AI local (llama.cpp / Ollama chạy Spark-X2.5-4B tại cổng 11434); kết quả dò được nhớ
+   *    30 giây (đang chạy) / 10 giây (chưa thấy) nên không làm chậm từng câu hỏi; tắt model đi là tự quay về luật.
+   */
+  private async resolveLlm(): Promise<LlmConfig | null> {
+    const s = this.settings;
+    if (['off', 'none', 'rules', 'false', '0'].includes(s.provider)) return null;
+    if (s.provider !== 'auto') return { ...s, model: s.model || 'qwen2.5:3b' };
+    const fresh = this.probe && Date.now() - this.probe.at < (this.probe.cfg ? PROBE_OK_MS : PROBE_MISS_MS);
+    if (!fresh) {
+      const found = await probeLocalServer(this.localUrl);
+      const model = found.ok ? pickModel(found.models, s.model) : null;
+      const cfg: LlmConfig | null = model
+        ? { provider: found.kind === 'ollama' ? 'ollama' : 'local', baseUrl: found.kind === 'ollama' ? this.localUrl.replace(/\/v1$/, '') : this.localUrl,
+          model, apiKey: s.apiKey, timeoutMs: s.timeoutMs }
+        : null;
+      if (cfg && !this.probe?.cfg) this.logger.log(`Phát hiện AI local ${cfg.model} tại ${this.localUrl} — chuyển câu hỏi cho mô hình`);
+      if (!cfg && this.probe?.cfg) this.logger.warn('AI local đã tắt — trợ lý trả lời theo luật');
+      this.probe = { at: Date.now(), cfg };
+    }
+    return this.probe?.cfg ?? null;
+  }
+
+  /** Mô hình vừa lỗi / quá giờ: chế độ auto tạm dùng luật 10 giây rồi mới dò lại (không bắt khách chờ timeout liên tiếp). */
+  private markLlmDown(): void {
+    if (this.settings.provider === 'auto') this.probe = { at: Date.now(), cfg: null };
+  }
+
+  async status(): Promise<AssistantStatus> {
+    const s = this.settings;
+    const cfg = await this.resolveLlm();
+    return {
+      mode: cfg ? 'llm' : 'rules',
+      setting: s.provider,
+      provider: cfg?.provider ?? null,
+      model: cfg?.model ?? null,
+      localDetected: s.provider === 'auto' && !!cfg,
+      localUrl: s.provider === 'auto' ? this.localUrl : null,
+    };
   }
 
   /** Giờ vàng / giờ vắng (theo thứ × giờ, 90 ngày qua, trong giờ mở cửa) + combo dịch vụ hay đặt cùng nhau. */
@@ -175,6 +236,37 @@ export class AssistantService {
     return ctx;
   }
 
+  /** TASK v4 · NV1 — số liệu tổng hợp hôm nay cho câu "tình hình hôm nay?" (tươi mỗi câu hỏi, không cache 5 phút). */
+  async todaySnapshot(): Promise<TodaySnapshot> {
+    const day = todaySalon();
+    const overdueHours = this.config.get<number>('business.pendingOverdueHours') ?? 12;
+    const [statuses, revenue, pending] = await Promise.all([
+      this.dataSource.query(
+        `SELECT status::text AS status, count(*)::int AS n FROM appointments
+          WHERE start_at >= $1 AND start_at <= $2 GROUP BY 1`, [startOfDay(day), endOfDay(day)]) as Promise<{ status: string; n: number }[]>,
+      this.dataSource.query(
+        `SELECT COALESCE(sum(total), 0)::bigint AS total FROM invoices
+          WHERE status = 'closed' AND closed_at >= $1 AND closed_at <= $2`, [startOfDay(day), endOfDay(day)]) as Promise<{ total: string }[]>,
+      this.dataSource.query(
+        `SELECT count(*)::int AS total, count(*) FILTER (WHERE created_at < now() - make_interval(hours => $1))::int AS overdue
+           FROM appointments WHERE status = 'pending'`, [overdueHours]) as Promise<{ total: number; overdue: number }[]>,
+    ]);
+    const byStatus: Record<string, number> = {};
+    for (const s of ['pending', 'confirmed', 'arrived', 'in_progress', 'completed', 'cancelled', 'no_show']) byStatus[s] = 0;
+    for (const r of statuses) byStatus[r.status] = r.n;
+    const money = Number(revenue[0]?.total ?? 0);
+    return {
+      date: day,
+      dayText: `${DOW_VI[dayOfWeek(day)]} ${day.slice(8, 10)}/${day.slice(5, 7)}`,
+      total: statuses.reduce((a, r) => a + r.n, 0),
+      byStatus,
+      revenue: money,
+      revenueText: formatVnd(money),
+      pendingTotal: pending[0]?.total ?? 0,
+      pendingOverdue: pending[0]?.overdue ?? 0,
+    };
+  }
+
   /** Lịch sử hội thoại gần nhất (tối đa 6 lượt) để mô hình hiểu câu hỏi nối tiếp ("thế còn thứ 7?"). */
   private history(history: ChatTurn[] = []): LlmMessage[] {
     return history.slice(-6).map((h) => ({ role: h.role === 'assistant' ? 'assistant' : 'user', content: h.content.slice(0, 500) }));
@@ -182,11 +274,12 @@ export class AssistantService {
 
   async chat(message: string, opts: { userName?: string | null; history?: ChatTurn[] } = {}): Promise<AssistantChatResult> {
     const intent = detectIntent(message);
-    const ctx = await this.context();
-    const fallback = ruleAnswer(intent, ctx, { userName: opts.userName });
+    const [cached, today] = await Promise.all([this.context(), this.todaySnapshot().catch(() => null)]);
+    const ctx: AssistantContext = { ...cached, today };
+    const fallback = ruleAnswer(intent, ctx, { userName: opts.userName, now: new Date() });
     const base = { intent, quickReplies: quickReplies(intent) };
-    const cfg = this.llm;
-    if (!cfg.provider) return { ...base, answer: fallback, source: 'rules', model: null };
+    const cfg = await this.resolveLlm();
+    if (!cfg) return { ...base, answer: fallback, source: 'rules', model: null };
 
     const answer = await callLlm(cfg, [
       { role: 'system', content: `${SYSTEM_PROMPT}\nNgười đang trò chuyện: ${opts.userName ?? 'nhân viên tiệm'}.\nDỮ LIỆU:\n${contextForLlm(ctx)}` },
@@ -195,6 +288,7 @@ export class AssistantService {
     ]);
     if (!answer) {
       this.logger.warn(`Mô hình ${cfg.provider}/${cfg.model} không phản hồi kịp — dùng câu trả lời theo luật`);
+      this.markLlmDown();
       return { ...base, answer: fallback, source: 'rules', model: null };
     }
     return { ...base, answer, source: 'llm', model: cfg.model };
@@ -216,7 +310,7 @@ export class AssistantService {
     ]);
     const catalog: CatalogItem[] = groups.flatMap((g) => g.services.map((s) => ({
       id: s.id, name: s.name, categoryName: g.categoryName, durationMinutes: s.durationMinutes,
-      price: s.price, priceText: s.priceText, description: s.description,
+      price: s.price, priceText: s.priceText, description: s.description, imageUrl: s.imageUrl,
     })));
     const c = (k: string): string => this.config.get<string>(`app.${k}`) ?? '';
     const facts: SalonFacts = {
@@ -234,16 +328,19 @@ export class AssistantService {
    */
   async customerChat(message: string, history: ChatTurn[] = []): Promise<CustomerChatResult> {
     const { catalog, hotIds, facts } = await this.publicData();
-    const rule = customerRuleReply(message, catalog, hotIds, facts);
-    const cfg = this.llm;
-    if (!cfg.provider) return { ...rule, source: 'rules', model: null };
+    const rule = customerRuleReply(message, catalog, hotIds, facts, new Date());
+    const cfg = await this.resolveLlm();
+    if (!cfg) return { ...rule, source: 'rules', model: null };
 
     const answer = await callLlm(cfg, [
       { role: 'system', content: `${CUSTOMER_SYSTEM_PROMPT}\n${customerContextForLlm(catalog, hotIds, facts)}` },
       ...this.history(history),
       { role: 'user', content: `${message.trim()}\n\n(Gợi ý theo luật, dùng nếu phù hợp: ${rule.answer})` },
     ]);
-    if (!answer) return { ...rule, source: 'rules', model: null };
+    if (!answer) {
+      this.markLlmDown();
+      return { ...rule, source: 'rules', model: null };
+    }
     const folded = fold(answer);
     const mentioned = catalog.filter((s) => fold(s.name).length >= 4 && folded.includes(fold(s.name)));
     const suggestions = [...rule.suggestions, ...mentioned.filter((m) => !rule.suggestions.some((r) => r.id === m.id))].slice(0, 4);

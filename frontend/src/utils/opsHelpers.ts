@@ -82,6 +82,32 @@ export function pageItems(page: number, totalPages: number): (number | '…')[] 
   return out;
 }
 
+export interface PageOf<T> { items: T[]; total: number; page: number; limit: number; totalPages: number }
+
+/**
+ * TASK v4 · NV3 — chuẩn hoá MỌI phản hồi danh sách về một trang an toàn: máy chủ mới trả { items, total, page, limit,
+ * totalPages }, máy chủ cũ / chưa khởi động lại trả MẢNG (→ tự cắt trang ở trình duyệt), phản hồi rỗng / sai dạng → trang
+ * trống. Màn hình không bao giờ "trắng trang" vì đọc `.items` của một mảng hay của undefined.
+ */
+export function normalizePage<T>(raw: unknown, page = 1, limit = 20): PageOf<T> {
+  const size = Math.max(1, Math.floor(limit) || 20);
+  if (Array.isArray(raw)) {
+    const total = raw.length;
+    const totalPages = Math.max(1, Math.ceil(total / size));
+    const p = Math.min(Math.max(1, Math.floor(page) || 1), totalPages);
+    return { items: raw.slice((p - 1) * size, p * size) as T[], total, page: p, limit: size, totalPages };
+  }
+  const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const items = (Array.isArray(o.items) ? o.items : Array.isArray(o.data) ? o.data : []) as T[];
+  const num = (v: unknown, d: number): number => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : d);
+  const total = num(o.total, items.length);
+  const lim = num(o.limit, size) || size;
+  return { items, total, page: Math.max(1, num(o.page, page)), limit: lim, totalPages: Math.max(1, num(o.totalPages, Math.ceil(total / lim))) };
+}
+
+/** Cắt một trang từ danh sách đã có sẵn ở trình duyệt (vd. khách vãng lai) — cùng định dạng với normalizePage. */
+export const paginate = <T>(items: readonly T[], page: number, limit: number): PageOf<T> => normalizePage<T>([...items], page, limit);
+
 /** "Hiển thị 21 – 40 trên tổng số 135 bản ghi" (0 bản ghi → "Không có bản ghi nào"). */
 export function rangeText(page: number, limit: number, total: number): string {
   if (!total) return 'Không có bản ghi nào';
