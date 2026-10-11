@@ -298,6 +298,29 @@ export class AppointmentsService {
     return this.decorate(appts, user.role);
   }
 
+  /**
+   * TASK v3 · NV2 — danh sách Chờ xác nhận có phân trang ở MÁY CHỦ (5.000+ lịch): lịch chưa xử lý quá 12 giờ luôn
+   * xếp đầu (nên nằm ở trang 1), sau đó theo lựa chọn: giờ hẹn cũ nhất / mới nhất, tên khách A–Z (không dấu).
+   */
+  async listPendingPaged(
+    q: { page: number; limit: number; sort: 'start_asc' | 'start_desc' | 'name_asc' }, user: AuthUser,
+  ): Promise<PaginatedResult<AppointmentView> & { overdueCount: number }> {
+    const overdueBefore = new Date(Date.now() - this.pendingOverdueHours * 3600_000);
+    const order = q.sort === 'start_desc' ? 'a.start_at DESC' : q.sort === 'name_asc' ? 'f_unaccent(lower(c.full_name)) ASC, a.start_at ASC' : 'a.start_at ASC';
+    const [{ total, overdue }] = await this.dataSource.query(
+      `SELECT count(*)::int AS total, count(*) FILTER (WHERE created_at < $1)::int AS overdue
+         FROM appointments WHERE status = 'pending'`, [overdueBefore]);
+    const ids: { id: string }[] = await this.dataSource.query(
+      `SELECT a.id FROM appointments a JOIN customers c ON c.id = a.customer_id
+        WHERE a.status = 'pending'
+        ORDER BY (a.created_at < $1) DESC, ${order}, a.id
+        LIMIT $2 OFFSET $3`, [overdueBefore, q.limit, (q.page - 1) * q.limit]);
+    const appts = ids.length ? await this.apptRepo.find({ where: { id: In(ids.map((r) => r.id)) } }) : [];
+    const byId = new Map(appts.map((a) => [a.id, a]));
+    const items = await this.decorate(ids.map((r) => byId.get(r.id)!).filter(Boolean), user.role);
+    return { ...paginate(items, total, q.page, q.limit), overdueCount: overdue };
+  }
+
   get rejectReasons(): readonly string[] {
     return REJECT_REASONS;
   }

@@ -9,6 +9,7 @@ type Tab = 'chat' | 'shifts' | 'holidays' | 'golden';
 interface ChatLine { from: 'me' | 'bot'; text: string; meta?: string }
 
 const QUICK = [
+  'Bạn là ai?',
   'Giờ vàng tuần này là khi nào?',
   'Khách gọi đặt cắt tóc, nên gợi ý combo gì?',
   '7 ngày tới thiếu thợ ca nào?',
@@ -37,6 +38,8 @@ export function SmartAiAssistant() {
   const [lines, setLines] = useState<ChatLine[]>([]);
   const [draft, setDraft] = useState('');
   const [asking, setAsking] = useState(false);
+  /** TASK v3: câu hỏi gợi ý tiếp theo do máy chủ trả về sau mỗi câu trả lời. */
+  const [followUps, setFollowUps] = useState<string[]>([]);
   const [gaps, setGaps] = useState<AssistantShiftGap[] | null>(null);
   const [insights, setInsights] = useState<AssistantInsights | null>(null);
   const [year, setYear] = useState(new Date().getFullYear());
@@ -71,12 +74,14 @@ export function SmartAiAssistant() {
   const ask = async (text: string) => {
     const q = text.trim();
     if (!q || asking) return;
+    const past = lines.map((l) => ({ role: l.from === 'me' ? 'user' as const : 'assistant' as const, content: l.text.slice(0, 1500) }));
     setLines((l) => [...l, { from: 'me', text: q }]);
     setDraft('');
     setAsking(true);
     try {
-      const r: AssistantChatReply = await assistantApi.chat(q);
-      setLines((l) => [...l, { from: 'bot', text: r.answer, meta: r.source === 'llm' ? `AI · ${r.model}` : 'Theo số liệu của tiệm' }]);
+      const r: AssistantChatReply = await assistantApi.chat(q, past);
+      setLines((l) => [...l, { from: 'bot', text: r.answer, meta: r.source === 'llm' ? `AI · ${r.model}` : 'Trợ lý của tiệm' }]);
+      if (r.quickReplies?.length) setFollowUps(r.quickReplies);
     } catch (e) {
       setLines((l) => [...l, { from: 'bot', text: getErrorMessage(e), meta: 'Lỗi' }]);
     } finally {
@@ -174,6 +179,14 @@ export function SmartAiAssistant() {
                   </div>
                 ))}
                 {asking && <p className="flex items-center gap-1.5 text-xs text-ink-muted"><Loader2 size={13} className="animate-spin" /> Đang phân tích số liệu…</p>}
+                {!asking && lines.length > 0 && followUps.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {followUps.map((q) => (
+                      <button key={q} type="button" onClick={() => void ask(q)}
+                              className="rounded-full border border-teal-200 px-2 py-0.5 text-[11px] text-teal-800 hover:bg-teal-50">{q}</button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 

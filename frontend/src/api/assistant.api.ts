@@ -1,5 +1,5 @@
 import { api, unwrap } from './client';
-import type { AssistantChatReply, AssistantInsights, AssistantShiftGap } from '@/types';
+import type { AssistantChatReply, AssistantInsights, AssistantShiftGap, ChatTurn, CustomerAssistantReply } from '@/types';
 
 /** Part 5 — API nội bộ của Trợ lý AI (Chủ tiệm, Lễ tân). */
 export const assistantApi = {
@@ -12,7 +12,11 @@ export const assistantApi = {
   async shiftSuggestions(params: { days?: number; minStaff?: number } = {}): Promise<{ from: string; to: string; gaps: AssistantShiftGap[] }> {
     return unwrap(await api.get('/assistant/shift-suggestions', { params }));
   },
-  async chat(message: string): Promise<AssistantChatReply> {
-    return unwrap<AssistantChatReply>(await api.post('/assistant/chat', { message }));
+  async chat(message: string, history: ChatTurn[] = []): Promise<AssistantChatReply> {
+    return unwrap<AssistantChatReply>(await api.post('/assistant/chat', { message, history: history.slice(-6) }));
+  },
+  /** TASK v3 · NV1: AI tư vấn khách trên trang công khai (không cần đăng nhập). */
+  async customerChat(message: string, history: ChatTurn[] = []): Promise<CustomerAssistantReply> {
+    return unwrap<CustomerAssistantReply>(await api.post('/public/assistant/chat', { message, history: history.slice(-6) }));
   },
 };

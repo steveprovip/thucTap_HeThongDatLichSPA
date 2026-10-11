@@ -28,6 +28,8 @@ describe('LLM client — Ollama / OpenAI-compatible, lỗi thì im lặng trả 
     expect(o.url).toBe('https://x.ai/v1/chat/completions');
     expect((o.init.headers as Record<string, string>).Authorization).toBe('Bearer k');
     expect(buildLlmRequest(cfg({ provider: '' }), msgs)).toBeNull();
+    // Ollama qua cổng tương thích OpenAI (http://localhost:11434/v1) — Spark-X2.5-4B / Qwen 2.5 3B
+    expect(buildLlmRequest(cfg({ baseUrl: 'http://localhost:11434/v1' }), msgs)?.url).toBe('http://localhost:11434/v1/chat/completions');
   });
 
   it('đọc câu trả lời của cả hai định dạng', () => {
@@ -40,6 +42,7 @@ describe('LLM client — Ollama / OpenAI-compatible, lỗi thì im lặng trả 
     delay = 0;
     await expect(callLlm(cfg({ baseUrl: url }), msgs)).resolves.toBe('Chào bạn');
     await expect(callLlm(cfg({ provider: 'openai', baseUrl: url }), msgs)).resolves.toBe('OK');
+    await expect(callLlm(cfg({ baseUrl: `${url}/v1` }), msgs)).resolves.toBe('OK');
     delay = 300;
     await expect(callLlm(cfg({ baseUrl: url, timeoutMs: 50 }), msgs)).resolves.toBeNull();
     await expect(callLlm(cfg({ baseUrl: 'http://127.0.0.1:1' }), msgs)).resolves.toBeNull();

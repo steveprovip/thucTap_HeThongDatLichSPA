@@ -16,6 +16,7 @@ import { useToast } from '@/contexts/ToastContext';
 export function CustomersPage() {
   const [q, setQ] = useState('');
   const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(20);
   const [data, setData] = useState<{ items: Customer[]; total: number; totalPages: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [detail, setDetail] = useState<Customer | null>(null);
@@ -31,13 +32,13 @@ export function CustomersPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setData(await customersApi.search({ q: q.trim() || undefined, page, limit: 20 }));
+      setData(await customersApi.search({ q: q.trim() || undefined, page, limit }));
     } catch (e) {
       toast.error(getErrorMessage(e));
     } finally {
       setLoading(false);
     }
-  }, [q, page, toast]);
+  }, [q, page, limit, toast]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => { void load(); }, q ? 300 : 0);
@@ -117,7 +118,8 @@ export function CustomersPage() {
               </tbody>
             </table>
           </div>
-          <Pagination page={page} totalPages={data.totalPages} total={data.total} onChange={setPage} />
+          <Pagination page={page} totalPages={data.totalPages} total={data.total} onChange={setPage}
+                      limit={limit} onLimitChange={(n) => { setLimit(n); setPage(1); }} />
         </>
       )}
 

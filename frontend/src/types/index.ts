@@ -660,8 +660,23 @@ export interface AssistantShiftGap {
   candidates: { stylistId: string; fullName: string; weekMinutes: number }[];
 }
 export interface AssistantChatReply {
-  intent: 'shifts' | 'holidays' | 'golden' | 'combo' | 'general';
+  intent: 'shifts' | 'holidays' | 'golden' | 'combo' | 'greeting' | 'identity' | 'help' | 'thanks' | 'general';
   answer: string;
+  quickReplies?: string[];
+  source: 'llm' | 'rules';
+  model: string | null;
+}
+
+// ----------------------------------------------------------- TASK v3: AI tư vấn khách
+export interface ChatTurn { role: 'user' | 'assistant'; content: string }
+export interface CustomerAssistantService {
+  id: string; name: string; categoryName: string; durationMinutes: number; price: number; priceText: string; description: string | null;
+}
+export interface CustomerAssistantReply {
+  intent: string;
+  answer: string;
+  suggestions: CustomerAssistantService[];
+  quickReplies: string[];
   source: 'llm' | 'rules';
   model: string | null;
 }

@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, ClipboardList, RefreshCw } from 'lucide-react';
 import { appointmentsApi, getErrorMessage } from '@/api';
 import type { Appointment } from '@/types';
-import { Button, Card, EmptyState, SectionTitle, Select, Spinner, StatusBadge } from '@/components';
+import { Button, Card, EmptyState, Pagination, SectionTitle, Select, Spinner, StatusBadge } from '@/components';
 import { formatDuration } from '@/utils/format';
-import { sortPending, type PendingSort } from '@/utils/opsHelpers';
+import type { PendingSort } from '@/utils/opsHelpers';
 import { useToast } from '@/contexts/ToastContext';
 import { useAppointmentsSync } from '@/utils/liveSync';
 import { AppointmentDrawer } from './AppointmentDrawer';
@@ -12,6 +12,10 @@ import { AppointmentDrawer } from './AppointmentDrawer';
 /** S3-02: danh sách riêng các lịch đặt online đang chờ xác nhận. */
 export function PendingPage() {
   const [items, setItems] = useState<Appointment[]>([]);
+  /** TASK v3 · NV2: phân trang ở máy chủ (5.000+ lịch), quá hạn 12 giờ luôn ở đầu trang 1. */
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(20);
+  const [meta, setMeta] = useState({ total: 0, totalPages: 1, overdueCount: 0 });
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Appointment | null>(null);
   const [sort, setSort] = useState<PendingSort>('start_asc');
@@ -20,19 +24,21 @@ export function PendingPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setItems(await appointmentsApi.pending());
+      const r = await appointmentsApi.pendingPage({ page, limit, sort });
+      setItems(r.items);
+      setMeta({ total: r.total, totalPages: r.totalPages, overdueCount: r.overdueCount });
+      if (r.items.length === 0 && page > 1) setPage(Math.max(1, r.totalPages)); // xử lý hết trang cuối → lùi trang
     } catch (e) {
       toast.error(getErrorMessage(e));
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [toast, page, limit, sort]);
 
   useEffect(() => { void load(); }, [load]);
   useAppointmentsSync(() => { void load(); });
 
-  const overdue = items.filter((i) => i.pendingOverdue);
-  const sorted = useMemo(() => sortPending(items, sort), [items, sort]);
+  const sorted = items; // máy chủ đã sắp: quá hạn trước, rồi theo lựa chọn
   const confirm = async (a: Appointment) => {
     try { await appointmentsApi.confirm(a.id); toast.success(`Đã xác nhận lịch ${a.code}`); void load(); }
     catch (e) { toast.error(getErrorMessage(e)); }
@@ -45,7 +51,7 @@ export function PendingPage() {
         description="Lịch khách đặt online vào đây trước, tiệm chủ động xác nhận hoặc từ chối."
         action={
           <div className="flex items-center gap-2">
-            <Select aria-label="Sắp xếp lịch chờ" value={sort} onChange={(e) => setSort(e.target.value as PendingSort)} className="h-9 w-auto text-sm">
+            <Select aria-label="Sắp xếp lịch chờ" value={sort} onChange={(e) => { setSort(e.target.value as PendingSort); setPage(1); }} className="h-9 w-auto text-sm">
               <option value="start_asc">Giờ hẹn: cũ nhất trước</option>
               <option value="start_desc">Giờ hẹn: mới nhất trước</option>
               <option value="name_asc">Tên khách hàng (A–Z)</option>
@@ -55,9 +61,9 @@ export function PendingPage() {
         }
       />
 
-      {overdue.length > 0 && (
+      {meta.overdueCount > 0 && (
         <p className="flex items-center gap-2 rounded-xl bg-amber-50 px-3.5 py-2.5 text-sm text-amber-900">
-          <AlertTriangle size={16} /> Có {overdue.length} lịch chưa xử lý quá 12 giờ — luôn xếp đầu danh sách.
+          <AlertTriangle size={16} /> Có {meta.overdueCount} lịch chưa xử lý quá 12 giờ — luôn xếp đầu danh sách (trang 1).
         </p>
       )}
 
@@ -111,6 +117,8 @@ export function PendingPage() {
             </Card>
           ))}
         </div>
+        <Pagination page={page} totalPages={meta.totalPages} total={meta.total} onChange={setPage}
+                    limit={limit} onLimitChange={(n) => { setLimit(n); setPage(1); }} />
         </>
       )}
 

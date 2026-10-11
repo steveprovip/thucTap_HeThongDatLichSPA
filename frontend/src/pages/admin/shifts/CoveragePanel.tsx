@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { AlertTriangle, ChevronDown, ChevronUp, ShieldCheck, UserPlus } from 'lucide-react';
+import { ChevronDown, ChevronUp, UserPlus } from 'lucide-react';
 import { getErrorMessage, stylistsApi } from '@/api';
 import type { CoverageReport } from '@/types';
 import { formatDuration, timeToMinutes } from '@/utils/format';
 import { DOW_LABELS } from '@/utils/constants';
 import { useToast } from '@/contexts/ToastContext';
+import { weekCoveragePercent } from '@/utils/opsHelpers';
 
 /**
  * Mentor Sprint 2 · mục 9 — "khung giờ nào cũng có thợ".
@@ -20,14 +21,13 @@ export function CoveragePanel({ report, minStaff, onMinStaff, canEdit, onChanged
   onChanged: () => void;
 }) {
   const toast = useToast();
-  /** QA 11/10: luôn thu gọn thành MỘT dòng tóm tắt (mỗi ngày một chip %) để bảng ca vừa màn hình; bấm Chi tiết mới mở. */
+  /** Luôn thu gọn thành MỘT dòng tóm tắt; bấm "Xem chi tiết độ phủ" mới mở thanh thời gian + gợi ý xếp thợ. */
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   /** Danh sách khoảng trống + gợi ý xếp thợ: thu gọn mặc định để bảng ca vẫn nằm trong màn hình đầu. */
   const [showGaps, setShowGaps] = useState(false);
   if (!report) return null;
 
-  const openDays = report.days.filter((d) => !d.closedReason);
   const gapCount = report.days.reduce((n, d) => n + d.gaps.length, 0);
   const ok = gapCount === 0;
   const maxLoad = Math.max(1, ...report.workload.map((w) => w.minutes));
@@ -46,28 +46,33 @@ export function CoveragePanel({ report, minStaff, onMinStaff, canEdit, onChanged
     }
   };
 
+  const pct = weekCoveragePercent(report.days);
+  const ddmm = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
+
+  // TASK v3 · NV3: bỏ khối cảnh báo đỏ / xanh chiếm diện tích → MỘT dòng tóm tắt trung tính, chi tiết mở khi cần
   return (
-    <section aria-label="Độ phủ ca làm"
-             className={`rounded-xl border px-2.5 py-1.5 ${ok ? 'border-emerald-200 bg-emerald-50/50' : 'border-red-200 bg-red-50/40'}`}>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <h3 className={`flex items-center gap-1.5 text-xs font-semibold ${ok ? 'text-emerald-800' : 'text-red-800'}`}
-            title={ok ? undefined : `Tổng thời gian thiếu: ${formatDuration(report.totalGapMinutes)}`}>
-          {ok ? <ShieldCheck size={14} /> : <AlertTriangle size={14} />}
-          {ok ? 'Đủ thợ mọi khung giờ' : `Thiếu thợ: ${gapCount} khung · ${report.understaffedDays}/${openDays.length} ngày`}
-        </h3>
-        {!open && (
-          <ul className="flex flex-wrap gap-1" aria-label="Độ phủ từng ngày">
-            {report.days.map((d) => (
-              <li key={d.date} title={d.closedReason ?? `${d.openTime}–${d.closeTime} · ${d.staffCount} thợ`}
-                  className={`rounded px-1.5 text-[11px] leading-5 tabular-nums ${d.closedReason ? 'bg-slate-100 text-slate-400'
-                    : d.gaps.length ? 'bg-red-100 font-semibold text-red-800' : 'bg-emerald-100 text-emerald-800'}`}>
-                {DOW_LABELS[new Date(`${d.date}T12:00:00Z`).getUTCDay()]} {d.closedReason ? 'nghỉ' : `${d.coveragePercent}%`}
-              </li>
-            ))}
-          </ul>
+    <section aria-label="Độ phủ ca làm" className="rounded-xl border border-slate-200 bg-white px-3 py-1.5">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-ink-soft">
+        <span className="font-semibold text-ink">Tuần {ddmm(report.from)} – {ddmm(report.to)}</span>
+        <span aria-hidden>·</span>
+        <span className={`font-semibold tabular-nums ${pct >= 95 ? 'text-emerald-700' : pct >= 80 ? 'text-amber-700' : 'text-red-700'}`}
+              title={`Tỉ lệ thời gian mở cửa có ít nhất ${minStaff} thợ trực`}>
+          {pct}% độ phủ
+        </span>
+        {!ok && (
+          <>
+            <span aria-hidden>·</span>
+            <span title={`Tổng thời gian thiếu: ${formatDuration(report.totalGapMinutes)}`}>
+              {gapCount} khung thiếu thợ / {report.understaffedDays} ngày
+            </span>
+          </>
         )}
-        <div className="ml-auto flex items-center gap-2 text-xs text-ink-soft">
-          <label className="flex items-center gap-1">
+        <button type="button" onClick={() => setOpen(!open)} aria-expanded={open}
+                className="inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 font-medium text-teal-700 hover:bg-teal-50">
+          {open ? 'Thu gọn' : 'Xem chi tiết độ phủ'} {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+        </button>
+        {open && (
+          <label className="ml-auto flex items-center gap-1 text-xs">
             Tối thiểu
             <select className="rounded-md border border-slate-300 bg-white px-1.5 py-0.5" value={minStaff}
                     onChange={(e) => onMinStaff(Number(e.target.value))} aria-label="Số thợ tối thiểu mỗi thời điểm">
@@ -75,11 +80,7 @@ export function CoveragePanel({ report, minStaff, onMinStaff, canEdit, onChanged
             </select>
             thợ / thời điểm
           </label>
-          <button type="button" onClick={() => setOpen(!open)} className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-white/70"
-                  aria-expanded={open}>
-            {open ? <>Thu gọn <ChevronUp size={14} /></> : <>Chi tiết <ChevronDown size={14} /></>}
-          </button>
-        </div>
+        )}
       </div>
 
       {open && (

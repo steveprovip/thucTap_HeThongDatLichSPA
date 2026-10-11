@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Check, Clock, Wallet } from 'lucide-react';
 import { getErrorField, getErrorMessage, publicApi } from '@/api';
 import type { BookingResult, Quote } from '@/types';
-import { BackButton, Button } from '@/components';
+import { BackButton, Button, CustomerAiAssistant } from '@/components';
 import { formatDuration, formatVnd, VN_PHONE_MESSAGE, VN_PHONE_REGEX } from '@/utils/format';
 import { emailError } from '@/utils/validators';
 import { useSalonInfo } from '@/utils/salonInfo';
@@ -47,6 +47,28 @@ export function BookingWizard() {
       if (service && !selected.some(item => item.id === serviceId)) booking.toggleService(service);
     }).catch(error => toast.error(getErrorMessage(error)));
   }, [searchParams, booking, selected, toast]);
+
+  // TASK v3 · NV1: trợ lý tư vấn chọn dịch vụ → điền giỏ theo giá / thời lượng HIỆN HÀNH rồi sang bước chọn giờ
+  const { replaceServices } = booking;
+  const applyServices = useCallback(async (ids: string[]) => {
+    try {
+      const all = (await publicApi.catalog()).flatMap((g) => g.services);
+      const list = ids.map((id) => all.find((s) => s.id === id)).filter((s): s is NonNullable<typeof s> => !!s);
+      if (!list.length) { toast.warning('Dịch vụ vừa chọn hiện không còn nhận đặt online'); return; }
+      replaceServices(list);
+      setStep(2);
+      toast.success(`Đã điền ${list.length} dịch vụ — chọn ngày giờ phù hợp nhé`);
+    } catch (e) {
+      toast.error(getErrorMessage(e));
+    }
+  }, [replaceServices, setStep, toast]);
+  const servicesParam = searchParams.get('services');
+  const appliedParam = useRef<string | null>(null);
+  useEffect(() => {
+    if (!servicesParam || appliedParam.current === servicesParam) return;
+    appliedParam.current = servicesParam;
+    void applyServices(servicesParam.split(',').filter(Boolean).slice(0, 5));
+  }, [servicesParam, applyServices]);
 
   // QA-01: hỏi máy chủ tổng thời lượng so với ca dài nhất trong tuần ngay khi giỏ thay đổi
   const [quote, setQuote] = useState<Quote | null>(null);
@@ -220,6 +242,8 @@ export function BookingWizard() {
           </div>
         </div>
       </div>
+      {/* Nâng nút tư vấn lên trên thanh "Tiếp tục" dính đáy trên điện thoại */}
+      <CustomerAiAssistant liftPx={110} onBook={(services) => void applyServices(services.map((s) => s.id))} />
     </div>
   );
 }

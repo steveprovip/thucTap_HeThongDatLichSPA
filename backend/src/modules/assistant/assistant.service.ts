@@ -5,11 +5,15 @@ import { formatVnd } from '../../common/utils/currency.util';
 import { addDays, todaySalon, toSalon } from '../../common/utils/time.util';
 import { StylistsService } from '../stylists/stylists.service';
 import { WorkingHoursService } from '../working-hours/working-hours.service';
+import { AvailabilityService } from '../booking-engine/availability.service';
 import {
-  AssistantContext, AssistantIntent, ComboInsight, contextForLlm, detectIntent, DOW_VI, GoldenHour, hourLabel,
-  HolidayLite, ruleAnswer, ShiftGapSuggestion, SYSTEM_PROMPT,
+  AssistantContext, AssistantIntent, ComboInsight, contextForLlm, detectIntent, DOW_VI, fold, GoldenHour, hourLabel,
+  HolidayLite, quickReplies, ruleAnswer, ShiftGapSuggestion, SYSTEM_PROMPT,
 } from './assistant-rules';
-import { callLlm, LlmConfig } from './llm-client';
+import {
+  CatalogItem, CUSTOMER_SYSTEM_PROMPT, customerContextForLlm, CustomerReply, customerRuleReply, SalonFacts,
+} from './customer-assistant-rules';
+import { callLlm, LlmConfig, LlmMessage } from './llm-client';
 
 export interface AssistantInsights {
   windowDays: number;
@@ -19,8 +23,17 @@ export interface AssistantInsights {
   topServices: { name: string; count: number }[];
 }
 
+export interface ChatTurn { role: 'user' | 'assistant'; content: string }
+
+export interface CustomerChatResult extends CustomerReply {
+  source: 'llm' | 'rules';
+  model: string | null;
+}
+
 export interface AssistantChatResult {
   intent: AssistantIntent;
+  /** Câu hỏi gợi ý tiếp theo (nút bấm nhanh). */
+  quickReplies: string[];
   answer: string;
   /** 'llm' = mô hình ngôn ngữ trả lời; 'rules' = luật dựa trên số liệu (không cấu hình / mô hình lỗi / quá giờ). */
   source: 'llm' | 'rules';
@@ -45,6 +58,7 @@ export class AssistantService {
     private readonly dataSource: DataSource,
     private readonly stylists: StylistsService,
     private readonly workingHours: WorkingHoursService,
+    private readonly availability: AvailabilityService,
   ) {}
 
   private get llm(): LlmConfig {
@@ -161,21 +175,78 @@ export class AssistantService {
     return ctx;
   }
 
-  async chat(message: string): Promise<AssistantChatResult> {
+  /** Lịch sử hội thoại gần nhất (tối đa 6 lượt) để mô hình hiểu câu hỏi nối tiếp ("thế còn thứ 7?"). */
+  private history(history: ChatTurn[] = []): LlmMessage[] {
+    return history.slice(-6).map((h) => ({ role: h.role === 'assistant' ? 'assistant' : 'user', content: h.content.slice(0, 500) }));
+  }
+
+  async chat(message: string, opts: { userName?: string | null; history?: ChatTurn[] } = {}): Promise<AssistantChatResult> {
     const intent = detectIntent(message);
     const ctx = await this.context();
-    const fallback = ruleAnswer(intent, ctx);
+    const fallback = ruleAnswer(intent, ctx, { userName: opts.userName });
+    const base = { intent, quickReplies: quickReplies(intent) };
     const cfg = this.llm;
-    if (!cfg.provider) return { intent, answer: fallback, source: 'rules', model: null };
+    if (!cfg.provider) return { ...base, answer: fallback, source: 'rules', model: null };
 
     const answer = await callLlm(cfg, [
-      { role: 'system', content: SYSTEM_PROMPT },
-      { role: 'user', content: `DỮ LIỆU:\n${contextForLlm(ctx)}\n\nGỢI Ý THEO LUẬT:\n${fallback}\n\nCÂU HỎI: ${message.trim()}` },
+      { role: 'system', content: `${SYSTEM_PROMPT}\nNgười đang trò chuyện: ${opts.userName ?? 'nhân viên tiệm'}.\nDỮ LIỆU:\n${contextForLlm(ctx)}` },
+      ...this.history(opts.history),
+      { role: 'user', content: `${message.trim()}\n\n(Gợi ý theo luật, dùng nếu phù hợp: ${fallback})` },
     ]);
     if (!answer) {
       this.logger.warn(`Mô hình ${cfg.provider}/${cfg.model} không phản hồi kịp — dùng câu trả lời theo luật`);
-      return { intent, answer: fallback, source: 'rules', model: null };
+      return { ...base, answer: fallback, source: 'rules', model: null };
     }
-    return { intent, answer, source: 'llm', model: cfg.model };
+    return { ...base, answer, source: 'llm', model: cfg.model };
+  }
+
+  // ------------------------------------------------------------- AI tư vấn khách (trang công khai)
+  private publicCache: { at: number; catalog: CatalogItem[]; hotIds: string[]; facts: SalonFacts } | null = null;
+
+  private async publicData(): Promise<{ catalog: CatalogItem[]; hotIds: string[]; facts: SalonFacts }> {
+    if (this.publicCache && Date.now() - this.publicCache.at < 60_000) return this.publicCache;
+    const [groups, hot, hours] = await Promise.all([
+      this.availability.publicCatalog(),
+      this.dataSource.query(
+        `SELECT x.service_id AS id, count(*)::int AS n
+           FROM appointment_services x JOIN appointments a ON a.id = x.appointment_id
+          WHERE a.start_at >= now() - interval '90 days' AND a.status <> 'cancelled'
+          GROUP BY 1 ORDER BY n DESC LIMIT 8`) as Promise<{ id: string; n: number }[]>,
+      this.workingHours.list(),
+    ]);
+    const catalog: CatalogItem[] = groups.flatMap((g) => g.services.map((s) => ({
+      id: s.id, name: s.name, categoryName: g.categoryName, durationMinutes: s.durationMinutes,
+      price: s.price, priceText: s.priceText, description: s.description,
+    })));
+    const c = (k: string): string => this.config.get<string>(`app.${k}`) ?? '';
+    const facts: SalonFacts = {
+      name: c('salonName'), hotline: c('salonHotline'), address: c('salonAddress'),
+      openingHours: hours.map((h) => ({ dayLabel: h.dayLabel, isClosed: h.isClosed, openTime: h.openTime, closeTime: h.closeTime })),
+    };
+    const ids = new Set(catalog.map((x) => x.id));
+    this.publicCache = { at: Date.now(), catalog, hotIds: hot.map((h) => h.id).filter((id) => ids.has(id)), facts };
+    return this.publicCache;
+  }
+
+  /**
+   * TASK v3 · NV1 — tư vấn khách trên trang công khai. Gợi ý dịch vụ luôn lấy từ danh mục thật (luật), mô hình ngôn
+   * ngữ (nếu bật) chỉ diễn đạt lại cho tự nhiên; dịch vụ mô hình nhắc tới cũng được thêm vào gợi ý để khách bấm chọn.
+   */
+  async customerChat(message: string, history: ChatTurn[] = []): Promise<CustomerChatResult> {
+    const { catalog, hotIds, facts } = await this.publicData();
+    const rule = customerRuleReply(message, catalog, hotIds, facts);
+    const cfg = this.llm;
+    if (!cfg.provider) return { ...rule, source: 'rules', model: null };
+
+    const answer = await callLlm(cfg, [
+      { role: 'system', content: `${CUSTOMER_SYSTEM_PROMPT}\n${customerContextForLlm(catalog, hotIds, facts)}` },
+      ...this.history(history),
+      { role: 'user', content: `${message.trim()}\n\n(Gợi ý theo luật, dùng nếu phù hợp: ${rule.answer})` },
+    ]);
+    if (!answer) return { ...rule, source: 'rules', model: null };
+    const folded = fold(answer);
+    const mentioned = catalog.filter((s) => fold(s.name).length >= 4 && folded.includes(fold(s.name)));
+    const suggestions = [...rule.suggestions, ...mentioned.filter((m) => !rule.suggestions.some((r) => r.id === m.id))].slice(0, 4);
+    return { ...rule, answer, suggestions, source: 'llm', model: cfg.model };
   }
 }

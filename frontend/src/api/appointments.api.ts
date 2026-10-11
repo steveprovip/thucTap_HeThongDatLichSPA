@@ -31,6 +31,10 @@ export const appointmentsApi = {
   async pending(): Promise<Appointment[]> {
     return unwrap<Appointment[]>(await api.get('/appointments/pending'));
   },
+  /** TASK v3 · NV2: phân trang ở máy chủ; lịch quá hạn 12 giờ luôn đứng đầu (trang 1). */
+  async pendingPage(params: { page: number; limit: number; sort: 'start_asc' | 'start_desc' | 'name_asc' }): Promise<Paginated<Appointment> & { overdueCount: number }> {
+    return unwrap(await api.get('/appointments/pending', { params }));
+  },
   async rejectReasons(): Promise<string[]> {
     return unwrap<string[]>(await api.get('/appointments/reject-reasons'));
   },

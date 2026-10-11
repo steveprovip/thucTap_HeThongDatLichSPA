@@ -12,6 +12,7 @@ import {
 import { publicApi, getErrorMessage } from "@/api";
 import type { PublicCatalogGroup } from "@/types";
 import {
+  CustomerAiAssistant,
   EmptyState,
   Input,
   ServiceGridSkeleton,
@@ -300,6 +301,7 @@ export function HomePage() {
           })()}</div>
         )}
       </section>
+      <CustomerAiAssistant />
     </div>
   );
 }

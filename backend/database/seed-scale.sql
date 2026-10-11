@@ -3,7 +3,8 @@
 --   npm run seed:scale            -> nạp (chạy lại được: đã có thì bỏ qua)
 --   npm run seed:scale -- --reset -> xoá riêng dữ liệu tải (đánh dấu [scale-seed]) rồi nạp lại
 --
--- Quy mô: 100 dịch vụ · 50 thợ · 10.000 khách · ~54.000 lịch hẹn (150 ngày trước → 30 ngày tới).
+-- Quy mô: 100 dịch vụ · 50 thợ · 10.000 khách · ~54.000 lịch hẹn (150 ngày trước → 30 ngày tới), đủ 7 trạng thái:
+-- quá khứ hoàn tất / không đến / huỷ, đang diễn ra = đang làm, trong 60 phút tới = đã đến, tương lai = chờ / đã xác nhận.
 -- Viết hoàn toàn theo tập hợp (generate_series + INSERT ... SELECT), không vòng lặp từng dòng → nạp < 30 giây.
 -- Tôn trọng mọi bất biến: thời lượng bội số 15 (15–60′), giá ≤ 20.000.000, mỗi thợ chỉ nhận dịch vụ mình có
 -- kỹ năng, lịch nằm trong ca và trên lưới 15 phút, KHÔNG chồng lấn (EXCLUDE appointments_no_overlap vẫn bật).
@@ -93,7 +94,7 @@ WITH st AS (
   SELECT p.*, sk.service_id, sk.name AS service_name, sk.duration_minutes, sk.price, cu.id AS customer_id
     FROM picked p
     JOIN skills sk ON sk.stylist_id = p.stylist_id AND sk.k = p.hv % sk.n
-    JOIN customers cu ON cu.phone = '079' || lpad((1 + p.hv % 10000)::text, 7, '0')
+    JOIN customers cu ON cu.phone = '079' || lpad((1 + (p.hv / 100) % 10000)::text, 7, '0')
 ), ins AS (
   INSERT INTO appointments (code, customer_id, stylist_id, start_at, end_at, total_duration_minutes, estimated_total,
                             status, source, confirmed_at, arrived_at, started_at, completed_at, cancelled_at,
@@ -103,8 +104,8 @@ WITH st AS (
          x.status::appointment_status,
          CASE WHEN r.hv % 3 = 0 THEN 'walk_in' ELSE 'online' END::appointment_source,
          CASE WHEN x.status <> 'pending' THEN r.start_at - interval '1 day' END,
-         CASE WHEN x.status = 'completed' THEN r.start_at END,
-         CASE WHEN x.status = 'completed' THEN r.start_at END,
+         CASE WHEN x.status IN ('completed', 'in_progress', 'arrived') THEN LEAST(now(), r.start_at - interval '5 minutes') END,
+         CASE WHEN x.status IN ('completed', 'in_progress') THEN r.start_at END,
          CASE WHEN x.status = 'completed' THEN r.start_at + make_interval(mins => r.duration_minutes) END,
          CASE WHEN x.status = 'cancelled' THEN r.start_at - interval '3 hours' END,
          CASE WHEN x.status = 'cancelled' THEN 'Khách hàng' END,
@@ -115,7 +116,8 @@ WITH st AS (
     CROSS JOIN LATERAL (SELECT CASE
              WHEN r.start_at + make_interval(mins => r.duration_minutes) <= now() THEN
                CASE WHEN r.hv % 20 = 0 THEN 'no_show' WHEN r.hv % 10 = 1 THEN 'cancelled' ELSE 'completed' END
-             WHEN r.start_at <= now() THEN 'cancelled'      -- khung đang diễn ra: không để lịch "treo"
+             WHEN r.start_at <= now() THEN 'in_progress'    -- khung đang diễn ra: thợ đang làm
+             WHEN r.start_at <= now() + interval '60 minutes' THEN 'arrived' -- trong cửa sổ check-in: khách đã đến
              ELSE CASE WHEN r.hv % 4 = 0 THEN 'pending' ELSE 'confirmed' END
            END AS status) x
   ON CONFLICT (code) DO NOTHING

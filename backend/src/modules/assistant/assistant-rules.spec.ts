@@ -1,4 +1,4 @@
-import { AssistantContext, contextForLlm, detectIntent, hourLabel, ruleAnswer } from './assistant-rules';
+import { AssistantContext, contextForLlm, detectIntent, hourLabel, quickReplies, ruleAnswer } from './assistant-rules';
 
 const ctx: AssistantContext = {
   goldenHours: [{ dow: 6, dayLabel: 'T7', hour: 10, label: hourLabel(6, 10), bookings: 42 }],
@@ -17,7 +17,12 @@ describe('Trợ lý AI — luật dự phòng khi không có mô hình ngôn ng�
     expect(detectIntent('Thêm ngày lễ năm nay')).toBe('holidays');
     expect(detectIntent('Giờ vàng là mấy giờ?')).toBe('golden');
     expect(detectIntent('khach goi dat cat toc thi goi y combo gi')).toBe('combo');
-    expect(detectIntent('xin chào')).toBe('general');
+    expect(detectIntent('xin chào')).toBe('greeting');
+    expect(detectIntent('alo')).toBe('greeting');
+    expect(detectIntent('Bạn là ai vậy?')).toBe('identity');
+    expect(detectIntent('hướng dẫn tôi dùng với')).toBe('help');
+    expect(detectIntent('chào bạn, tuần này thiếu thợ không')).toBe('shifts'); // chủ đề nghiệp vụ thắng câu chào
+    expect(detectIntent('thời tiết hôm nay')).toBe('general');
   });
 
   it('trả lời có số liệu cụ thể, kèm gợi ý thao tác', () => {
@@ -26,6 +31,18 @@ describe('Trợ lý AI — luật dự phòng khi không có mô hình ngôn ng�
     expect(ruleAnswer('golden', ctx)).toContain('T3 14:00–15:00');
     expect(ruleAnswer('combo', ctx)).toContain('Cắt tóc + Gội dưỡng — 12 lượt');
     expect(ruleAnswer('holidays', ctx)).toContain('Quốc khánh (02/09)');
+  });
+
+  it('hội thoại tự nhiên: chào lại theo tên, giới thiệu bản thân, câu chưa hiểu thì hỏi lại (không đổ số liệu)', () => {
+    const hi = ruleAnswer('greeting', ctx, { userName: 'Nguyễn Thị Lan' });
+    expect(hi).toMatch(/^Chào Lan!/);
+    expect(hi).toContain('1 khung giờ thiếu thợ');
+    expect(ruleAnswer('identity', ctx)).toContain('Trợ lý vận hành');
+    expect(ruleAnswer('help', ctx)).toContain('Bạn có thể hỏi tự nhiên');
+    const unknown = ruleAnswer('general', ctx);
+    expect(unknown).toContain('chưa chắc đã hiểu');
+    expect(unknown).not.toContain('T7 10:00');
+    expect(quickReplies('golden')).not.toContain('Giờ vàng tuần này?');
   });
 
   it('ngữ cảnh gửi mô hình chỉ gồm số liệu tổng hợp', () => {

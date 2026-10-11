@@ -19,3 +19,4 @@ export * from './TimeSelect24';
 export * from './SmartSlotAssistant';
 export * from './EmailText';
 export * from './SmartAiAssistant';
+export * from './CustomerAiAssistant';

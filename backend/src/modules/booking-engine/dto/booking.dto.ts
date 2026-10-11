@@ -1,6 +1,6 @@
 import { Transform, Type } from 'class-transformer';
 import {
-  ArrayMaxSize, ArrayMinSize, ArrayUnique, IsArray, IsBoolean, IsEmail, IsEnum, IsInt, IsNotEmpty,
+  ArrayMaxSize, ArrayMinSize, ArrayUnique, IsArray, IsBoolean, IsEmail, IsEnum, IsIn, IsInt, IsNotEmpty,
   IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, ValidateNested,
 } from 'class-validator';
 import { VN_PHONE_MESSAGE, VN_PHONE_REGEX } from '../../../common/utils/phone.util';
@@ -210,6 +210,14 @@ export class DayScheduleQuery {
   date!: string;
 
   @IsOptional() @IsUUID('4') stylistId?: string;
+}
+
+/** TASK v3 · NV2: GET /appointments/pending?page=&limit=&sort= (không gửi page = trả mảng như cũ). */
+export class PendingQuery {
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) page?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100) limit?: number;
+  @IsOptional() @IsIn(['start_asc', 'start_desc', 'name_asc'], { message: 'Kiểu sắp xếp không hợp lệ' })
+  sort?: 'start_asc' | 'start_desc' | 'name_asc';
 }
 
 export class ListAppointmentsQuery {

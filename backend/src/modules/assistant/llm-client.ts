@@ -13,10 +13,13 @@ export interface LlmConfig {
   timeoutMs: number;
 }
 
-export interface LlmMessage { role: 'system' | 'user'; content: string }
+export interface LlmMessage { role: 'system' | 'user' | 'assistant'; content: string }
 
 export function buildLlmRequest(cfg: LlmConfig, messages: LlmMessage[]): { url: string; init: RequestInit } | null {
   const base = cfg.baseUrl.replace(/\/+$/, '');
+  // Ollama / LM Studio / llama.cpp đều có cổng tương thích OpenAI ở .../v1 (vd. http://localhost:11434/v1):
+  // địa chỉ kết thúc bằng /v1 thì luôn gọi /chat/completions, bất kể AI_PROVIDER là ollama hay openai.
+  if (cfg.provider === 'ollama' && /\/v1$/.test(base)) return buildLlmRequest({ ...cfg, provider: 'openai' }, messages);
   if (cfg.provider === 'ollama') {
     return {
       url: `${base || 'http://127.0.0.1:11434'}/api/chat`,
@@ -49,12 +52,13 @@ export function parseLlmResponse(provider: string, body: unknown): string | null
 export async function callLlm(cfg: LlmConfig, messages: LlmMessage[]): Promise<string | null> {
   const req = buildLlmRequest(cfg, messages);
   if (!req) return null;
+  const format = cfg.provider === 'ollama' && /\/v1\/?$/.test(cfg.baseUrl) ? 'openai' : cfg.provider;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), cfg.timeoutMs);
   try {
     const res = await fetch(req.url, { ...req.init, signal: ctrl.signal });
     if (!res.ok) return null;
-    return parseLlmResponse(cfg.provider, await res.json());
+    return parseLlmResponse(format, await res.json());
   } catch {
     return null;
   } finally {

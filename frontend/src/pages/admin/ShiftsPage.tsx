@@ -7,7 +7,7 @@ import {
   Button, ConfirmDialog, Field, Input, Modal, Select, Spinner, TimeSelect24,
 } from '@/components';
 import { addDaysISO, formatDate, formatDuration, startOfWeekISO, timeToMinutes, todayISO } from '@/utils/format';
-import { DayInfo, ShiftBoard } from './shifts/ShiftBoard';
+import { DayInfo, QuickShift, ShiftBoard } from './shifts/ShiftBoard';
 import { ShiftRequestsPanel } from './shifts/ShiftRequestsPanel';
 import { CoveragePanel } from './shifts/CoveragePanel';
 import { useAuth } from '@/contexts/AuthContext';
@@ -70,7 +70,10 @@ export function ShiftsPage() {
     const holiday = holidays.find((h) => h.startDate <= date && h.endDate >= date);
     const dow = new Date(`${date}T12:00:00Z`).getUTCDay();
     const wh = hours.find((h) => h.dayOfWeek === dow);
-    return { date, closedReason: holiday ? holiday.reason : wh?.isClosed ? 'Đóng cửa cố định' : null };
+    return {
+      date, closedReason: holiday ? holiday.reason : wh?.isClosed ? 'Đóng cửa cố định' : null,
+      openTime: wh && !wh.isClosed ? wh.openTime.slice(0, 5) : null, closeTime: wh && !wh.isClosed ? wh.closeTime.slice(0, 5) : null,
+    };
   }), [days, holidays, hours]);
   const visibleStylists = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -124,6 +127,25 @@ export function ShiftsPage() {
   }, [weekStart, minStaff, toast]);
 
   useEffect(() => { void load(); }, [load]);
+
+  /** TASK v3 · NV3: thêm ca một chạm từ popover (ca mẫu đã cắt theo giờ mở cửa). Lỗi → toast, popover giữ nguyên. */
+  const quickAdd = async (stylistId: string, date: string, s: QuickShift) => {
+    try {
+      await stylistsApi.createShifts(stylistId, [{ workDate: date, ...s }]);
+      toast.success(`Đã thêm ca ${s.startTime}–${s.endTime}`);
+      void load();
+    } catch (e) { toast.error(getErrorMessage(e)); throw e; }
+  };
+  const updateShift = async (shift: Shift, patch: { startTime: string; endTime: string }) => {
+    try {
+      // Nghỉ giữa ca không còn nằm trọn trong ca mới thì bỏ (máy chủ từ chối nghỉ giữa ca nằm ngoài ca)
+      const keepBreak = shift.breakStart && shift.breakEnd
+        && shift.breakStart.slice(0, 5) >= patch.startTime && shift.breakEnd.slice(0, 5) <= patch.endTime;
+      await stylistsApi.updateShift(shift.id, { ...patch, ...(keepBreak ? {} : { breakStart: null, breakEnd: null }) });
+      toast.success('Đã đổi giờ ca');
+      void load();
+    } catch (e) { toast.error(getErrorMessage(e)); throw e; }
+  };
 
   const addShift = async () => {
     try {
@@ -231,6 +253,8 @@ export function ShiftsPage() {
           canEdit={canEdit}
           canManageOff={canManageOff}
           onAdd={(stylistId, date) => openAdd(stylistId, date)}
+          onQuickAdd={quickAdd}
+          onUpdateShift={updateShift}
           onRemoveShift={setRemoveTarget}
           onRemoveOff={setRemoveOffTarget}
         />

@@ -1,5 +1,7 @@
 import { Body, Controller, Get, HttpCode, HttpException, HttpStatus, Post, Query } from '@nestjs/common';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { Public } from '../../common/decorators/public.decorator';
+import { ClientIp } from '../../common/decorators/client-ip.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Role } from '../../common/constants/roles.constant';
 import type { AuthUser } from '../../common/types/auth.types';
@@ -44,6 +46,26 @@ export class AssistantController {
         details: { retryAfterSeconds: 600 },
       }, HttpStatus.TOO_MANY_REQUESTS);
     }
-    return this.service.chat(dto.message);
+    return this.service.chat(dto.message, { userName: user.fullName, history: dto.history });
+  }
+}
+
+/** TASK v3 · NV1 — AI tư vấn trên trang công khai: không cần đăng nhập, 20 câu / 10 phút / IP, chỉ đọc danh mục công khai. */
+@Controller('public/assistant')
+@Public()
+export class PublicAssistantController {
+  constructor(private readonly service: AssistantService, private readonly rateLimit: RateLimitService) {}
+
+  @Post('chat')
+  @HttpCode(HttpStatus.OK)
+  async chat(@Body() dto: AssistantChatDto, @ClientIp() ip: string) {
+    const rl = await this.rateLimit.hit('public_assistant_ip', ip, 20, 10);
+    if (!rl.allowed) {
+      throw new HttpException({
+        message: 'Bạn nhắn hơi nhanh, đợi vài phút rồi hỏi tiếp giúp mình nhé', code: ERROR_CODES.RATE_LIMITED,
+        details: { retryAfterSeconds: 600 },
+      }, HttpStatus.TOO_MANY_REQUESTS);
+    }
+    return this.service.customerChat(dto.message, dto.history);
   }
 }

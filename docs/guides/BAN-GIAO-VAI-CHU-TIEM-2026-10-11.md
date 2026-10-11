@@ -37,12 +37,34 @@ kiểm tra phiên bản giao diện sau khi chạy lại.
 
 ## Bật Trợ lý AI có mô hình ngôn ngữ (tuỳ chọn)
 
+Có hai trợ lý dùng chung một cấu hình. **Trợ lý vận hành** (góc phải dưới trang quản lý) dành cho Chủ tiệm và Lễ tân.
+**AI tư vấn khách** (góc phải dưới Trang chủ và trang Đặt lịch) chào hỏi, gợi ý dịch vụ theo nhu cầu (tóc, da, massage),
+báo giá và thời lượng. Khách bấm **Đặt lịch** trên một dịch vụ gợi ý (hoặc trên các dịch vụ đã **Chọn**) thì dịch vụ tự điền vào trang đặt lịch.
+
+Model nhẹ chạy cục bộ qua cổng tương thích OpenAI của Ollama (dữ liệu không rời máy tiệm):
+
 ```
-ollama pull qwen2.5:3b          # máy quầy ≥ 8 GB RAM; 7b cần ≥ 16 GB
+ollama pull qwen2.5:3b            # máy ≥ 8 GB RAM (Spark-X2.5-4B: nạp vào Ollama rồi đổi AI_MODEL)
 # backend/.env
 AI_PROVIDER=ollama
+AI_BASE_URL=http://localhost:11434/v1
 AI_MODEL=qwen2.5:3b
 AI_TIMEOUT_MS=15000
 ```
 
-Không bật thì trợ lý vẫn trả lời bằng số liệu của tiệm. Mỗi câu trả lời ghi rõ nguồn: "AI · qwen2.5:3b" hoặc "Theo số liệu của tiệm".
+LM Studio thì dùng `AI_PROVIDER=openai`, `AI_BASE_URL=http://localhost:1234/v1`. API đám mây thì thêm `AI_API_KEY`.
+Lưu xong, khởi động lại hệ thống (Launcher hỏi khi lưu Thiết lập cửa hàng).
+
+Không bật model thì cả hai trợ lý vẫn hội thoại bằng luật: hiểu "alo", "chào bạn", "bạn là ai", "hướng dẫn tôi",
+cảm ơn, và trả lời bằng số liệu thật của tiệm. Model chậm quá `AI_TIMEOUT_MS` thì cũng tự lùi về luật. Mỗi câu trả lời
+ghi rõ nguồn: "AI · qwen2.5:3b" hoặc "Theo số liệu của tiệm". Model chỉ nhận số liệu tổng hợp và bảng giá, không nhận
+tên / SĐT / email khách.
+
+## Nạp dữ liệu tải thử vào CSDL trên máy (chỉ máy phát triển)
+
+```
+npm run db:seed:scale              # 50 thợ, 100 dịch vụ, 10.000 khách, ~55.000 lịch hẹn, đủ các trạng thái
+npm run db:seed:scale -- --reset   # xoá riêng dữ liệu tải ([scale-seed]) rồi nạp lại
+```
+
+Lệnh tự chặn khi `NODE_ENV=production`. Không chạy trên máy đang phục vụ khách thật.
