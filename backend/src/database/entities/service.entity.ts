@@ -33,6 +33,10 @@ export class ServiceItem {
   @Column({ length: 500, nullable: true, type: 'varchar' })
   description!: string | null;
 
+  /** TASK v4 · NV2: ảnh riêng của dịch vụ (https://… hoặc /uploads/…); NULL = giao diện tự chọn ảnh theo chủ đề. */
+  @Column({ name: 'image_url', length: 500, nullable: true, type: 'varchar' })
+  imageUrl!: string | null;
+
   @Column({ name: 'is_active', default: true })
   isActive!: boolean;
 

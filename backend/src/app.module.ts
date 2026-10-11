@@ -33,6 +33,7 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
 import { AuditLogInterceptor } from './common/interceptors/audit-log.interceptor';
 import { RealtimeInterceptor } from './modules/events/realtime.interceptor';
 import { MaintenanceModule } from './modules/maintenance/maintenance.module';
+import { AssistantModule } from './modules/assistant/assistant.module';
 
 @Module({
   imports: [
@@ -63,6 +64,7 @@ import { MaintenanceModule } from './modules/maintenance/maintenance.module';
     AnalyticsModule,
     EventsModule,
     MaintenanceModule,
+    AssistantModule,
   ],
   controllers: [HealthController],
   providers: [

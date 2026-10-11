@@ -3,6 +3,7 @@ import { KeyRound, Lock, Plus, Search, Unlock, UserCog } from 'lucide-react';
 import { getErrorMessage, usersApi } from '@/api';
 import type { Role, UserRow } from '@/types';
 import {
+  EmailText,
   Button, ConfirmDialog, EmptyState, Field, Input, Modal, Pagination, SectionTitle, Select, TableSkeleton,
   TempPasswordDialog, type TempCredential,
 } from '@/components';
@@ -22,6 +23,7 @@ export function UsersPage() {
 
   const [q, setQ] = useState('');
   const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(20);
   const [data, setData] = useState<{ items: UserRow[]; total: number; totalPages: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
@@ -41,13 +43,13 @@ export function UsersPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setData(await usersApi.list({ search: q.trim() || undefined, page, limit: 20 }));
+      setData(await usersApi.list({ search: q.trim() || undefined, page, limit }));
     } catch (e) {
       toast.error(getErrorMessage(e));
     } finally {
       setLoading(false);
     }
-  }, [q, page, toast]);
+  }, [q, page, limit, toast]);
 
   useEffect(() => {
     const t = window.setTimeout(() => { void load(); }, q ? 300 : 0);
@@ -128,7 +130,7 @@ export function UsersPage() {
                         <span className="ml-2 chip border border-amber-300 bg-amber-50 text-amber-800">Chờ đổi mật khẩu</span>
                       )}
                     </td>
-                    <td className="text-xs">{u.email}</td>
+                    <td><EmailText email={u.email} /></td>
                     <td>{ROLE_LABELS[u.role]}</td>
                     <td>
                       {u.isActive
@@ -172,7 +174,8 @@ export function UsersPage() {
               </tbody>
             </table>
           </div>
-          <Pagination page={page} totalPages={data.totalPages} total={data.total} onChange={setPage} />
+          <Pagination page={page} totalPages={data.totalPages} total={data.total} onChange={setPage}
+                      limit={limit} onLimitChange={(n) => { setLimit(n); setPage(1); }} />
         </>
       )}
 

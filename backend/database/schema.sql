@@ -153,6 +153,7 @@ CREATE TABLE IF NOT EXISTS services (
   duration_minutes SMALLINT NOT NULL,
   price            NUMERIC(12,0) NOT NULL,
   description      VARCHAR(500),
+  image_url        VARCHAR(500),
   is_active        BOOLEAN NOT NULL DEFAULT TRUE,
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),

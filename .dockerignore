@@ -18,3 +18,4 @@ tests
 backend/test
 backend/uploads
 .salon-*
+model_AI_local

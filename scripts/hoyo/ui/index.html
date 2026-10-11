@@ -576,6 +576,8 @@ async function showTab(tab) {
     const known = cfg.banks.some((b) => b.bin === cfg.values.BANK_BIN);
     panel.innerHTML = `${closeBtn}<h3>Thiết lập cửa hàng</h3>
       <p class="sub">Launcher ghi vào backend/.env thay bạn (bản cũ lưu ở backend/.env.bak). Ô mật khẩu để trống = giữ nguyên.</p>
+      ${(cfg.checks || []).some((c) => !c.ok) ? `<div class="card" style="margin-bottom:10px"><div class="k">Việc cần làm trước khi mở bán</div>
+        <div class="v" style="display:flex;flex-direction:column;gap:3px;margin-top:6px">${cfg.checks.map((c) => `<span>${c.ok ? '✅' : c.level === 'error' ? '⛔' : '⚠️'} ${esc(c.label)}${c.ok ? '' : ` <small class="hint">— ${esc(c.fix)}</small>`}</span>`).join('')}</div></div>` : ''}
       <form class="form" id="shopForm" autocomplete="off">
         <h4>Thông tin tiệm (hiện trên trang đặt lịch, email và phiếu in)</h4>
         ${field('SALON_NAME', 'Tên tiệm *', { wide: true })}
@@ -596,6 +598,11 @@ async function showTab(tab) {
         <h4>Email gửi xác nhận cho khách (Gmail)</h4>
         ${field('SMTP_USER', 'Gmail gửi thư', { ph: 'tiemcuaban@gmail.com' })}
         ${field('SMTP_PASSWORD', `Mật khẩu ứng dụng Gmail ${cfg.hasSmtpPassword ? '(đã có)' : ''}`, { type: 'password', ph: 'xxxx xxxx xxxx xxxx', hint: 'Google > Bảo mật > Xác minh 2 bước > Mật khẩu ứng dụng. KHÔNG dùng mật khẩu đăng nhập Gmail.' })}
+        <label class="wide">Bắt buộc khách nhập email khi đặt online
+          <select id="f_BOOKING_REQUIRE_EMAIL" name="BOOKING_REQUIRE_EMAIL">
+            <option value="false" ${cfg.values.BOOKING_REQUIRE_EMAIL !== 'true' ? 'selected' : ''}>Không — chỉ nhắc khách lợi ích của email</option>
+            <option value="true" ${cfg.values.BOOKING_REQUIRE_EMAIL === 'true' ? 'selected' : ''}>Có — khách phải nhập email mới đặt được</option>
+          </select><small class="hint">Có email, khách nhận mã tra cứu và được báo khi tiệm đổi giờ / đổi thợ / huỷ lịch.</small><span class="err" data-err="BOOKING_REQUIRE_EMAIL"></span></label>
         <h4>Tài khoản quản trị đầu tiên (chỉ dùng khi hệ thống chưa có tài khoản nào)</h4>
         ${field('BOOTSTRAP_ADMIN_EMAIL', 'Email đăng nhập', { ph: 'chutiem@gmail.com' })}
         ${field('BOOTSTRAP_ADMIN_PASSWORD', `Mật khẩu ${cfg.hasAdminPassword ? '(đã có)' : ''}`, { type: 'password', hint: 'Từ 8 ký tự, có chữ và số, không dấu. Lần đăng nhập đầu sẽ được yêu cầu đổi mật khẩu.' })}

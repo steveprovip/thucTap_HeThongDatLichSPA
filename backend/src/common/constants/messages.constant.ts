@@ -23,6 +23,7 @@ export const MSG = {
 
   // Tài khoản
   EMAIL_DUPLICATED: 'Email này đã được sử dụng cho một tài khoản khác',
+  BOOKING_EMAIL_REQUIRED: 'Vui lòng nhập email để nhận mã tra cứu và thông báo đổi/huỷ lịch',
   USER_NOT_FOUND: 'Không tìm thấy tài khoản',
   LAST_ADMIN: 'Không thể ngưng hoạt động hoặc đổi vai trò tài khoản quản trị cuối cùng của hệ thống',
   CANNOT_DEACTIVATE_SELF: 'Không thể tự ngưng hoạt động tài khoản đang đăng nhập',
@@ -138,6 +139,8 @@ export const ERROR_CODES = {
   SLOT_TAKEN: 'SLOT_TAKEN',
   SLOT_HELD: 'SLOT_HELD',
   SALON_CLOSED: 'SALON_CLOSED',
+  SKILL_IN_USE: 'SKILL_IN_USE',
+  STYLIST_HAS_FUTURE_APPOINTMENTS: 'STYLIST_HAS_FUTURE_APPOINTMENTS',
 } as const;
 
 export const APPOINTMENT_STATUS_LABELS: Record<string, string> = {

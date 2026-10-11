@@ -7,6 +7,8 @@ export interface ServicePayload {
   durationMinutes: number;
   price: number;
   description?: string;
+  /** TASK v4 · NV2: https://… ; '' = xoá ảnh riêng. */
+  imageUrl?: string;
   isActive?: boolean;
   stylistIds?: string[];
 }

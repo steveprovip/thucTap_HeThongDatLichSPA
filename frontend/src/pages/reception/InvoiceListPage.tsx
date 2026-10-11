@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Receipt } from 'lucide-react';
+import { Printer, Receipt } from 'lucide-react';
 import { getErrorMessage, invoicesApi } from '@/api';
 import type { Invoice } from '@/types';
-import { Button, EmptyState, Pagination, SectionTitle, TableSkeleton } from '@/components';
+import { Button, EmptyState, Pagination, SectionTitle, TableSkeleton, useThermalPrint } from '@/components';
 import { formatDateTime, todayISO, addDaysISO } from '@/utils/format';
 import { PAYMENT_LABELS } from '@/utils/constants';
 import { useToast } from '@/contexts/ToastContext';
@@ -13,6 +13,8 @@ export function InvoiceListPage() {
   const [from, setFrom] = useState(addDaysISO(todayISO(), -7));
   const [to, setTo] = useState(todayISO());
   const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(20);
+  const thermal = useThermalPrint();
   const [data, setData] = useState<{ items: Invoice[]; total: number; totalPages: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
@@ -21,13 +23,13 @@ export function InvoiceListPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setData(await invoicesApi.list({ from, to, page, limit: 20 }));
+      setData(await invoicesApi.list({ from, to, page, limit }));
     } catch (e) {
       toast.error(getErrorMessage(e));
     } finally {
       setLoading(false);
     }
-  }, [from, to, page, toast]);
+  }, [from, to, page, limit, toast]);
 
   useEffect(() => { void load(); }, [load]);
   useAppointmentsSync(() => { void load(); });
@@ -69,7 +71,9 @@ export function InvoiceListPage() {
                     <td className="text-right font-semibold">{i.totalText}</td>
                     <td>{i.paymentMethod ? PAYMENT_LABELS[i.paymentMethod] : '—'}</td>
                     <td>{i.statusLabel}</td>
-                    <td>
+                    <td className="whitespace-nowrap">
+                      <Button size="sm" variant="ghost" icon={<Printer size={14} />} onClick={() => thermal.print(i)}
+                              aria-label={`In hoá đơn ${i.code}`} title="In hoá đơn khổ nhiệt 80 mm">In</Button>
                       <Button size="sm" variant="ghost"
                               onClick={() => navigate(`/quan-ly/phieu-tinh-tien/${i.appointmentId}`)}>
                         Mở
@@ -80,7 +84,9 @@ export function InvoiceListPage() {
               </tbody>
             </table>
           </div>
-          <Pagination page={page} totalPages={data.totalPages} total={data.total} onChange={setPage} />
+          <Pagination page={page} totalPages={data.totalPages} total={data.total} onChange={setPage}
+                      limit={limit} onLimitChange={(n) => { setLimit(n); setPage(1); }} />
+          {thermal.node}
         </>
       )}
     </div>

@@ -3,8 +3,16 @@ import { ChevronDown } from "lucide-react";
 import { Link } from "react-router-dom";
 import {
   ArrowRight,
+  Brush,
   CalendarCheck,
   Clock3,
+  Droplets,
+  Flower2,
+  Gem,
+  Gift,
+  LayoutGrid,
+  Palette,
+  Scissors,
   Search,
   ShieldCheck,
   Sparkles,
@@ -12,6 +20,7 @@ import {
 import { publicApi, getErrorMessage } from "@/api";
 import type { PublicCatalogGroup } from "@/types";
 import {
+  CustomerAiAssistant,
   EmptyState,
   Input,
   ServiceGridSkeleton,
@@ -23,8 +32,26 @@ import {
   STYLIST_PHOTOS,
   assignServiceImages,
   serviceMediaKind,
+  stripAccents,
+  stylistPhoto,
 } from "@/utils/images";
+import { useSalonInfo } from "@/utils/salonInfo";
 import { useToast } from "@/contexts/ToastContext";
+
+/** TASK v4 · NV4: biểu tượng cho từng nhóm dịch vụ — thanh danh mục gọn, thanh lịch kiểu Fresha. */
+function categoryIcon(name: string) {
+  const n = stripAccents(name);
+  const size = 15;
+  if (/uon|nhuom|phuc hoi/.test(n)) return <Palette size={size} />;
+  if (/cat|toc/.test(n)) return <Scissors size={size} />;
+  if (/goi/.test(n)) return <Droplets size={size} />;
+  if (/\bda\b/.test(n)) return <Sparkles size={size} />;
+  if (/massage|body/.test(n)) return <Flower2 size={size} />;
+  if (/nail|mong/.test(n)) return <Gem size={size} />;
+  if (/trang diem|mi/.test(n)) return <Brush size={size} />;
+  if (/combo|goi /.test(n)) return <Gift size={size} />;
+  return <LayoutGrid size={size} />;
+}
 
 const TEAM = [
   { src: STYLIST_PHOTOS.stylist_1, name: "Chuyên viên màu nhuộm" },
@@ -55,6 +82,11 @@ export function HomePage() {
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
   const toast = useToast();
+  // TASK v4: ảnh đội ngũ ở hero = chuyên viên THẬT của tiệm (máy chủ), dự phòng ảnh tĩnh khi chưa tải được
+  const team = useSalonInfo().info?.team ?? [];
+  const heroTeam = team.length
+    ? team.slice(0, 5).map((m) => ({ src: stylistPhoto(m.id, m.avatarUrl, m.gender), name: m.fullName })).filter((m) => m.src)
+    : TEAM;
   useEffect(() => {
     let alive = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -99,6 +131,7 @@ export function HomePage() {
             id: service.id,
             name: service.name,
             categoryId: group.categoryId,
+            imageUrl: service.imageUrl,
           })),
         ),
       ),
@@ -163,8 +196,8 @@ export function HomePage() {
               className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-3"
             >
               <div className="flex -space-x-2.5">
-                {TEAM.map(member => (
-                  <SmartImage key={member.src} src={member.src} alt={member.name} loading="lazy" kind="person"
+                {heroTeam.map(member => (
+                  <SmartImage key={member.src} src={member.src} alt={member.name} title={member.name} loading="lazy" kind="person"
                     seed={member.name} className="h-10 w-10 rounded-full ring-[3px] ring-white" />
                 ))}
               </div>
@@ -236,28 +269,34 @@ export function HomePage() {
           </div>
         </div>
         <div
-          className="flex gap-2 overflow-x-auto pb-1 thin-scroll"
+          className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 thin-scroll"
           role="tablist"
           aria-label="Lọc danh mục dịch vụ"
         >
           {[
-            { id: "all", name: "Tất cả" },
+            { id: "all", name: "Tất cả", count: total },
             ...groups.map((group) => ({
               id: group.categoryId,
               name: group.categoryName,
+              count: group.services.length,
             })),
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              role="tab"
-              aria-selected={category === tab.id}
-              onClick={() => setCategory(tab.id)}
-              className={`press min-h-10 shrink-0 rounded-full border px-5 text-sm font-medium transition-all duration-200 ${category === tab.id ? "border-slate-900 bg-slate-900 text-white shadow-md shadow-slate-900/10" : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"}`}
-            >
-              {tab.name}
-            </button>
-          ))}
+          ].map((tab) => {
+            const active = category === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => setCategory(tab.id)}
+                className={`press inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full border px-4 text-sm font-medium transition-all duration-200 ${active ? "border-teal-700 bg-teal-700 text-white shadow-md shadow-teal-900/10" : "border-slate-200 bg-white text-slate-700 hover:border-teal-300 hover:text-teal-800"}`}
+              >
+                <span className={active ? "text-white" : "text-teal-600"}>{tab.id === "all" ? <LayoutGrid size={15} /> : categoryIcon(tab.name)}</span>
+                {tab.name}
+                <span className={`rounded-full px-1.5 py-0.5 text-[11px] font-semibold tabular-nums ${active ? "bg-white/20 text-white" : "bg-slate-100 text-slate-500"}`}>{tab.count}</span>
+              </button>
+            );
+          })}
         </div>
         {loading && groups.length === 0 ? <ServiceGridSkeleton /> : visible.length === 0 ? <EmptyState title="Không tìm thấy dịch vụ" description="Thử từ khoá hoặc danh mục khác." /> : (
           <div key={category}>{(() => {
@@ -268,21 +307,29 @@ export function HomePage() {
             const shown = open ? items : items.slice(0, limit);
             return (
               <>
-                <div className="stagger grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">{shown.map(({ service, group }, index) => (
-                  <article key={service.id} style={{ '--i': index } as React.CSSProperties} className="lift group flex overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-card hover:border-slate-300 sm:flex-col">
-                    <div className="relative w-28 shrink-0 sm:w-auto">
-                      <SmartImage src={photos[service.id]} alt={service.name} loading="lazy" className="h-full min-h-[96px] sm:h-28" seed={service.id}
+                <div className="stagger grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">{shown.map(({ service, group }, index) => (
+                  <article key={service.id} style={{ '--i': index } as React.CSSProperties}
+                           className="group flex overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md sm:flex-col">
+                    <div className="relative w-32 shrink-0 overflow-hidden sm:w-auto">
+                      <SmartImage src={photos[service.id]} alt={service.name} loading="lazy" className="h-full min-h-[112px] sm:aspect-[4/3] sm:h-auto" seed={service.id}
                         kind={serviceMediaKind({ name: service.name, categoryId: group.categoryId, categoryName: group.categoryName })}
                         fallbackLabel={group.categoryName}
-                        imgClassName="duration-700 group-hover:scale-[1.06]" />
-                      <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-white/90 px-2 py-0.5 text-[11px] font-semibold text-slate-700 shadow-sm backdrop-blur"><Clock3 size={11} /> {formatDuration(service.durationMinutes)}</span>
+                        imgClassName="duration-700 group-hover:scale-[1.05]" />
+                      <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-white/95 px-2 py-0.5 text-[11px] font-semibold text-slate-700 shadow-sm backdrop-blur"><Clock3 size={11} /> {formatDuration(service.durationMinutes)}</span>
                     </div>
-                    <div className="flex min-w-0 flex-1 flex-col gap-1 p-3">
-                      <div className="flex items-start justify-between gap-2"><h4 className="line-clamp-2 text-sm font-semibold leading-snug text-slate-900">{service.name}</h4><span className="shrink-0 rounded-full bg-teal-50 px-2 py-0.5 text-xs font-bold text-teal-700">{service.priceText}</span></div>
+                    <div className="flex min-w-0 flex-1 flex-col gap-1.5 p-3.5">
+                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-teal-700/80">{categoryIcon(group.categoryName)} {group.categoryName}</span>
+                      <h4 className="line-clamp-2 text-[15px] font-semibold leading-snug text-slate-900">{service.name}</h4>
                       <p className="line-clamp-2 text-xs leading-relaxed text-slate-500">{service.description}</p>
-                      <div className="mt-auto flex items-center justify-between pt-1">
-                        <span className="text-[10px] font-medium uppercase tracking-wider text-slate-400">{group.categoryName}</span>
-                        <Link to={`/dat-lich?service=${encodeURIComponent(service.id)}`} className="inline-flex items-center gap-1 text-xs font-semibold text-teal-700 hover:text-teal-800">Chọn <ArrowRight size={13} className="transition-transform duration-300 group-hover:translate-x-1" /></Link>
+                      <div className="mt-auto flex items-center justify-between gap-2 pt-2">
+                        <span className="leading-tight">
+                          <span className="block text-base font-bold tabular-nums text-slate-900">{service.priceText}</span>
+                          <span className="text-[11px] text-slate-500">{formatDuration(service.durationMinutes)}</span>
+                        </span>
+                        <Link to={`/dat-lich?service=${encodeURIComponent(service.id)}`}
+                              className="inline-flex items-center gap-1 rounded-full bg-teal-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-teal-700">
+                          Đặt lịch <ArrowRight size={13} className="transition-transform duration-300 group-hover:translate-x-0.5" />
+                        </Link>
                       </div>
                     </div>
                   </article>
@@ -300,6 +347,7 @@ export function HomePage() {
           })()}</div>
         )}
       </section>
+      <CustomerAiAssistant />
     </div>
   );
 }

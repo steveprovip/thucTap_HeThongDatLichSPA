@@ -6,9 +6,11 @@ import { appointmentsApi, catalogApi, getErrorMessage, stylistsApi } from '@/api
 import { DEMO_MODE } from '@/api/mockBackend';
 import type { Appointment, ServiceCategory, ServiceItem, Shift, Stylist, StylistGender } from '@/types';
 import {
-  Button, Card, EmptyState, Field, Input, Modal, Notice, SectionTitle, Spinner, StylistAvatar, Textarea, Toggle,
+  EmailText,
+  Button, Card, EmptyState, Field, Input, Modal, Notice, Pagination, SectionTitle, Select, Spinner, StylistAvatar, Textarea, Toggle,
   TempPasswordDialog, type TempCredential,
 } from '@/components';
+import { useClientPage } from '@/utils/useClientPage';
 import {
   addDaysISO, formatDate, matchSearch, startOfWeekISO, timeToMinutes, todayISO, VN_PHONE_MESSAGE, VN_PHONE_REGEX,
 } from '@/utils/format';
@@ -142,8 +144,18 @@ export function StylistsPage() {
     return { shift, booked, rate: shift ? Math.round((booked / shift) * 100) : 0 };
   }, [capacity]);
 
-  const visible = stylists.filter((s) =>
-    !query.trim() || matchSearch(`${s.fullName} ${s.phone ?? ''} ${s.serviceNames.join(' ')}`, query));
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const visible = useMemo(() => {
+    const catServices = new Set(services.filter((sv) => sv.categoryId === categoryFilter).map((sv) => sv.id));
+    return stylists
+      .filter((s) => statusFilter === 'all' || (statusFilter === 'active' ? s.isActive : !s.isActive))
+      .filter((s) => categoryFilter === 'all' || s.serviceIds.some((id) => catServices.has(id)))
+      .filter((s) => !query.trim() || matchSearch(`${s.fullName} ${s.phone ?? ''} ${s.serviceNames.join(' ')}`, query));
+  }, [stylists, services, statusFilter, categoryFilter, query]);
+  // Thẻ: 8 thợ / trang; Bảng: 10 dòng / trang; đổi bộ lọc / kiểu xem → về trang 1
+  const stylistPage = useClientPage(visible, view === 'cards' ? 8 : 10, `${view}|${statusFilter}|${categoryFilter}|${query}`);
+  useEffect(() => { stylistPage.setLimit(view === 'cards' ? 8 : 10); }, [view]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openCreate = () => {
     setEditing(null); setFullName(''); setPhone(''); setEmail(''); setBio(''); setGender(null); setIsActive(true);
@@ -266,6 +278,15 @@ export function StylistsPage() {
           <Input value={query} onChange={(e) => setQuery(e.target.value)} className="pl-9"
                  placeholder="Tìm theo tên, số điện thoại hoặc dịch vụ…" aria-label="Tìm thợ" />
         </div>
+        <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)} aria-label="Lọc trạng thái" className="w-auto">
+          <option value="all">Mọi trạng thái</option>
+          <option value="active">Đang làm</option>
+          <option value="inactive">Tạm nghỉ</option>
+        </Select>
+        <Select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} aria-label="Lọc theo nhóm dịch vụ" className="w-auto">
+          <option value="all">Mọi nhóm dịch vụ</option>
+          {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </Select>
         <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1" role="group" aria-label="Kiểu hiển thị">
           {([['cards', <LayoutGrid size={15} key="g" />, 'Thẻ'], ['table', <List size={15} key="l" />, 'Bảng']] as const)
             .map(([id, icon, label]) => (
@@ -281,8 +302,9 @@ export function StylistsPage() {
       {loading ? <Spinner /> : visible.length === 0 ? (
         <EmptyState icon={<UserRound size={30} />} title="Không tìm thấy thợ nào" />
       ) : view === 'cards' ? (
+        <>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {visible.map((s) => {
+          {stylistPage.items.map((s) => {
             const c = capacity[s.id];
             const rate = c?.shiftMinutes ? Math.round((c.bookedMinutes / c.shiftMinutes) * 100) : 0;
             return (
@@ -292,7 +314,7 @@ export function StylistsPage() {
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-bold">{s.fullName}</p>
                     <p className="text-xs text-ink-muted">{s.phone ?? 'Chưa có số điện thoại'}</p>
-                    <p className="truncate text-xs text-ink-muted">{s.email ?? 'Chưa có tài khoản đăng nhập'}</p>
+                    <EmailText email={s.email} empty="Chưa có tài khoản đăng nhập" className="block" />
                     <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                       <ActiveChip active={s.isActive} />
                       {s.avgRating !== null && (
@@ -338,7 +360,11 @@ export function StylistsPage() {
             );
           })}
         </div>
+        <Pagination page={stylistPage.page} totalPages={stylistPage.totalPages} total={stylistPage.total} onChange={stylistPage.setPage}
+                    limit={stylistPage.limit} onLimitChange={stylistPage.setLimit} sizes={[8, 16, 32]} />
+        </>
       ) : (
+        <>
         <div className="table-wrap">
           <table className="table">
             <thead>
@@ -346,7 +372,7 @@ export function StylistsPage() {
                   <th>Lấp đầy</th><th className="text-right">Đánh giá</th>{canEdit && <th />}</tr>
             </thead>
             <tbody>
-              {visible.map((s) => {
+              {stylistPage.items.map((s) => {
                 const c = capacity[s.id];
                 const rate = c?.shiftMinutes ? Math.round((c.bookedMinutes / c.shiftMinutes) * 100) : 0;
                 return (
@@ -384,6 +410,9 @@ export function StylistsPage() {
             </tbody>
           </table>
         </div>
+        <Pagination page={stylistPage.page} totalPages={stylistPage.totalPages} total={stylistPage.total} onChange={stylistPage.setPage}
+                    limit={stylistPage.limit} onLimitChange={stylistPage.setLimit} />
+        </>
       )}
 
       <Modal

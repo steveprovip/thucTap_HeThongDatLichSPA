@@ -21,6 +21,7 @@ export function AppointmentsListPage() {
   const [status, setStatus] = useState<string>(params.get('status') ?? '');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(20);
   const [data, setData] = useState<{ items: Appointment[]; total: number; totalPages: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Appointment | null>(null);
@@ -31,14 +32,14 @@ export function AppointmentsListPage() {
     try {
       setData(await appointmentsApi.list({
         from, to, status: (status || undefined) as AppointmentStatus | undefined,
-        search: search.trim() || undefined, page, limit: 20,
+        search: search.trim() || undefined, page, limit,
       }));
     } catch (e) {
       toast.error(getErrorMessage(e));
     } finally {
       setLoading(false);
     }
-  }, [from, to, status, search, page, toast]);
+  }, [from, to, status, search, page, limit, toast]);
 
   useEffect(() => {
     const t = window.setTimeout(() => { void load(); }, search ? 300 : 0);
@@ -100,7 +101,8 @@ export function AppointmentsListPage() {
               </tbody>
             </table>
           </div>
-          <Pagination page={page} totalPages={data.totalPages} total={data.total} onChange={setPage} />
+          <Pagination page={page} totalPages={data.totalPages} total={data.total} onChange={setPage}
+                      limit={limit} onLimitChange={(n) => { setLimit(n); setPage(1); }} />
         </>
       )}
 

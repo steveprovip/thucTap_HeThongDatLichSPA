@@ -19,6 +19,7 @@
  *   node scripts/launcher.mjs tunnel       Mở Quick Tunnel của Cloudflare (HTTPS công khai, miễn phí, không cần tên miền) tới máy chủ này
  *   node scripts/launcher.mjs resume       Chạy lại bản máy chủ ĐÃ build sẵn (không migration, không build) - dùng nội bộ khi cập nhật
  *   node scripts/launcher.mjs stop         Dừng hệ thống đang chạy (do launcher quản lý)
+ *   node scripts/launcher.mjs doctor       Kiểm tra môi trường + danh sách việc cần làm trước khi mở bán (Part 2)
  *
  * Mã thoát của "prepare": 0 = sẵn sàng, 1 = lỗi, 10 = hệ thống ĐANG chạy ở cửa sổ khác (đã mở trình duyệt).
  *
@@ -43,6 +44,7 @@ import { adoptRepo, gitLogin } from './lib/git-repair.mjs';
 import { classifyGitError, problemOf } from './lib/version.mjs';
 import { cwdInside, mentionsRoot, parseNetstatListeners, parsePidList } from './lib/ports.mjs';
 import { installLockedDependencies } from './lib/dependencies.mjs';
+import { mergeNewEnvKeys, readinessChecks, snapshotEnvFile } from './lib/env-check.mjs';
 
 // macOS mở từ Finder không có PATH của Terminal: bổ sung để thấy docker / npm / git (xem lib/platform.mjs)
 ensureToolPath();
@@ -114,6 +116,14 @@ function ensureEnvFiles() {
     if (!existsSync(target) && existsSync(example)) {
       copyFileSync(example, target);
       log(`      Tạo ${join(dir, '.env')} từ .env.example`);
+    } else if (dir === 'backend' && existsSync(target) && existsSync(example)) {
+      // Part 2: bản mới có tuỳ chọn mới -> thêm dạng ghi chú, KHÔNG đổi cấu hình tiệm đang chạy
+      const cur = readFileSync(target, 'utf8');
+      const merged = mergeNewEnvKeys(cur, readFileSync(example, 'utf8'));
+      if (merged.added.length) {
+        writeFileSync(target, merged.text);
+        log(`      Thêm ${merged.added.length} tuỳ chọn mới (đang tắt) vào backend/.env: ${merged.added.join(', ')}`);
+      }
     }
   }
   rotatePlaceholderSecrets(join(ROOT, 'backend', '.env'));
@@ -299,8 +309,33 @@ function killProcessOnPort(port) {
   } catch { /* không dọn được thì để bước kiểm tra cổng phía sau báo lỗi */ }
 }
 
+/** API (health 200) và giao diện đều đang chạy = hệ thống của dự án đang mở ở cửa sổ / tiến trình khác. */
+async function systemRunning() {
+  return (await portInUse(API_PORT)) && (await portInUse(WEB_PORT)) && (await httpStatus(HEALTH_URL)) === 200;
+}
+
+/**
+ * TASK v4 · NV1 — nguyên nhân gốc lỗi "Cannot POST /api/public/assistant/chat": bấm Bắt đầu lần nữa khi hệ thống ĐANG chạy
+ * (vừa chuyển nhánh → package.json đổi) làm launcher `npm install` đè node_modules ngay dưới `nest start --watch`; tiến trình
+ * theo dõi hỏng ("Cannot find module …") và API kẹt ở bản biên dịch cũ trong khi Vite đã nạp giao diện mới. Giờ: đang chạy thì
+ * KHÔNG cài gói, chỉ mở trình duyệt và nhắc Dừng → Bắt đầu lại nếu gói đã đổi.
+ */
+function noticeAlreadyRunning() {
+  log('');
+  log(`[!] Hệ thống ĐANG chạy ở một cửa sổ khác. Mở ${APP_URL} ...`);
+  if (staleDeps().some((d) => d !== '.')) {
+    log('    Gói npm đã thay đổi (vừa chuyển nhánh / cập nhật mã) nên KHÔNG cài lúc hệ thống đang chạy.');
+    log('    Bấm DỪNG rồi BẮT ĐẦU lại để cài gói mới và khởi động máy chủ với mã mới nhất.');
+  }
+  openBrowser(APP_URL);
+}
+
 async function prepare({ root = true } = {}) {
   ensureEnvFiles();
+  if (await systemRunning()) {
+    noticeAlreadyRunning();
+    return 10;
+  }
   if (!(await ensureDeps({ root }))) return 1;
 
   let apiBusy = await portInUse(API_PORT);
@@ -554,6 +589,13 @@ async function start() {
   log(`[1/6] Node.js ${process.version}`);
   log('[2/6] Chuẩn bị tệp .env (luôn chạy với API thật, không dùng chế độ Demo) ...');
   ensureEnvFiles();
+  // Đang chạy rồi thì dừng ở đây: KHÔNG cài lại gói npm dưới chân máy chủ đang chạy (xem noticeAlreadyRunning)
+  if (await systemRunning()) {
+    noticeAlreadyRunning();
+    log('Cửa sổ này có thể đóng.');
+    await waitForEnter();
+    return 0;
+  }
   log('[3/6] Docker + PostgreSQL và gói npm chạy song song ...');
   const [dbOk, depsOk] = await Promise.all([
     timed('Docker + PostgreSQL', () => ensureDatabase()),
@@ -1288,6 +1330,15 @@ async function update() {
     preBackup = /Đã sao lưu \([^)]*\): (.+)/.exec(bk.out)?.[1]?.trim() ?? '';
   }
 
+  // Part 2: chụp cấu hình tiệm (tên, VietQR, Gmail, khoá JWT…) — backend/.env không thuộc git nên cập nhật không
+  // ghi đè, nhưng vẫn giữ bản chụp để khôi phục tay nếu ai đó sửa nhầm sau cập nhật.
+  try {
+    const snap = snapshotEnvFile(ROOT);
+    if (snap) log(`      Đã chụp cấu hình tiệm: ${snap.slice(ROOT.length + 1)}`);
+  } catch (e) {
+    log(`      [CẢNH BÁO] Không chụp được backend/.env (${e.message}) — cấu hình vẫn được giữ nguyên.`);
+  }
+
   if (force) rmSync(BUILD_STAMP, { force: true }); // buộc build lại
   log(`      Lấy mã mới: git pull --ff-only origin main (${short(oldRev)} -> ${short(remoteRev)}) ...`);
   if (remoteRev !== oldRev) {
@@ -1500,11 +1551,43 @@ function gitLoginCommand() {
   return 0;
 }
 
+/**
+ * Part 2 — `node scripts/launcher.mjs doctor`: kiểm tra môi trường một chạm cho chủ tiệm / người hỗ trợ.
+ * Mã thoát 0 = chạy được (có thể còn cảnh báo), 1 = có lỗi phải sửa trước khi BẮT ĐẦU.
+ */
+async function doctor() {
+  const envFile = join(ROOT, 'backend', '.env');
+  const text = existsSync(envFile) ? readFileSync(envFile, 'utf8') : '';
+  const checks = readinessChecks(text);
+  checks.push({ id: 'git', level: 'warn', ok: gitAvailable(), label: 'Git (để CẬP NHẬT một chạm)', fix: 'Cài Git: https://git-scm.com' });
+  const db = dbTarget();
+  const dbUp = await new Promise((resolve) => {
+    const s = net.connect({ host: db.host, port: db.port });
+    const done = (v) => { s.destroy(); resolve(v); };
+    s.setTimeout(2000, () => done(false));
+    s.once('connect', () => done(true));
+    s.once('error', () => done(false));
+  });
+  checks.push({ id: 'db', level: 'warn', ok: dbUp, label: `PostgreSQL ${db.host}:${db.port}`, fix: 'Bấm BẮT ĐẦU (Launcher tự bật Docker/PostgreSQL) hoặc kiểm tra DB_HOST/DB_PORT' });
+  const running = await portInUse(API_PORT);
+  checks.push({ id: 'api', level: 'warn', ok: !running || (await httpStatus(`http://127.0.0.1:${API_PORT}/health`)) === 200, label: `Cổng ${API_PORT}`, fix: 'Cổng bị chương trình khác chiếm: đóng chương trình đó hoặc đổi PORT' });
+  log(BAR);
+  log('  KIỂM TRA MÔI TRƯỜNG');
+  log(BAR);
+  for (const c of checks) log(`  ${c.ok ? '[OK]  ' : c.level === 'error' ? '[LỖI] ' : '[NÊN] '} ${c.label}${c.ok ? '' : ` — ${c.fix}`}`);
+  const errors = checks.filter((c) => !c.ok && c.level === 'error').length;
+  const warns = checks.filter((c) => !c.ok && c.level !== 'error').length;
+  log(BAR);
+  log(errors ? `  ${errors} lỗi cần sửa trước khi chạy.` : warns ? `  Chạy được. Còn ${warns} mục nên hoàn thiện trước khi mở bán.` : '  Mọi thứ đã sẵn sàng.');
+  return errors ? 1 : 0;
+}
+
 /* ------------------------------------------------------------------------ main */
 const cmd = process.argv[2];
 const handlers = {
   start, 'check-node': checkNode, prepare, open: openWhenReady, run,
   serve, resume, tunnel, stop: stopCommand, update, 'update-apply': updateApply, backup: backupNow, 'repair-git': repairGit, 'git-login': gitLoginCommand,
+  doctor,
 };
 if (!handlers[cmd]) {
   err(`Cách dùng: node scripts/launcher.mjs <${Object.keys(handlers).join('|')}>`);

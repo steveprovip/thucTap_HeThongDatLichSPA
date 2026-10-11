@@ -110,6 +110,11 @@ export class WorkingHoursService {
     return this.repo.findOne({ where: { dayOfWeek: dow } });
   }
 
+  /** Cả 7 ngày trong một truy vấn, KHÔNG tự tạo dòng thiếu (khác `list()`); dùng cho truy vấn lô khung giờ. */
+  async byDayOfWeekMap(): Promise<Map<number, SalonWorkingHour>> {
+    return new Map((await this.repo.find()).map((r) => [r.dayOfWeek, r]));
+  }
+
   // -------------------------------------------------------------- HOLIDAYS
   async listHolidays(from?: string, to?: string): Promise<SalonHoliday[]> {
     const qb = this.holidayRepo.createQueryBuilder('h');

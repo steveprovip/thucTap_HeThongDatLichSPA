@@ -4,7 +4,8 @@ import {
 } from 'lucide-react';
 import { catalogApi, getErrorMessage, stylistsApi } from '@/api';
 import type { ServiceCategory, ServiceItem, Stylist } from '@/types';
-import { Button, Card, ConfirmDialog, EmptyState, Field, Input, Modal, Notice, SectionTitle, Select, SmartImage, Textarea, Toggle, TableSkeleton } from '@/components';
+import { Button, Card, ConfirmDialog, EmptyState, Field, Input, Modal, Notice, Pagination, SectionTitle, Select, SmartImage, Textarea, Toggle, TableSkeleton } from '@/components';
+import { useClientPage } from '@/utils/useClientPage';
 import { assignServiceImages, initials, serviceMediaKind } from '@/utils/images';
 import { formatDuration, formatNumber, formatVnd, matchSearch, parseNumber } from '@/utils/format';
 import { useAuth } from '@/contexts/AuthContext';
@@ -26,18 +27,21 @@ interface FormState {
   duration: number;
   price: number;
   description: string;
+  /** TASK v4 · NV2: ảnh riêng của dịch vụ (https://…); để trống = tự chọn ảnh theo chủ đề. */
+  imageUrl: string;
   isActive: boolean;
   stylistIds: string[];
 }
 
 const EMPTY_FORM: FormState = {
-  name: '', categoryId: '', duration: 30, price: 0, description: '', isActive: true, stylistIds: [],
+  name: '', categoryId: '', duration: 30, price: 0, description: '', imageUrl: '', isActive: true, stylistIds: [],
 };
 
 /** Kiểm tra dữ liệu form dịch vụ; trả về lỗi theo từng trường. */
 function validate(f: FormState): Partial<Record<keyof FormState, string>> {
   const errors: Partial<Record<keyof FormState, string>> = {};
   if (!f.name.trim()) errors.name = 'Vui lòng nhập tên dịch vụ';
+  if (f.imageUrl.trim() && !/^https:\/\/[^\s"'<>]+$/.test(f.imageUrl.trim())) errors.imageUrl = 'Ảnh phải là đường dẫn bắt đầu bằng https://';
   else if (f.name.trim().length > 120) errors.name = 'Tên dịch vụ tối đa 120 ký tự';
   if (!f.categoryId) errors.categoryId = 'Vui lòng chọn nhóm dịch vụ';
   if (f.duration % 15 !== 0 || f.duration < 15 || f.duration > 240) {
@@ -113,6 +117,8 @@ export function ServicesPage() {
     .filter((s) => statusFilter === 'all' || (statusFilter === 'active' ? s.isActive : !s.isActive))
     .filter((s) => !query.trim() || matchSearch(`${s.name} ${s.description ?? ''}`, query)),
   [services, tab, statusFilter, query]);
+  // Đổi nhóm / trạng thái / từ khoá → luôn về trang 1
+  const servicePage = useClientPage(visible, 10, `${tab}|${statusFilter}|${query}`);
 
   const stats = useMemo(() => {
     const active = services.filter((s) => s.isActive);
@@ -137,7 +143,7 @@ export function ServicesPage() {
     setEditing(s);
     setForm({
       name: s.name, categoryId: s.categoryId, duration: s.durationMinutes, price: s.price,
-      description: s.description ?? '', isActive: s.isActive, stylistIds: [...s.stylistIds],
+      description: s.description ?? '', imageUrl: s.imageUrl ?? '', isActive: s.isActive, stylistIds: [...s.stylistIds],
     });
     setTouched(false); setServerError(null); setFormOpen(true);
   };
@@ -151,6 +157,8 @@ export function ServicesPage() {
       const payload = {
         categoryId: form.categoryId, name: form.name.trim(), durationMinutes: form.duration, price: form.price,
         description: form.description.trim() || undefined, isActive: form.isActive, stylistIds: form.stylistIds,
+        // Sửa dịch vụ: gửi '' để xoá ảnh riêng (quay về ảnh theo chủ đề); thêm mới: bỏ trống thì không gửi
+        imageUrl: form.imageUrl.trim() || (editing ? '' : undefined),
       };
       if (editing) {
         await catalogApi.updateService(editing.id, payload);
@@ -297,6 +305,7 @@ export function ServicesPage() {
             : undefined}
         />
       ) : (
+        <>
         <div className="table-wrap">
           <table className="table">
             <thead>
@@ -311,7 +320,7 @@ export function ServicesPage() {
               </tr>
             </thead>
             <tbody>
-              {visible.map((s) => (
+              {servicePage.items.map((s) => (
                 <tr key={s.id} className={s.isActive ? '' : 'opacity-60'}>
                   <td className="min-w-[260px]">
                     <div className="flex items-center gap-3">
@@ -375,6 +384,9 @@ export function ServicesPage() {
             </tbody>
           </table>
         </div>
+        <Pagination page={servicePage.page} totalPages={servicePage.totalPages} total={servicePage.total} onChange={servicePage.setPage}
+                    limit={servicePage.limit} onLimitChange={servicePage.setLimit} />
+        </>
       )}
 
       {/* ------------------------------------------------ Form thêm / sửa dịch vụ */}
@@ -419,6 +431,16 @@ export function ServicesPage() {
           <Field label="Mô tả ngắn" hint={`${form.description.length}/500`}>
             <Textarea value={form.description} maxLength={500}
                       onChange={(e) => setField('description', e.target.value)} />
+          </Field>
+          <Field label="Ảnh dịch vụ (đường dẫn https)" error={showErrors.imageUrl} htmlFor="svc-img"
+                 hint="Dán link ảnh Unsplash / Pexels / ảnh của tiệm. Để trống: hệ thống tự chọn ảnh theo chủ đề dịch vụ.">
+            <div className="flex items-center gap-2">
+              <Input id="svc-img" value={form.imageUrl} maxLength={500} invalid={!!showErrors.imageUrl} placeholder="https://images.unsplash.com/photo-…"
+                     onChange={(e) => setField('imageUrl', e.target.value)} />
+              {form.imageUrl.trim().startsWith('https://') && (
+                <img src={form.imageUrl.trim()} alt="Xem trước ảnh dịch vụ" className="h-10 w-14 shrink-0 rounded-lg object-cover ring-1 ring-slate-200" />
+              )}
+            </div>
           </Field>
 
           <Field label="Thợ đảm nhận" hint="Dịch vụ không có thợ đảm nhận sẽ không hiện trên trang đặt lịch">

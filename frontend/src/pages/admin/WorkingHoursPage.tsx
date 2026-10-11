@@ -4,8 +4,9 @@ import { HolidayAssistantModal } from './HolidayAssistantModal';
 import { getErrorMessage, workingHoursApi } from '@/api';
 import type { Holiday, WorkingHour } from '@/types';
 import {
-  Button, Card, ConfirmDialog, Field, Input, Modal, Notice, SectionTitle, Spinner, TimeSelect24, Toggle,
+  Button, Card, ConfirmDialog, Field, Input, Modal, Notice, Pagination, SectionTitle, Spinner, TimeSelect24, Toggle,
 } from '@/components';
+import { useClientPage } from '@/utils/useClientPage';
 import { addDaysISO, formatDate, formatDuration, timeToMinutes, todayISO } from '@/utils/format';
 import { DOW_LABELS, DOW_ORDER } from '@/utils/constants';
 import { useAuth } from '@/contexts/AuthContext';
@@ -140,11 +141,11 @@ export function WorkingHoursPage() {
     }
   };
 
-  if (loading) return <Spinner />;
-
   const today = todayISO();
-  const upcoming = holidays.filter((h) => h.endDate >= today);
-  const past = holidays.filter((h) => h.endDate < today);
+  const holidayRows = useMemo(() => [...holidays.filter((h) => h.endDate >= today), ...holidays.filter((h) => h.endDate < today)], [holidays, today]);
+  const holidayPage = useClientPage(holidayRows, 10);
+
+  if (loading) return <Spinner />;
 
   return (
     <div className="space-y-5">
@@ -252,11 +253,12 @@ export function WorkingHoursPage() {
           <CalendarOff size={26} className="mx-auto mb-2 text-teal-600" /> Chưa khai báo ngày nghỉ nào
         </Card>
       ) : (
+        <>
         <div className="table-wrap">
           <table className="table">
             <thead><tr><th>Từ ngày</th><th>Đến ngày</th><th>Số ngày</th><th>Lý do</th><th>Trạng thái</th><th /></tr></thead>
             <tbody>
-              {[...upcoming, ...past].map((h) => {
+              {holidayPage.items.map((h) => {
                 const isPast = h.endDate < today;
                 const ongoing = h.startDate <= today && h.endDate >= today;
                 return (
@@ -283,6 +285,9 @@ export function WorkingHoursPage() {
             </tbody>
           </table>
         </div>
+        <Pagination page={holidayPage.page} totalPages={holidayPage.totalPages} total={holidayPage.total} onChange={holidayPage.setPage}
+                    limit={holidayPage.limit} onLimitChange={holidayPage.setLimit} />
+        </>
       )}
 
       <Modal

@@ -1,7 +1,11 @@
 import { Transform, Type } from 'class-transformer';
 import {
-  ArrayMaxSize, ArrayUnique, IsArray, IsBoolean, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Max, MaxLength, Min,
+  ArrayMaxSize, ArrayUnique, IsArray, IsBoolean, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min,
 } from 'class-validator';
+
+/** Ảnh dịch vụ: chỉ https:// (Unsplash, Pexels, CDN của tiệm) hoặc ảnh đã tải lên /uploads/… — chặn javascript:, data:… ; '' = xoá ảnh. */
+const IMAGE_URL_RE = /^$|^https:\/\/[^\s"'<>]+$|^\/uploads\/[\w.-]+$/;
+const IMAGE_URL_MSG = 'Ảnh dịch vụ phải là đường dẫn https:// hoặc ảnh đã tải lên';
 
 export class CreateCategoryDto {
   @IsString() @IsNotEmpty({ message: 'Vui lòng nhập tên nhóm dịch vụ' }) @MaxLength(120)
@@ -37,6 +41,7 @@ export class CreateServiceDto {
   price!: number;
 
   @IsOptional() @IsString() @MaxLength(500) description?: string;
+  @IsOptional() @IsString() @MaxLength(500) @Matches(IMAGE_URL_RE, { message: IMAGE_URL_MSG }) imageUrl?: string;
   @IsOptional() @IsBoolean() isActive?: boolean;
 
   /** Danh sách thợ đảm nhận được dịch vụ này. */
@@ -51,6 +56,7 @@ export class UpdateServiceDto {
   @Max(240, { message: 'Thời lượng tối đa là 240 phút' }) durationMinutes?: number;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(20000000, { message: 'Giá tối đa là 20.000.000 đ' }) price?: number;
   @IsOptional() @IsString() @MaxLength(500) description?: string;
+  @IsOptional() @IsString() @MaxLength(500) @Matches(IMAGE_URL_RE, { message: IMAGE_URL_MSG }) imageUrl?: string;
   @IsOptional() @IsBoolean() isActive?: boolean;
   @IsOptional() @IsArray() @ArrayMaxSize(50) @ArrayUnique() @IsUUID('4', { each: true, message: 'Mã thợ không hợp lệ' })
   stylistIds?: string[];

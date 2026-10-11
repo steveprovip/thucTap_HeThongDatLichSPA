@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CalendarCheck, Copy, Mail, MailCheck, PartyPopper, Printer } from 'lucide-react';
+import { CalendarCheck, Copy, Mail, MailCheck, PartyPopper, Printer, ShieldCheck } from 'lucide-react';
 import type { BookingResult } from '@/types';
 import { getErrorMessage, publicApi } from '@/api';
-import { Button, Card, Input } from '@/components';
+import { Button, Card, Input, VietQrCode } from '@/components';
+import { DEPOSIT_THRESHOLD, depositAmount, depositTransferNote } from '@/utils/opsHelpers';
 import { emailError } from '@/utils/validators';
 import { formatDuration, formatVnd } from '@/utils/format';
 import { SALON } from '@/utils/constants';
@@ -18,6 +19,9 @@ export function BookingSuccess({ result, onBookAgain, phone, email }: {
   const [sentTo, setSentTo] = useState<string | null>(result.emailQueued ? email ?? null : null);
   const [sending, setSending] = useState(false);
   const mailError = mailTo ? emailError(mailTo, true) : null;
+  // Chính sách cọc chống bùng lịch: lịch > 500.000 đ cọc 30% qua VietQR, nội dung "COC <SĐT> <MÃ LỊCH>"
+  const deposit = depositAmount(result.estimatedTotal);
+  const depositNote = depositTransferNote(phone, result.code);
   const sendMail = async () => {
     if (!mailTo || mailError) return;
     setSending(true);
@@ -94,6 +98,17 @@ export function BookingSuccess({ result, onBookAgain, phone, email }: {
               <span className="text-slate-900">{formatVnd(result.estimatedTotal)}</span>
             </li>
           </ul>
+
+          {deposit > 0 && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4">
+              <p className="flex items-center gap-1.5 text-sm font-semibold text-amber-900"><ShieldCheck size={16} /> Đặt cọc giữ lịch: {formatVnd(deposit)}</p>
+              <p className="mt-1 text-xs leading-relaxed text-amber-900/90">
+                Lịch trên {formatVnd(DEPOSIT_THRESHOLD)} cần cọc 30% để tiệm giữ thợ và khung giờ. Chuyển khoản trong 2 giờ với nội dung
+                {' '}<strong className="font-mono">{depositNote}</strong>; tiền cọc được trừ thẳng vào hoá đơn. Huỷ trước giờ hẹn 24 giờ được hoàn cọc.
+              </p>
+              <VietQrCode amount={deposit} addInfo={depositNote} className="mt-3" />
+            </div>
+          )}
 
           {sentTo ? (
             <p className="flex items-start gap-2 rounded-xl bg-blue-50 px-3.5 py-2.5 text-xs text-blue-900" role="status">

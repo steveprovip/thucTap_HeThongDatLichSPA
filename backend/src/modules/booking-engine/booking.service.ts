@@ -23,6 +23,7 @@ import { CustomersService } from '../customers/customers.service';
 import { StylistsService } from '../stylists/stylists.service';
 import { MailService } from '../notifications/mail.service';
 import { EmailQueueService } from '../notifications/email-queue.service';
+import { EventDispatcherService } from '../notifications/event-dispatcher.service';
 import { MailTemplates, AppointmentMailData } from '../notifications/mail-templates';
 import { NotificationsService } from '../notifications/notifications.service';
 import { RateLimitService } from '../rate-limit/rate-limit.service';
@@ -115,6 +116,7 @@ export class BookingService {
     private readonly rateLimit: RateLimitService,
     private readonly holds: SlotHoldService,
     private readonly emailQueue: EmailQueueService,
+    private readonly dispatcher: EventDispatcherService,
     @InjectRepository(Appointment) private readonly apptRepo: Repository<Appointment>,
     @InjectRepository(AppointmentServiceItem) private readonly apptServiceRepo: Repository<AppointmentServiceItem>,
     @InjectRepository(Customer) private readonly customerRepo: Repository<Customer>,
@@ -158,6 +160,10 @@ export class BookingService {
   private async createBookingUnmetered(params: CreateBookingParams): Promise<BookingResult> {
     const { dto } = params;
     const now = new Date();
+    if (params.source === AppointmentSource.ONLINE && !dto.email?.trim()
+        && this.config.get<boolean>('business.requireBookingEmail')) {
+      throw new BadRequestException({ message: MSG.BOOKING_EMAIL_REQUIRED, field: 'email' });
+    }
 
     // ----- 2. Dịch vụ và tổng thời lượng
     const services = await this.availability.loadServices(dto.serviceIds);
@@ -416,6 +422,13 @@ export class BookingService {
     } catch (e) {
       this.logger.error(`Lịch ${result.appointment.code} đã lưu nhưng gửi email/thông báo lỗi: ${(e as Error).message}`);
     }
+    // Thông báo đa kênh (Zalo ZNS / SMS qua webhook) — chạy nền, không chặn và không làm hỏng phản hồi đặt lịch
+    void this.dispatcher.emit('appointment.created', {
+      appointmentId: result.appointment.id, code: result.appointment.code, status: result.appointment.status,
+      source: result.appointment.source, startAt: startAt.toISOString(), startAtText: formatDateTimeVN(startAt),
+      customerName: result.customer.fullName, customerPhone: result.customer.phone, stylistName: stylist?.fullName ?? '',
+      services: ordered.map((s) => s.name), estimatedTotal,
+    });
 
     return {
       code: result.appointment.code,
@@ -450,8 +463,11 @@ export class BookingService {
     return rows.length === 0;
   }
 
-  /** Mentor S2 · mục 10: gửi email NGAY (không chờ lượt quét mỗi phút của worker); lỗi chỉ ghi log. */
-  private kickMailWorker(): void {
+  /**
+   * Mentor S2 · mục 10: gửi email NGAY (không chờ lượt quét mỗi phút của worker); lỗi chỉ ghi log.
+   * Dùng chung cho đặt / dời / huỷ lịch (QA 11/10: khách có email phải nhận thư ở cả ba luồng, không trễ).
+   */
+  kickMailWorker(): void {
     setImmediate(() => {
       this.emailQueue.processDue().catch((e: unknown) => this.logger.warn(`Gửi email ngay thất bại: ${(e as Error).message}`));
     });
@@ -648,26 +664,32 @@ export class BookingService {
     const stylist = await this.stylistRepo.findOne({ where: { id: appt.stylistId } });
     const services = await this.apptServiceRepo.find({ where: { appointmentId: appt.id } });
     if (customer?.email) {
-      const tpl = MailTemplates.bookingCancelled(
-        this.mail.salonInfo,
-        {
-          code: appt.code, customerName: customer.fullName, stylistName: stylist?.fullName ?? '',
-          startAt: appt.startAt, endAt: appt.endAt,
-          services: services.map((s) => ({
-            name: s.nameSnapshot, durationMinutes: s.durationSnapshot, price: s.priceSnapshot,
-          })),
-          totalDuration: appt.totalDurationMinutes, estimatedTotal: appt.estimatedTotal,
-        },
-        appt.cancelReason,
-      );
-      await this.mail.enqueue({
-        kind: EmailKind.BOOKING_CANCELLED,
-        toEmail: customer.email,
-        toName: customer.fullName,
-        subject: tpl.subject,
-        html: tpl.html,
-        appointmentId: appt.id,
-      });
+      try {
+        const tpl = MailTemplates.bookingCancelled(
+          this.mail.salonInfo,
+          {
+            code: appt.code, customerName: customer.fullName, stylistName: stylist?.fullName ?? '',
+            startAt: appt.startAt, endAt: appt.endAt,
+            services: services.map((s) => ({
+              name: s.nameSnapshot, durationMinutes: s.durationSnapshot, price: s.priceSnapshot,
+            })),
+            totalDuration: appt.totalDurationMinutes, estimatedTotal: appt.estimatedTotal,
+          },
+          appt.cancelReason,
+        );
+        await this.mail.enqueue({
+          kind: EmailKind.BOOKING_CANCELLED,
+          toEmail: customer.email,
+          toName: customer.fullName,
+          subject: tpl.subject,
+          html: tpl.html,
+          appointmentId: appt.id,
+        });
+        this.kickMailWorker();
+      } catch (e) {
+        // Lịch đã huỷ xong — lỗi xếp hàng email chỉ ghi log, không trả 500 khiến khách tưởng huỷ thất bại.
+        this.logger.error(`Lịch ${appt.code} đã huỷ nhưng xếp email lỗi: ${(e as Error).message}`);
+      }
     }
 
     return mapPublicAppointment(appt, customer!, stylist!, services);

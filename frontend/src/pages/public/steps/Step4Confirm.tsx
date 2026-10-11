@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Info } from 'lucide-react';
+import { Info, MailWarning, ShieldCheck } from 'lucide-react';
+import { DEPOSIT_THRESHOLD, depositAmount } from '@/utils/opsHelpers';
 import { Field, Input, Textarea } from '@/components';
 import { formatDuration, formatVnd, formatWeekdayDate, VN_PHONE_MESSAGE, VN_PHONE_REGEX } from '@/utils/format';
 import { useBooking } from '@/contexts/BookingContext';
@@ -11,8 +12,12 @@ export interface Step4Errors {
   note?: string;
 }
 
-/** Bước 4 — điền tên, số điện thoại và chốt lịch, không cần tạo tài khoản (S2-07). */
-export function Step4Confirm({ errors }: { errors: Step4Errors }) {
+/**
+ * Bước 4 — điền tên, số điện thoại và chốt lịch, không cần tạo tài khoản (S2-07).
+ * Email: chủ tiệm bật BOOKING_REQUIRE_EMAIL để bắt buộc; nếu không bắt buộc mà khách bỏ trống thì nói rõ
+ * khách mất gì (mã tra cứu, thông báo đổi giờ/đổi thợ/huỷ, nhắc lịch) — phản hồi QA 11/10.
+ */
+export function Step4Confirm({ errors, requireEmail = false }: { errors: Step4Errors; requireEmail?: boolean }) {
   const { selected, date, time, customer, setCustomer, totalDuration, totalPrice } = useBooking();
   const [touched, setTouched] = useState<Record<string, boolean>>({});
 
@@ -54,6 +59,16 @@ export function Step4Confirm({ errors }: { errors: Step4Errors }) {
           <Info size={13} className="mt-0.5 shrink-0" />
           Đây là số tiền tạm tính, giá cuối do tiệm chốt khi thanh toán.
         </p>
+        {depositAmount(totalPrice) > 0 && (
+          <p className="mt-2 flex items-start gap-1.5 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            <ShieldCheck size={14} className="mt-0.5 shrink-0" />
+            <span>
+              <strong>Chính sách cọc giữ lịch:</strong> lịch trên {formatVnd(DEPOSIT_THRESHOLD)} cọc 30%
+              ({formatVnd(depositAmount(totalPrice))}) qua VietQR trong 2 giờ sau khi đặt, nội dung
+              {' '}<span className="font-mono">COC {customer.phone || '[SĐT]'} [MÃ LỊCH]</span>. Cọc trừ vào hoá đơn; huỷ trước 24 giờ được hoàn.
+            </span>
+          </p>
+        )}
       </section>
 
       <div className="grid gap-3.5 sm:grid-cols-2">
@@ -84,7 +99,8 @@ export function Step4Confirm({ errors }: { errors: Step4Errors }) {
         </Field>
       </div>
 
-      <Field label="Email nhận xác nhận (khuyến nghị)" error={errors.email} htmlFor="bk-email"
+      <Field label={requireEmail ? 'Email nhận xác nhận' : 'Email nhận xác nhận (khuyến nghị)'} required={requireEmail}
+             error={errors.email} htmlFor="bk-email"
              hint="Gửi ngay chi tiết lịch hẹn, mã tra cứu, đường đi và liên kết đổi/huỷ lịch; nhắc lịch trước 24 giờ">
         <Input
           id="bk-email"
@@ -96,6 +112,15 @@ export function Step4Confirm({ errors }: { errors: Step4Errors }) {
           invalid={!!errors.email}
         />
       </Field>
+      {!requireEmail && !customer.email.trim() && (
+        <p className="-mt-2 flex items-start gap-2 rounded-xl bg-amber-50 px-3.5 py-2.5 text-xs text-amber-900">
+          <MailWarning size={15} className="mt-0.5 shrink-0" />
+          <span>
+            Không có email, bạn sẽ <strong>không nhận được mã tra cứu</strong> qua thư và <strong>không được báo</strong> khi
+            tiệm đổi giờ, đổi thợ hoặc huỷ lịch. Hãy ghi lại mã lịch ở bước sau.
+          </span>
+        </p>
+      )}
 
       <Field
         label="Ghi chú cho thợ (tuỳ chọn)"
