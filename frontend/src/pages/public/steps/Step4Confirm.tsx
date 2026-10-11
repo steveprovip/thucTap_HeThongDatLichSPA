@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Info, MailWarning } from 'lucide-react';
+import { Info, MailWarning, ShieldCheck } from 'lucide-react';
+import { DEPOSIT_THRESHOLD, depositAmount } from '@/utils/opsHelpers';
 import { Field, Input, Textarea } from '@/components';
 import { formatDuration, formatVnd, formatWeekdayDate, VN_PHONE_MESSAGE, VN_PHONE_REGEX } from '@/utils/format';
 import { useBooking } from '@/contexts/BookingContext';
@@ -58,6 +59,16 @@ export function Step4Confirm({ errors, requireEmail = false }: { errors: Step4Er
           <Info size={13} className="mt-0.5 shrink-0" />
           Đây là số tiền tạm tính, giá cuối do tiệm chốt khi thanh toán.
         </p>
+        {depositAmount(totalPrice) > 0 && (
+          <p className="mt-2 flex items-start gap-1.5 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            <ShieldCheck size={14} className="mt-0.5 shrink-0" />
+            <span>
+              <strong>Chính sách cọc giữ lịch:</strong> lịch trên {formatVnd(DEPOSIT_THRESHOLD)} cọc 30%
+              ({formatVnd(depositAmount(totalPrice))}) qua VietQR trong 2 giờ sau khi đặt, nội dung
+              {' '}<span className="font-mono">COC {customer.phone || '[SĐT]'} [MÃ LỊCH]</span>. Cọc trừ vào hoá đơn; huỷ trước 24 giờ được hoàn.
+            </span>
+          </p>
+        )}
       </section>
 
       <div className="grid gap-3.5 sm:grid-cols-2">

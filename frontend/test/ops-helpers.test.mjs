@@ -91,3 +91,14 @@ test('TASK v4 · NV3: chuẩn hoá phân trang — mảng (máy chủ cũ), tran
   assert.deepEqual(plain(normalizePage({ data: [{ id: 9 }] }, 1, 10)).items, [{ id: 9 }]);
   assert.deepEqual(plain(paginate(list, 2, 10)).items.map((x) => x.id), [11, 12, 13, 14, 15, 16, 17, 18, 19, 20]);
 });
+
+test('cọc chống bùng lịch: chỉ lịch trên 500.000 đ, 30% làm tròn 10.000 đ, tối thiểu 100.000 đ; nội dung CK chuẩn', () => {
+  const { depositAmount, depositTransferNote } = module.exports;
+  assert.equal(depositAmount(500000), 0);
+  assert.equal(depositAmount(350000), 0);
+  assert.equal(depositAmount(510000), 160000);
+  assert.equal(depositAmount(990000), 300000);
+  assert.equal(depositAmount(3200000), 960000);
+  assert.equal(depositAmount(Number.NaN), 0);
+  assert.equal(depositTransferNote('0983 415 276', 'ab-12cd34'), 'COC 0983415276 AB12CD34');
+});

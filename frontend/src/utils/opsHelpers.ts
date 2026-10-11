@@ -108,6 +108,19 @@ export function normalizePage<T>(raw: unknown, page = 1, limit = 20): PageOf<T> 
 /** Cắt một trang từ danh sách đã có sẵn ở trình duyệt (vd. khách vãng lai) — cùng định dạng với normalizePage. */
 export const paginate = <T>(items: readonly T[], page: number, limit: number): PageOf<T> => normalizePage<T>([...items], page, limit);
 
+// ------------------------------------------------------------- Chính sách cọc chống bùng lịch (anti no-show)
+/** Lịch có tổng tạm tính TRÊN mức này mới cần đặt cọc. */
+export const DEPOSIT_THRESHOLD = 500_000;
+/** Cọc 30% tổng tạm tính, làm tròn lên bội 10.000 đ, tối thiểu 100.000 đ; 0 = không cần cọc. */
+export function depositAmount(total: number): number {
+  if (!(total > DEPOSIT_THRESHOLD)) return 0;
+  return Math.max(100_000, Math.ceil((total * 0.3) / 10_000) * 10_000);
+}
+/** Nội dung chuyển khoản cọc tự động: "COC <SĐT> <MÃ LỊCH>" (chỉ chữ / số để mọi ngân hàng giữ nguyên). */
+export function depositTransferNote(phone: string, code: string): string {
+  return `COC ${phone.replace(/\D/g, '')} ${code.replace(/[^0-9A-Za-z]/g, '').toUpperCase()}`.trim();
+}
+
 /** "Hiển thị 21 – 40 trên tổng số 135 bản ghi" (0 bản ghi → "Không có bản ghi nào"). */
 export function rangeText(page: number, limit: number, total: number): string {
   if (!total) return 'Không có bản ghi nào';

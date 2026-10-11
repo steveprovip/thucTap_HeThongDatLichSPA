@@ -119,6 +119,12 @@ const configuration = () => ({
     apiKey: process.env.AI_API_KEY ?? '',
     timeoutMs: int(process.env.AI_TIMEOUT_MS, 25000),
   },
+  // Thông báo đa kênh: webhook nhận sự kiện appointment.created / appointment.confirmed (Zalo ZNS, SMS Brandname, n8n…)
+  dispatch: {
+    webhookUrls: (process.env.DISPATCH_WEBHOOK_URLS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
+    secret: process.env.DISPATCH_WEBHOOK_SECRET ?? '',
+    timeoutMs: int(process.env.DISPATCH_TIMEOUT_MS, 5000),
+  },
   upload: {
     dir: process.env.UPLOAD_DIR ?? 'uploads',
     maxAvatarSizeMb: int(process.env.MAX_AVATAR_SIZE_MB, 2),

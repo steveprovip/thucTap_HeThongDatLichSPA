@@ -4,8 +4,9 @@ import { CalendarPlus, ChevronLeft, ChevronRight, Copy, Plus, Search } from 'luc
 import { getErrorCode, getErrorDetails, getErrorMessage, shiftRequestsApi, stylistsApi, workingHoursApi } from '@/api';
 import type { CoverageReport, Holiday, Shift, ShiftConflictAppointment, ShiftRequest, Stylist, TimeOff, WorkingHour } from '@/types';
 import {
-  Button, ConfirmDialog, Field, Input, Modal, Select, Spinner, TimeSelect24,
+  Button, ConfirmDialog, Field, Input, Modal, Pagination, Select, Spinner, TimeSelect24,
 } from '@/components';
+import { useClientPage } from '@/utils/useClientPage';
 import { addDaysISO, formatDate, formatDuration, startOfWeekISO, timeToMinutes, todayISO } from '@/utils/format';
 import { DayInfo, QuickShift, ShiftBoard } from './shifts/ShiftBoard';
 import { ShiftRequestsPanel } from './shifts/ShiftRequestsPanel';
@@ -81,6 +82,8 @@ export function ShiftsPage() {
       .filter((s) => !q || s.fullName.toLowerCase().includes(q))
       .filter((s) => !onlyScheduled || shifts.some((x) => x.stylistId === s.id));
   }, [stylists, shifts, query, onlyScheduled]);
+  // Bảng ca nhiều thợ: phân trang theo hàng thợ (10 thợ / trang), lọc / đổi tuần → về trang 1
+  const stylistPage = useClientPage(visibleStylists, 10, `${query}|${onlyScheduled}`);
   const addHours = useMemo(() => {
     const dow = new Date(`${addDate}T12:00:00Z`).getUTCDay();
     return hours.find((h) => h.dayOfWeek === dow);
@@ -242,9 +245,10 @@ export function ShiftsPage() {
       )}
 
       {loading ? <Spinner /> : (
+        <>
         <ShiftBoard
           days={dayInfos}
-          stylists={visibleStylists}
+          stylists={stylistPage.items}
           shifts={shifts}
           timeOff={timeOff}
           pendingRequests={requests}
@@ -258,6 +262,9 @@ export function ShiftsPage() {
           onRemoveShift={setRemoveTarget}
           onRemoveOff={setRemoveOffTarget}
         />
+        <Pagination page={stylistPage.page} totalPages={stylistPage.totalPages} total={stylistPage.total} onChange={stylistPage.setPage}
+                    limit={stylistPage.limit} onLimitChange={stylistPage.setLimit} />
+        </>
       )}
 
       <Modal open={addOpen} title="Thêm ca làm" onClose={() => setAddOpen(false)} size="sm"

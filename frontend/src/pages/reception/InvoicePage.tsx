@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Banknote, CheckCircle2, Landmark, Lock, Plus, Printer, Receipt, Trash2 } from 'lucide-react';
 import { appointmentsApi, getErrorMessage, invoicesApi } from '@/api';
 import type { Appointment, Invoice, PaymentMethod } from '@/types';
-import { Button, Card, ConfirmDialog, Field, Input, SectionTitle, Spinner, StatusBadge, VietQrCode } from '@/components';
+import { Button, Card, ConfirmDialog, Field, Input, SectionTitle, Spinner, StatusBadge, useThermalPrint, VietQrCode } from '@/components';
 import { formatNumber, formatVnd, parseNumber } from '@/utils/format';
 import { useToast } from '@/contexts/ToastContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -36,6 +36,7 @@ export function InvoicePage() {
   const [adjusting, setAdjusting] = useState(false);
   const [adjustReason, setAdjustReason] = useState('');
   const { user } = useAuth();
+  const thermal = useThermalPrint();
 
   const subtotal = lines.reduce((s, l) => s + l.unitPrice * l.quantity, 0);
   const total = Math.max(0, subtotal - discount);
@@ -160,7 +161,9 @@ export function InvoicePage() {
       <SectionTitle
         title={`Phiếu tính tiền ${invoice?.code ?? ''}`}
         description={`Lịch hẹn ${appointment.code} · ${appointment.startAtText}`}
-        action={<div className="flex gap-2"><Button variant="outline" size="sm" icon={<Printer size={15} />} onClick={() => window.print()} disabled={!invoice}>In hoá đơn</Button><Button variant="ghost" size="sm" onClick={() => navigate('/quan-ly')}>Về lịch ngày</Button></div>}
+        action={<div className="flex gap-2"><Button variant="outline" size="sm" icon={<Printer size={15} />}
+          onClick={() => invoice && thermal.print(invoice)} disabled={!invoice || unsaved}
+          title={unsaved ? 'Lưu phiếu trước khi in để số tiền trên hoá đơn khớp máy chủ' : 'In hoá đơn khổ nhiệt 80 mm'}>In hoá đơn</Button><Button variant="ghost" size="sm" onClick={() => navigate('/quan-ly')}>Về lịch ngày</Button></div>}
       />
 
       {appointment.status !== 'completed' && (
@@ -343,7 +346,8 @@ export function InvoicePage() {
         </Card>
       )}
 
-      {invoice && <Card className="receipt-print p-5">
+      {thermal.node}
+      {invoice && <Card className="p-5">
         <div className="border-b border-slate-300 pb-3 text-center">
           <h3 className="font-serif text-xl font-bold">{SALON.name}</h3>
           <p className="text-xs text-ink-muted">{SALON.address} · {SALON.hotline}</p>

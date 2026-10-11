@@ -23,6 +23,7 @@ import { CustomersService } from '../customers/customers.service';
 import { StylistsService } from '../stylists/stylists.service';
 import { MailService } from '../notifications/mail.service';
 import { EmailQueueService } from '../notifications/email-queue.service';
+import { EventDispatcherService } from '../notifications/event-dispatcher.service';
 import { MailTemplates, AppointmentMailData } from '../notifications/mail-templates';
 import { NotificationsService } from '../notifications/notifications.service';
 import { RateLimitService } from '../rate-limit/rate-limit.service';
@@ -115,6 +116,7 @@ export class BookingService {
     private readonly rateLimit: RateLimitService,
     private readonly holds: SlotHoldService,
     private readonly emailQueue: EmailQueueService,
+    private readonly dispatcher: EventDispatcherService,
     @InjectRepository(Appointment) private readonly apptRepo: Repository<Appointment>,
     @InjectRepository(AppointmentServiceItem) private readonly apptServiceRepo: Repository<AppointmentServiceItem>,
     @InjectRepository(Customer) private readonly customerRepo: Repository<Customer>,
@@ -420,6 +422,13 @@ export class BookingService {
     } catch (e) {
       this.logger.error(`Lịch ${result.appointment.code} đã lưu nhưng gửi email/thông báo lỗi: ${(e as Error).message}`);
     }
+    // Thông báo đa kênh (Zalo ZNS / SMS qua webhook) — chạy nền, không chặn và không làm hỏng phản hồi đặt lịch
+    void this.dispatcher.emit('appointment.created', {
+      appointmentId: result.appointment.id, code: result.appointment.code, status: result.appointment.status,
+      source: result.appointment.source, startAt: startAt.toISOString(), startAtText: formatDateTimeVN(startAt),
+      customerName: result.customer.fullName, customerPhone: result.customer.phone, stylistName: stylist?.fullName ?? '',
+      services: ordered.map((s) => s.name), estimatedTotal,
+    });
 
     return {
       code: result.appointment.code,

@@ -4,7 +4,8 @@ import {
 } from 'lucide-react';
 import { catalogApi, getErrorMessage, stylistsApi } from '@/api';
 import type { ServiceCategory, ServiceItem, Stylist } from '@/types';
-import { Button, Card, ConfirmDialog, EmptyState, Field, Input, Modal, Notice, SectionTitle, Select, SmartImage, Textarea, Toggle, TableSkeleton } from '@/components';
+import { Button, Card, ConfirmDialog, EmptyState, Field, Input, Modal, Notice, Pagination, SectionTitle, Select, SmartImage, Textarea, Toggle, TableSkeleton } from '@/components';
+import { useClientPage } from '@/utils/useClientPage';
 import { assignServiceImages, initials, serviceMediaKind } from '@/utils/images';
 import { formatDuration, formatNumber, formatVnd, matchSearch, parseNumber } from '@/utils/format';
 import { useAuth } from '@/contexts/AuthContext';
@@ -116,6 +117,8 @@ export function ServicesPage() {
     .filter((s) => statusFilter === 'all' || (statusFilter === 'active' ? s.isActive : !s.isActive))
     .filter((s) => !query.trim() || matchSearch(`${s.name} ${s.description ?? ''}`, query)),
   [services, tab, statusFilter, query]);
+  // Đổi nhóm / trạng thái / từ khoá → luôn về trang 1
+  const servicePage = useClientPage(visible, 10, `${tab}|${statusFilter}|${query}`);
 
   const stats = useMemo(() => {
     const active = services.filter((s) => s.isActive);
@@ -302,6 +305,7 @@ export function ServicesPage() {
             : undefined}
         />
       ) : (
+        <>
         <div className="table-wrap">
           <table className="table">
             <thead>
@@ -316,7 +320,7 @@ export function ServicesPage() {
               </tr>
             </thead>
             <tbody>
-              {visible.map((s) => (
+              {servicePage.items.map((s) => (
                 <tr key={s.id} className={s.isActive ? '' : 'opacity-60'}>
                   <td className="min-w-[260px]">
                     <div className="flex items-center gap-3">
@@ -380,6 +384,9 @@ export function ServicesPage() {
             </tbody>
           </table>
         </div>
+        <Pagination page={servicePage.page} totalPages={servicePage.totalPages} total={servicePage.total} onChange={servicePage.setPage}
+                    limit={servicePage.limit} onLimitChange={servicePage.setLimit} />
+        </>
       )}
 
       {/* ------------------------------------------------ Form thêm / sửa dịch vụ */}

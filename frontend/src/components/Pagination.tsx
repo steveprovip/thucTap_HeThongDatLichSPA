@@ -7,13 +7,15 @@ export const PAGE_SIZES = [10, 20, 50] as const;
  * TASK v3 · NV2 — thanh phân trang đầy đủ: "Hiển thị X – Y trên tổng số Z bản ghi", chọn số dòng / trang
  * (10 · 20 · 50) và [Trước] 1 2 3 … [Sau]. `limit` + `onLimitChange` là tuỳ chọn để các màn hình cũ vẫn dùng như trước.
  */
-export function Pagination({ page, totalPages, total, onChange, limit, onLimitChange }: {
+export function Pagination({ page, totalPages, total, onChange, limit, onLimitChange, sizes = PAGE_SIZES }: {
   page: number;
   totalPages: number;
   total: number;
   onChange: (p: number) => void;
   limit?: number;
   onLimitChange?: (n: number) => void;
+  /** Lựa chọn số dòng / trang (mặc định 10 · 20 · 50; vd. lưới thẻ thợ dùng 8 · 16 · 32). */
+  sizes?: readonly number[];
 }) {
   const size = limit ?? (totalPages > 0 ? Math.ceil(total / Math.max(1, totalPages)) : total);
   const btn = 'inline-flex h-8 min-w-8 items-center justify-center rounded-lg border px-2 text-xs font-medium transition disabled:opacity-40';
@@ -26,7 +28,7 @@ export function Pagination({ page, totalPages, total, onChange, limit, onLimitCh
             Số dòng / trang
             <select value={limit} onChange={(e) => onLimitChange(Number(e.target.value))} aria-label="Số dòng mỗi trang"
                     className="rounded-md border border-slate-300 bg-white px-1.5 py-0.5 text-xs text-ink">
-              {PAGE_SIZES.map((n) => <option key={n} value={n}>{n}</option>)}
+              {sizes.map((n) => <option key={n} value={n}>{n}</option>)}
             </select>
           </label>
         )}

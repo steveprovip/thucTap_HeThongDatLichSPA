@@ -33,6 +33,7 @@ import { WorkingHoursService } from '../working-hours/working-hours.service';
 import { MailService } from '../notifications/mail.service';
 import { MailTemplates } from '../notifications/mail-templates';
 import { NotificationsService } from '../notifications/notifications.service';
+import { EventDispatcherService } from '../notifications/event-dispatcher.service';
 import { AppointmentView, mapAppointment } from './appointment.mapper';
 import {
   BulkReassignDto, ListAppointmentsQuery, RescheduleDto,
@@ -85,6 +86,7 @@ export class AppointmentsService {
     private readonly workingHours: WorkingHoursService,
     private readonly mail: MailService,
     private readonly notifications: NotificationsService,
+    private readonly dispatcher: EventDispatcherService,
     @InjectRepository(Appointment) private readonly apptRepo: Repository<Appointment>,
     @InjectRepository(AppointmentServiceItem) private readonly apptServiceRepo: Repository<AppointmentServiceItem>,
     @InjectRepository(AppointmentChange) private readonly changeRepo: Repository<AppointmentChange>,
@@ -349,6 +351,11 @@ export class AppointmentsService {
     );
 
     const [view] = await this.decorate([appt], user.role);
+    void this.dispatcher.emit('appointment.confirmed', {
+      appointmentId: appt.id, code: appt.code, status: appt.status, source: appt.source, startAt: appt.startAt.toISOString(),
+      startAtText: formatDateTimeVN(appt.startAt), customerName: view.customer.fullName, customerPhone: view.customer.phone,
+      stylistName: view.stylist?.fullName ?? '', services: view.services.map((s) => s.name), estimatedTotal: view.estimatedTotal,
+    });
     return view;
   }
 
