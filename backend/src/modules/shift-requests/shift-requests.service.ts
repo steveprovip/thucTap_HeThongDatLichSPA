@@ -127,6 +127,7 @@ export class ShiftRequestsService {
   }
 
   // ------------------------------------------------------------------ thợ
+  // (describeShiftRequests ở cuối tệp: hàm thuần, có kiểm thử đơn vị)
   async createForSelf(user: AuthUser, dto: CreateShiftRequestsDto, today: string = todaySalon()): Promise<ShiftRequestView[]> {
     const stylistId = this.requireStylist(user);
     const stylist = await this.stylistRepo.findOne({ where: { id: stylistId } });
@@ -164,10 +165,12 @@ export class ShiftRequestsService {
       status: ShiftRequestStatus.PENDING,
     })));
 
-    await this.notifyManagers(
-      'Yêu cầu đăng ký ca mới',
-      `${stylist.fullName} gửi ${saved.length} yêu cầu (${saved.map((s) => shiftDayText(String(s.workDate))).slice(0, 3).join(', ')}${saved.length > 3 ? '…' : ''})`,
-    );
+    const note = describeShiftRequests(stylist.fullName, saved.map((s) => ({
+      kind: s.kind, workDate: String(s.workDate),
+      startTime: s.startTime ? trimSeconds(s.startTime) : null, endTime: s.endTime ? trimSeconds(s.endTime) : null,
+      note: s.note,
+    })));
+    await this.notifyManagers(note.title, note.body);
     return this.views(saved);
   }
 
@@ -290,6 +293,7 @@ export class ShiftRequestsService {
   }
 
   private async notifyManagers(title: string, body: string): Promise<void> {
+    // QA 11/10: thông báo nêu rõ LOẠI yêu cầu (ca làm / xin nghỉ), ngày giờ và lý do — xem describeShiftRequests
     try {
       const managers = await this.userRepo.find({ where: { role: In([Role.OWNER, Role.RECEPTIONIST]), isActive: true } });
       for (const m of managers) {
@@ -299,4 +303,28 @@ export class ShiftRequestsService {
       this.logger.warn(`Không gửi được thông báo cho quản lý: ${(e as Error).message}`);
     }
   }
+}
+
+/**
+ * QA 11/10 — thông báo yêu cầu ca/nghỉ cho chủ tiệm & lễ tân trước đây chỉ ghi "Yêu cầu đăng ký ca mới (Thứ 3 13/10…)",
+ * không biết là xin LÀM hay xin NGHỈ, giờ nào. Giờ nêu rõ loại, ngày, khung giờ và lý do (tối đa 3 mục).
+ */
+export function describeShiftRequests(
+  stylistName: string,
+  items: { kind: ShiftRequestKind; workDate: string; startTime: string | null; endTime: string | null; note?: string | null }[],
+): { title: string; body: string } {
+  const shifts = items.filter((i) => i.kind === ShiftRequestKind.SHIFT).length;
+  const offs = items.length - shifts;
+  const title = shifts && offs ? `${stylistName} gửi ${items.length} yêu cầu ca làm & xin nghỉ`
+    : shifts ? `${stylistName} đăng ký ${shifts} ca làm` : `${stylistName} xin nghỉ ${offs} ngày`;
+  const line = (i: (typeof items)[number]): string => {
+    const range = i.startTime && i.endTime ? `${i.startTime}–${i.endTime}` : null;
+    const what = i.kind === ShiftRequestKind.SHIFT ? `Ca làm ${range ?? ''}`.trim() : range ? `Nghỉ ${range}` : 'Nghỉ cả ngày';
+    const note = i.note?.trim();
+    return `${shiftDayText(i.workDate)}: ${what}${note ? ` — "${note.length > 60 ? `${note.slice(0, 60)}…` : note}"` : ''}`;
+  };
+  const shown = items.slice(0, 3).map(line);
+  if (items.length > 3) shown.push(`… và ${items.length - 3} yêu cầu khác`);
+  // Cột notifications: title ≤ 160, body ≤ 500 ký tự
+  return { title: title.slice(0, 160), body: `${shown.join('; ')}. Mở màn hình Ca làm để duyệt.`.slice(0, 500) };
 }

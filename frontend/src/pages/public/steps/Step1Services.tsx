@@ -15,6 +15,8 @@ export function Step1Services() {
   const [groups, setGroups] = useState<PublicCatalogGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  /** TASK v4 · NV4: lọc nhanh theo nhóm dịch vụ (chip), giống thanh danh mục ở Trang chủ. */
+  const [category, setCategory] = useState('all');
   const toast = useToast();
 
   useEffect(() => {
@@ -38,7 +40,7 @@ export function Step1Services() {
   const selectedIds = useMemo(() => new Set(selected.map((s) => s.id)), [selected]);
   const atLimit = selected.length >= MAX_SERVICES_PER_BOOKING;
   const photos = useMemo(
-    () => assignServiceImages(groups.flatMap((g) => g.services.map((s) => ({ id: s.id, name: s.name, categoryId: g.categoryId })))),
+    () => assignServiceImages(groups.flatMap((g) => g.services.map((s) => ({ id: s.id, name: s.name, categoryId: g.categoryId, imageUrl: s.imageUrl })))),
     [groups],
   );
 
@@ -61,12 +63,26 @@ export function Step1Services() {
         </p>
       )}
 
+      {groups.length > 1 && (
+        <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 thin-scroll" role="tablist" aria-label="Lọc nhóm dịch vụ">
+          {[{ id: 'all', name: 'Tất cả', n: groups.reduce((a, g) => a + g.services.length, 0) },
+            ...groups.map((g) => ({ id: g.categoryId, name: g.categoryName, n: g.services.length }))].map((t) => (
+            <button key={t.id} type="button" role="tab" aria-selected={category === t.id} onClick={() => setCategory(t.id)}
+                    className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition
+                      ${category === t.id ? 'border-teal-700 bg-teal-700 text-white' : 'border-slate-200 bg-white text-slate-700 hover:border-teal-300'}`}>
+              {t.name}
+              <span className={`rounded-full px-1.5 text-[10px] font-semibold ${category === t.id ? 'bg-white/20' : 'bg-slate-100 text-slate-500'}`}>{t.n}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
       {loading && groups.length === 0 ? (
         <ListSkeleton count={5} label="Đang tải dịch vụ…" />
-      ) : groups.length === 0 ? (
-        <EmptyState title="Không có dịch vụ phù hợp" description="Thử từ khoá khác nhé." />
+      ) : !groups.some((g) => category === 'all' || g.categoryId === category) ? (
+        <EmptyState title="Không có dịch vụ phù hợp" description="Thử từ khoá khác hoặc chọn nhóm “Tất cả” nhé." />
       ) : (
-        groups.map((group) => (
+        groups.filter((g) => category === 'all' || g.categoryId === category).map((group) => (
           <section key={group.categoryId} className="space-y-2">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">{group.categoryName}</h3>
             <ul className="stagger space-y-2">
@@ -83,8 +99,8 @@ export function Step1Services() {
                         const r = toggleService(s);
                         if (!r.ok && r.reason) toast.warning(r.reason);
                       }}
-                      className={`press flex w-full items-start gap-3 rounded-2xl border p-3 text-left transition-all duration-200
-                        ${isOn ? 'border-teal-600 bg-teal-50/30 ring-1 ring-teal-600' : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-card'}
+                      className={`press flex w-full items-start gap-3 rounded-2xl border p-3 text-left shadow-sm transition-all duration-200
+                        ${isOn ? 'border-teal-600 bg-teal-50/30 ring-1 ring-teal-600' : 'border-slate-100 bg-white hover:border-slate-200 hover:shadow-md'}
                         ${disabled ? 'cursor-not-allowed opacity-50' : ''}`}
                     >
                       <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2

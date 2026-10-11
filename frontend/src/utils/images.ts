@@ -142,7 +142,8 @@ export function serviceMediaKind(service: { name: string; categoryId?: string; c
   return 'spa';
 }
 
-type ServiceLike = { id: string; name: string; categoryId?: string; categoryName?: string };
+/** `imageUrl`: ảnh riêng của dịch vụ do máy chủ trả về (TASK v4 · NV2) — luôn được ưu tiên trước ảnh đoán theo tên. */
+type ServiceLike = { id: string; name: string; categoryId?: string; categoryName?: string; imageUrl?: string | null };
 
 function preferredKey(service: ServiceLike): ImageKey | undefined {
   if (SERVICE_BY_ID[service.id]) return SERVICE_BY_ID[service.id];
@@ -161,6 +162,7 @@ export function assignServiceImages(services: ServiceLike[]): Record<string, str
   const out: Record<string, string> = {};
   const pending: ServiceLike[] = [];
   for (const s of services) {
+    if (s.imageUrl) { out[s.id] = assetUrl(s.imageUrl); continue; }
     const k = preferredKey(s);
     if (k && !used.has(k)) { used.add(k); out[s.id] = IMAGES[k]; } else pending.push(s);
   }
@@ -174,6 +176,7 @@ export function assignServiceImages(services: ServiceLike[]): Record<string, str
 
 /** Ảnh cho một dịch vụ đơn lẻ. */
 export function serviceImage(service: ServiceLike): string {
+  if (service.imageUrl) return assetUrl(service.imageUrl);
   const k = preferredKey(service) ?? KIND_POOL[serviceMediaKind(service)][0] ?? 'combo_vip';
   return IMAGES[k];
 }

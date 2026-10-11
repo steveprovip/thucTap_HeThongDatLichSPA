@@ -1,0 +1,15 @@
+# AI local (TASK v4 · NV5) — model và bộ chạy tải về KHÔNG được đưa lên GitHub
+# (GitHub chặn tệp > 100 MB; repo giữ nhẹ < 50 MB). Chỉ commit script + README trong thư mục này.
+*.gguf
+*.bin
+*.tar.gz
+*.zip
+*.part
+*.safetensors
+*.onnx
+# Bộ chạy llama.cpp (llama-server.exe + DLL CUDA/Vulkan) do tai_model_local.cmd giải nén
+runtime/
+# Tệp tạm / sinh ra lúc chạy
+Modelfile
+*.log
+*.tmp

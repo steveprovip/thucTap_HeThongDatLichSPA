@@ -15,7 +15,7 @@ import { ClientIp } from '../../common/decorators/client-ip.decorator';
 import { AuthUser } from '../../common/types/auth.types';
 import { todaySalon } from '../../common/utils/time.util';
 import {
-  BulkReassignDto, CreateBookingDto, DayScheduleQuery, ListAppointmentsQuery,
+  BulkReassignDto, CreateBookingDto, DayScheduleQuery, ListAppointmentsQuery, PendingQuery,
   RejectDto, RescheduleDto, SmartSlotsQueryDto, StaffAvailabilityQueryDto, WalkInBookingDto,
 } from './dto/booking.dto';
 import { CreateServiceNoteDto } from '../customers/dto/customer.dto';
@@ -45,8 +45,9 @@ export class AppointmentsController {
 
   @Get('pending')
   @Roles(Role.RECEPTIONIST, Role.OWNER, Role.ADMIN)
-  pending(@CurrentUser() user: AuthUser) {
-    return this.service.listPending(user);
+  pending(@Query() q: PendingQuery, @CurrentUser() user: AuthUser) {
+    if (!q.page) return this.service.listPending(user);
+    return this.service.listPendingPaged({ page: q.page, limit: q.limit ?? 20, sort: q.sort ?? 'start_asc' }, user);
   }
 
   @Get('reject-reasons')

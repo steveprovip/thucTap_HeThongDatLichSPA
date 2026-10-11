@@ -1,12 +1,12 @@
 import { Transform, Type } from 'class-transformer';
 import {
-  ArrayMaxSize, ArrayMinSize, ArrayUnique, IsArray, IsBoolean, IsEmail, IsEnum, IsInt, IsNotEmpty,
+  ArrayMaxSize, ArrayMinSize, ArrayUnique, IsArray, IsBoolean, IsEmail, IsEnum, IsIn, IsInt, IsNotEmpty,
   IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, ValidateNested,
 } from 'class-validator';
 import { VN_PHONE_MESSAGE, VN_PHONE_REGEX } from '../../../common/utils/phone.util';
 import { IsAsciiEmail } from '../../../common/validators/credential.validators';
 import { IsCalendarDate } from '../../../common/validators/date.validators';
-import { AppointmentStatus } from '../../../database/entities/appointment.entity';
+import { AppointmentSource, AppointmentStatus } from '../../../database/entities/appointment.entity';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -212,12 +212,26 @@ export class DayScheduleQuery {
   @IsOptional() @IsUUID('4') stylistId?: string;
 }
 
+/** TASK v3 · NV2: GET /appointments/pending?page=&limit=&sort= (không gửi page = trả mảng như cũ). */
+export class PendingQuery {
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) page?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100) limit?: number;
+  @IsOptional() @IsIn(['start_asc', 'start_desc', 'name_asc'], { message: 'Kiểu sắp xếp không hợp lệ' })
+  sort?: 'start_asc' | 'start_desc' | 'name_asc';
+}
+
 export class ListAppointmentsQuery {
   @IsOptional() @Matches(DATE_RE) from?: string;
   @IsOptional() @Matches(DATE_RE) to?: string;
   @IsOptional() @IsEnum(AppointmentStatus, { message: 'Trạng thái không hợp lệ' }) status?: AppointmentStatus;
   @IsOptional() @IsUUID('4') stylistId?: string;
   @IsOptional() @IsString() @MaxLength(120) search?: string;
+  /** TASK v4 · NV3: lọc nguồn (khách vãng lai tại quầy / đặt online) để màn hình Khách vãng lai phân trang ở máy chủ. */
+  @IsOptional() @IsEnum(AppointmentSource, { message: 'Nguồn lịch hẹn không hợp lệ' }) source?: AppointmentSource;
+  /** 'desc' (mặc định, mới nhất trước) | 'asc' (sớm nhất trước — danh sách lịch sắp tới). Con trỏ chỉ dùng với 'desc'. */
+  @IsOptional() @IsIn(['asc', 'desc'], { message: 'Thứ tự sắp xếp không hợp lệ' }) order?: 'asc' | 'desc';
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) page = 1;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(200) limit = 50;
+  /** Part 4: phân trang theo con trỏ (keyset) — lấy `nextCursor` của trang trước; có cursor thì bỏ qua `page`. */
+  @IsOptional() @IsString() @MaxLength(120) cursor?: string;
 }

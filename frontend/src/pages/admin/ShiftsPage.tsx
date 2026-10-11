@@ -4,10 +4,11 @@ import { CalendarPlus, ChevronLeft, ChevronRight, Copy, Plus, Search } from 'luc
 import { getErrorCode, getErrorDetails, getErrorMessage, shiftRequestsApi, stylistsApi, workingHoursApi } from '@/api';
 import type { CoverageReport, Holiday, Shift, ShiftConflictAppointment, ShiftRequest, Stylist, TimeOff, WorkingHour } from '@/types';
 import {
-  Button, ConfirmDialog, Field, Input, Modal, SectionTitle, Select, Spinner, TimeSelect24,
+  Button, ConfirmDialog, Field, Input, Modal, Pagination, Select, Spinner, TimeSelect24,
 } from '@/components';
+import { useClientPage } from '@/utils/useClientPage';
 import { addDaysISO, formatDate, formatDuration, startOfWeekISO, timeToMinutes, todayISO } from '@/utils/format';
-import { DayInfo, ShiftBoard } from './shifts/ShiftBoard';
+import { DayInfo, QuickShift, ShiftBoard } from './shifts/ShiftBoard';
 import { ShiftRequestsPanel } from './shifts/ShiftRequestsPanel';
 import { CoveragePanel } from './shifts/CoveragePanel';
 import { useAuth } from '@/contexts/AuthContext';
@@ -70,7 +71,10 @@ export function ShiftsPage() {
     const holiday = holidays.find((h) => h.startDate <= date && h.endDate >= date);
     const dow = new Date(`${date}T12:00:00Z`).getUTCDay();
     const wh = hours.find((h) => h.dayOfWeek === dow);
-    return { date, closedReason: holiday ? holiday.reason : wh?.isClosed ? 'Đóng cửa cố định' : null };
+    return {
+      date, closedReason: holiday ? holiday.reason : wh?.isClosed ? 'Đóng cửa cố định' : null,
+      openTime: wh && !wh.isClosed ? wh.openTime.slice(0, 5) : null, closeTime: wh && !wh.isClosed ? wh.closeTime.slice(0, 5) : null,
+    };
   }), [days, holidays, hours]);
   const visibleStylists = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -78,6 +82,8 @@ export function ShiftsPage() {
       .filter((s) => !q || s.fullName.toLowerCase().includes(q))
       .filter((s) => !onlyScheduled || shifts.some((x) => x.stylistId === s.id));
   }, [stylists, shifts, query, onlyScheduled]);
+  // Bảng ca nhiều thợ: phân trang theo hàng thợ (10 thợ / trang), lọc / đổi tuần → về trang 1
+  const stylistPage = useClientPage(visibleStylists, 10, `${query}|${onlyScheduled}`);
   const addHours = useMemo(() => {
     const dow = new Date(`${addDate}T12:00:00Z`).getUTCDay();
     return hours.find((h) => h.dayOfWeek === dow);
@@ -125,6 +131,25 @@ export function ShiftsPage() {
 
   useEffect(() => { void load(); }, [load]);
 
+  /** TASK v3 · NV3: thêm ca một chạm từ popover (ca mẫu đã cắt theo giờ mở cửa). Lỗi → toast, popover giữ nguyên. */
+  const quickAdd = async (stylistId: string, date: string, s: QuickShift) => {
+    try {
+      await stylistsApi.createShifts(stylistId, [{ workDate: date, ...s }]);
+      toast.success(`Đã thêm ca ${s.startTime}–${s.endTime}`);
+      void load();
+    } catch (e) { toast.error(getErrorMessage(e)); throw e; }
+  };
+  const updateShift = async (shift: Shift, patch: { startTime: string; endTime: string }) => {
+    try {
+      // Nghỉ giữa ca không còn nằm trọn trong ca mới thì bỏ (máy chủ từ chối nghỉ giữa ca nằm ngoài ca)
+      const keepBreak = shift.breakStart && shift.breakEnd
+        && shift.breakStart.slice(0, 5) >= patch.startTime && shift.breakEnd.slice(0, 5) <= patch.endTime;
+      await stylistsApi.updateShift(shift.id, { ...patch, ...(keepBreak ? {} : { breakStart: null, breakEnd: null }) });
+      toast.success('Đã đổi giờ ca');
+      void load();
+    } catch (e) { toast.error(getErrorMessage(e)); throw e; }
+  };
+
   const addShift = async () => {
     try {
       await stylistsApi.createShifts(addStylist, [{
@@ -164,29 +189,13 @@ export function ShiftsPage() {
   };
 
   return (
-    <div className="space-y-3">
-      <SectionTitle
-        title="Bảng ca làm theo tuần"
-        description="Ca phải nằm trong giờ mở cửa và không chồng lấn nhau. Không xoá được ca đang chứa lịch hẹn."
-        action={canEdit ? (
-          <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" icon={<Copy size={15} />} onClick={() => setCopyOpen(true)}>
-              Sao chép sang tuần sau
-            </Button>
-            <Button size="sm" variant="outline" icon={<CalendarPlus size={15} />} onClick={() => setOffOpen(true)}>
-              Khai báo nghỉ
-            </Button>
-            <Button size="sm" icon={<Plus size={15} />} onClick={() => openAdd()}>Thêm ca</Button>
-          </div>
-        ) : canManageOff && (
-          // Lễ tân không xếp ca nhưng vẫn được khai báo / huỷ nghỉ cho thợ
-          <Button size="sm" variant="outline" icon={<CalendarPlus size={15} />} onClick={() => setOffOpen(true)}>
-            Khai báo nghỉ
-          </Button>
-        )}
-      />
-
+    <div className="space-y-2">
+      {/* QA 11/10: tiêu đề + điều hướng tuần + thao tác gộp MỘT hàng để bảng ca vừa một màn hình */}
       <div className="flex flex-wrap items-center gap-2">
+        <h1 className="mr-1 text-lg font-bold text-ink"
+            title="Ca phải nằm trong giờ mở cửa và không chồng lấn nhau. Không xoá được ca đang chứa lịch hẹn.">
+          Ca làm theo tuần
+        </h1>
         <div className="inline-flex items-center rounded-xl border border-slate-200 bg-white p-0.5 shadow-sm">
           <Button size="sm" variant="ghost" aria-label="Tuần trước" onClick={() => setWeekStart(addDaysISO(weekStart, -7))}>
             <ChevronLeft size={16} />
@@ -199,18 +208,32 @@ export function ShiftsPage() {
           </Button>
         </div>
         <Button size="sm" variant="outline" onClick={() => setWeekStart(startOfWeekISO(todayISO()))}>Tuần này</Button>
-        <input type="date" aria-label="Chọn tuần" className="field-input min-h-[36px] w-auto" value={weekStart}
+        <input type="date" aria-label="Chọn tuần" className="field-input min-h-[34px] w-auto py-1" value={weekStart}
                onChange={(e) => e.target.value && setWeekStart(startOfWeekISO(e.target.value))} />
-        <div className="relative ml-auto w-full sm:w-56">
-          <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted" />
+        <div className="relative w-full sm:w-44">
+          <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-muted" />
           <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Tìm thợ" aria-label="Tìm thợ"
-                 className="min-h-[36px] pl-9" />
+                 className="min-h-[34px] py-1 pl-8" />
         </div>
-        <label className="flex items-center gap-2 text-xs text-ink-soft">
+        <label className="flex items-center gap-1.5 text-xs text-ink-soft">
           <input type="checkbox" className="h-4 w-4 rounded border-slate-300" checked={onlyScheduled}
                  onChange={(e) => setOnlyScheduled(e.target.checked)} />
-          Chỉ thợ có ca tuần này
+          Chỉ thợ có ca
         </label>
+        <div className="ml-auto flex flex-wrap gap-1.5">
+          {canEdit && (
+            <Button size="sm" variant="outline" icon={<Copy size={14} />} onClick={() => setCopyOpen(true)} title="Sao chép bảng ca sang tuần sau">
+              Chép sang tuần sau
+            </Button>
+          )}
+          {canManageOff && (
+            // Lễ tân không xếp ca nhưng vẫn được khai báo / huỷ nghỉ cho thợ
+            <Button size="sm" variant="outline" icon={<CalendarPlus size={14} />} onClick={() => setOffOpen(true)}>
+              Khai báo nghỉ
+            </Button>
+          )}
+          {canEdit && <Button size="sm" icon={<Plus size={14} />} onClick={() => openAdd()}>Thêm ca</Button>}
+        </div>
       </div>
 
       {!loading && (
@@ -222,9 +245,10 @@ export function ShiftsPage() {
       )}
 
       {loading ? <Spinner /> : (
+        <>
         <ShiftBoard
           days={dayInfos}
-          stylists={visibleStylists}
+          stylists={stylistPage.items}
           shifts={shifts}
           timeOff={timeOff}
           pendingRequests={requests}
@@ -233,9 +257,14 @@ export function ShiftsPage() {
           canEdit={canEdit}
           canManageOff={canManageOff}
           onAdd={(stylistId, date) => openAdd(stylistId, date)}
+          onQuickAdd={quickAdd}
+          onUpdateShift={updateShift}
           onRemoveShift={setRemoveTarget}
           onRemoveOff={setRemoveOffTarget}
         />
+        <Pagination page={stylistPage.page} totalPages={stylistPage.totalPages} total={stylistPage.total} onChange={stylistPage.setPage}
+                    limit={stylistPage.limit} onLimitChange={stylistPage.setLimit} />
+        </>
       )}
 
       <Modal open={addOpen} title="Thêm ca làm" onClose={() => setAddOpen(false)} size="sm"

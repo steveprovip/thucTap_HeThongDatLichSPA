@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Banknote, Landmark, Lock, Plus, Printer, Receipt, Trash2 } from 'lucide-react';
+import { Banknote, CheckCircle2, Landmark, Lock, Plus, Printer, Receipt, Trash2 } from 'lucide-react';
 import { appointmentsApi, getErrorMessage, invoicesApi } from '@/api';
 import type { Appointment, Invoice, PaymentMethod } from '@/types';
-import { Button, Card, ConfirmDialog, Field, Input, SectionTitle, Spinner, StatusBadge, VietQrCode } from '@/components';
+import { Button, Card, ConfirmDialog, Field, Input, SectionTitle, Spinner, StatusBadge, useThermalPrint, VietQrCode } from '@/components';
 import { formatNumber, formatVnd, parseNumber } from '@/utils/format';
 import { useToast } from '@/contexts/ToastContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -36,6 +36,7 @@ export function InvoicePage() {
   const [adjusting, setAdjusting] = useState(false);
   const [adjustReason, setAdjustReason] = useState('');
   const { user } = useAuth();
+  const thermal = useThermalPrint();
 
   const subtotal = lines.reduce((s, l) => s + l.unitPrice * l.quantity, 0);
   const total = Math.max(0, subtotal - discount);
@@ -43,6 +44,7 @@ export function InvoicePage() {
   const unsaved = !!invoice && (invoice.subtotal !== subtotal || invoice.discountAmount !== discount
     || (invoice.voucherCode ?? '') !== voucherCode.trim());
   const locked = invoice?.status === 'closed' || invoice?.status === 'adjusted';
+  const isPaid = invoice?.status === 'paid';
   const editLocked = locked && !adjusting;
   /** Nội dung CK = mã phiếu (ASCII, không gạch nối) → khớp 1-1 với ghi chú đối soát. */
   const transferRef = invoice ? invoice.code.replace(/[^0-9A-Za-z]/g, '').toUpperCase() : '';
@@ -159,7 +161,9 @@ export function InvoicePage() {
       <SectionTitle
         title={`Phiếu tính tiền ${invoice?.code ?? ''}`}
         description={`Lịch hẹn ${appointment.code} · ${appointment.startAtText}`}
-        action={<div className="flex gap-2"><Button variant="outline" size="sm" icon={<Printer size={15} />} onClick={() => window.print()} disabled={!invoice}>In hoá đơn</Button><Button variant="ghost" size="sm" onClick={() => navigate('/quan-ly')}>Về lịch ngày</Button></div>}
+        action={<div className="flex gap-2"><Button variant="outline" size="sm" icon={<Printer size={15} />}
+          onClick={() => invoice && thermal.print(invoice)} disabled={!invoice || unsaved}
+          title={unsaved ? 'Lưu phiếu trước khi in để số tiền trên hoá đơn khớp máy chủ' : 'In hoá đơn khổ nhiệt 80 mm'}>In hoá đơn</Button><Button variant="ghost" size="sm" onClick={() => navigate('/quan-ly')}>Về lịch ngày</Button></div>}
       />
 
       {appointment.status !== 'completed' && (
@@ -282,12 +286,21 @@ export function InvoicePage() {
 
           <div className="mt-4 flex flex-wrap gap-2">
             <Button variant="outline" loading={busy} onClick={saveLines} disabled={!invoice}>Lưu phiếu</Button>
-            <Button loading={busy} onClick={pay} disabled={!invoice}
-                    icon={paymentMethod === 'cash' ? <Banknote size={16} /> : <Landmark size={16} />}>
-              Ghi nhận thanh toán
-            </Button>
-            <Button variant="secondary" onClick={() => setConfirmClose(true)}
-                    disabled={!invoice || invoice.status !== 'paid'} icon={<Lock size={16} />}>
+            {/* QA 11/10: đã thanh toán → nút khoá lại để tránh bấm lặp; bước kế tiếp (đóng phiếu) thành nút chính. */}
+            {isPaid ? (
+              <Button variant="outline" disabled icon={<CheckCircle2 size={16} className="text-emerald-600" />}
+                      className="border-emerald-200 bg-emerald-50 text-emerald-800">
+                Đã thanh toán
+              </Button>
+            ) : (
+              <Button loading={busy} onClick={pay} disabled={!invoice}
+                      icon={paymentMethod === 'cash' ? <Banknote size={16} /> : <Landmark size={16} />}>
+                Ghi nhận thanh toán
+              </Button>
+            )}
+            <Button variant={isPaid ? 'primary' : 'secondary'} onClick={() => setConfirmClose(true)}
+                    disabled={!isPaid} icon={<Lock size={16} />}
+                    className={isPaid ? 'ring-2 ring-teal-300 ring-offset-1' : ''}>
               Đóng phiếu &amp; kết thúc lịch hẹn
             </Button>
           </div>
@@ -333,7 +346,8 @@ export function InvoicePage() {
         </Card>
       )}
 
-      {invoice && <Card className="receipt-print p-5">
+      {thermal.node}
+      {invoice && <Card className="p-5">
         <div className="border-b border-slate-300 pb-3 text-center">
           <h3 className="font-serif text-xl font-bold">{SALON.name}</h3>
           <p className="text-xs text-ink-muted">{SALON.address} · {SALON.hotline}</p>

@@ -17,6 +17,8 @@ interface BookingContextValue {
   /** Đối chiếu giỏ với danh mục đang bán: bỏ dịch vụ không còn, làm mới giá và thời lượng. */
   syncServices: (catalog: PublicService[]) => void;
   clearServices: () => void;
+  /** TASK v3 · NV1: trợ lý tư vấn điền sẵn giỏ dịch vụ (thay giỏ cũ, bỏ giờ đã chọn vì tổng thời lượng đổi). */
+  replaceServices: (services: PublicService[]) => void;
   totalDuration: number;
   totalPrice: number;
   estimatedEndTime: string | null;
@@ -137,6 +139,7 @@ export function BookingProvider({ children }: { children: ReactNode }) {
   const value = useMemo<BookingContextValue>(
     () => ({
       step, setStep, selected, toggleService, syncServices, clearServices: () => setSelected([]),
+      replaceServices: (list: PublicService[]) => { setSelected(list.slice(0, MAX_SERVICES_PER_BOOKING)); setTime(''); },
       totalDuration, totalPrice, estimatedEndTime, date, setDate, time, setTime,
       stylistId, setStylistId, customer, setCustomer, reset, canGoToStep,
     }),

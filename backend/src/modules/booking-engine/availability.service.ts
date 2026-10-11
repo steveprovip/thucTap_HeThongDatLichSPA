@@ -29,6 +29,8 @@ export interface PublicServiceView {
   price: number;
   priceText: string;
   description: string | null;
+  /** TASK v4 · NV2: ảnh riêng của dịch vụ (null = giao diện tự chọn theo chủ đề). */
+  imageUrl: string | null;
 }
 
 export interface PublicCatalogGroup {
@@ -71,6 +73,12 @@ export interface SmartSlotsResult {
     stylists: { stylistId: string; stylistName: string; loadMinutes: number; free: { start: string; end: string }[] }[];
   }[];
 }
+
+/** Khung một ngày của tiệm (giờ mở cửa, nghỉ lễ / nghỉ hằng tuần). */
+interface DayFrame { salonOpen: string; salonClose: string; salonClosed: boolean; closedReason: string | null }
+/** Dữ liệu một thợ trong một ngày, nạp theo lô. */
+interface StylistDay { shifts: ShiftInput[]; timeOff: TimeOffInput[]; apptBusy: Interval[]; holdBusy: Interval[] }
+type CalcInput = SlotCalcInput & { apptBusy: Interval[] };
 
 @Injectable()
 export class AvailabilityService {
@@ -117,6 +125,7 @@ export class AvailabilityService {
           price: s.price,
           priceText: formatVnd(s.price),
           description: s.description,
+          imageUrl: s.imageUrl ?? null,
         }));
       if (items.length) {
         groups.push({
@@ -206,6 +215,142 @@ export class AvailabilityService {
     });
   }
 
+  /**
+   * Part 4 (tải x10) — khung ngày của tiệm cho NHIỀU ngày: 1 truy vấn ngày nghỉ lễ + 1 truy vấn giờ mở cửa,
+   * thay cho 2 truy vấn / ngày / thợ trước đây.
+   */
+  private async loadDayFrames(dates: string[]): Promise<Map<string, DayFrame>> {
+    const out = new Map<string, DayFrame>();
+    if (!dates.length) return out;
+    const sorted = [...dates].sort();
+    const [holidays, byDow] = await Promise.all([
+      this.workingHours.listHolidays(sorted[0], sorted[sorted.length - 1]),
+      this.workingHours.byDayOfWeekMap(),
+    ]);
+    for (const date of sorted) {
+      const wh = byDow.get(dayOfWeek(date)) ?? null;
+      const holiday = holidays.find((h) => h.startDate <= date && date <= h.endDate);
+      out.set(date, {
+        salonOpen: wh ? trimSeconds(wh.openTime) : '08:00',
+        salonClose: wh ? trimSeconds(wh.closeTime) : '20:00',
+        salonClosed: !wh || wh.isClosed || !!holiday,
+        closedReason: holiday ? holiday.reason : !wh || wh.isClosed ? MSG.SALON_CLOSED_WEEKLY : null,
+      });
+    }
+    return out;
+  }
+
+  /**
+   * Part 4 — ca làm, ngày nghỉ riêng, lịch hẹn đang giữ chỗ và giữ chỗ tạm của N thợ × M ngày trong MỘT truy vấn
+   * (UNION ALL trên các chỉ mục (stylist_id, ngày) sẵn có). Trước đây mỗi thợ mỗi ngày tốn 4 truy vấn → N+1:
+   * 40 thợ × 7 ngày = 1.120 truy vấn chỉ để gợi ý khung giờ.
+   */
+  private async loadStylistDays(
+    dates: string[], stylistIds: string[], opts: { excludeAppointmentId?: string; holdToken?: string },
+  ): Promise<Map<string, StylistDay>> {
+    const out = new Map<string, StylistDay>();
+    if (!dates.length || !stylistIds.length) return out;
+    const sorted = [...dates].sort();
+    const from = sorted[0];
+    const to = sorted[sorted.length - 1];
+    const rows: {
+      kind: 'shift' | 'off' | 'appt' | 'hold'; sid: string; d: string | null;
+      a: string | null; b: string | null; c: string | null; e: string | null; ts: Date | null; te: Date | null;
+    }[] = await this.apptRepo.manager.query(
+      `WITH p AS (SELECT $1::uuid[] AS ids, $2::date AS d0, $3::date AS d1, $4::timestamptz AS t0, $5::timestamptz AS t1)
+       SELECT 'shift' AS kind, s.stylist_id::text AS sid, to_char(s.work_date, 'YYYY-MM-DD') AS d,
+              to_char(s.start_time, 'HH24:MI') AS a, to_char(s.end_time, 'HH24:MI') AS b,
+              to_char(s.break_start, 'HH24:MI') AS c, to_char(s.break_end, 'HH24:MI') AS e,
+              NULL::timestamptz AS ts, NULL::timestamptz AS te
+         FROM stylist_shifts s, p WHERE s.stylist_id = ANY(p.ids) AND s.work_date BETWEEN p.d0 AND p.d1
+       UNION ALL
+       SELECT 'off', t.stylist_id::text, to_char(t.off_date, 'YYYY-MM-DD'),
+              to_char(t.start_time, 'HH24:MI'), to_char(t.end_time, 'HH24:MI'), NULL, NULL, NULL, NULL
+         FROM stylist_time_off t, p WHERE t.stylist_id = ANY(p.ids) AND t.off_date BETWEEN p.d0 AND p.d1
+       UNION ALL
+       -- Trạng thái viết hằng (từ ACTIVE_STATUSES) để planner dùng chỉ mục một phần ix_appt_active_stylist_range
+       SELECT 'appt', a.stylist_id::text, NULL, NULL, NULL, NULL, NULL, a.start_at, a.end_at
+         FROM appointments a, p
+        WHERE a.stylist_id = ANY(p.ids) AND a.status IN (${ACTIVE_STATUSES.map((s) => `'${s}'`).join(',')})
+          AND a.start_at < p.t1 AND a.end_at > p.t0 AND ($6::uuid IS NULL OR a.id <> $6::uuid)
+       UNION ALL
+       SELECT 'hold', h.stylist_id::text, NULL, NULL, NULL, NULL, NULL, h.start_at, h.end_at
+         FROM slot_holds h, p
+        WHERE h.stylist_id = ANY(p.ids) AND h.expires_at > now()
+          AND h.start_at < p.t1 AND h.end_at > p.t0 AND ($7::text IS NULL OR h.token <> $7::text)
+       ORDER BY 1, 2, 3, 4`,
+      [stylistIds, from, to, startOfDay(from), endOfDay(to), opts.excludeAppointmentId ?? null, opts.holdToken ?? null],
+    );
+
+    const day = (date: string, sid: string): StylistDay => {
+      const key = `${date}|${sid}`;
+      let v = out.get(key);
+      if (!v) { v = { shifts: [], timeOff: [], apptBusy: [], holdBusy: [] }; out.set(key, v); }
+      return v;
+    };
+    const bounds = sorted.map((date) => ({ date, start: startOfDay(date).getTime(), end: endOfDay(date).getTime() }));
+    const toInterval = (startAt: Date, endAt: Date): Interval => {
+      const s = toSalon(startAt);
+      const e = toSalon(endAt);
+      return { start: s.hour * 60 + s.minute, end: e.hour * 60 + e.minute };
+    };
+    for (const r of rows) {
+      if (r.kind === 'shift') {
+        day(r.d!, r.sid).shifts.push({ startTime: r.a!, endTime: r.b!, breakStart: r.c, breakEnd: r.e });
+      } else if (r.kind === 'off') {
+        day(r.d!, r.sid).timeOff.push({ startTime: r.a, endTime: r.b });
+      } else {
+        const s = new Date(r.ts!).getTime();
+        const e = new Date(r.te!).getTime();
+        for (const b of bounds) {
+          if (s < b.end && e > b.start) {
+            const target = day(b.date, r.sid);
+            (r.kind === 'appt' ? target.apptBusy : target.holdBusy).push(toInterval(new Date(s), new Date(e)));
+          }
+        }
+      }
+    }
+    return out;
+  }
+
+  /** Đầu vào bộ tính khung giờ cho nhiều thợ × nhiều ngày, nạp theo lô (Part 4). */
+  private async buildCalcInputs(params: {
+    dates: string[];
+    stylistIds: string[];
+    totalDuration: number;
+    ignoreLeadTime?: boolean;
+    excludeAppointmentId?: string;
+    /** Giữ chỗ của CHÍNH khách đang hỏi — không tính là bận với họ (Mentor S2 · mục 11). */
+    holdToken?: string;
+    now?: Date;
+    frames?: Map<string, DayFrame>;
+  }): Promise<{ frames: Map<string, DayFrame>; inputFor: (date: string, stylistId: string) => CalcInput }> {
+    const frames = params.frames ?? (await this.loadDayFrames(params.dates));
+    const openDates = params.dates.filter((d) => !frames.get(d)?.salonClosed);
+    const data = await this.loadStylistDays(openDates, params.stylistIds, params);
+    const step = this.config.get<number>('business.slotStepMinutes')!;
+    const empty: StylistDay = { shifts: [], timeOff: [], apptBusy: [], holdBusy: [] };
+    return {
+      frames,
+      inputFor: (date, stylistId) => {
+        const f = frames.get(date)!;
+        const d = data.get(`${date}|${stylistId}`) ?? empty;
+        return {
+          salonOpen: f.salonOpen,
+          salonClose: f.salonClose,
+          salonClosed: f.salonClosed,
+          shifts: d.shifts,
+          timeOff: d.timeOff,
+          busy: [...d.apptBusy, ...d.holdBusy],
+          totalDuration: params.totalDuration,
+          stepMinutes: step,
+          earliestStartMinutes: this.earliestStartMinutes(date, params.ignoreLeadTime, params.now),
+          apptBusy: d.apptBusy,
+        };
+      },
+    };
+  }
+
   /** Dựng dữ liệu đầu vào cho bộ tính khung giờ của một thợ trong một ngày. */
   private async buildCalcInput(params: {
     date: string;
@@ -213,64 +358,11 @@ export class AvailabilityService {
     totalDuration: number;
     ignoreLeadTime?: boolean;
     excludeAppointmentId?: string;
-    /** Giữ chỗ của CHÍNH khách đang hỏi — không tính là bận với họ (Mentor S2 · mục 11). */
     holdToken?: string;
     now?: Date;
-  }): Promise<SlotCalcInput & { apptBusy: Interval[] }> {
-    const { date, stylistId, totalDuration } = params;
-    const dow = dayOfWeek(date);
-    const wh = await this.workingHours.getByDayOfWeek(dow);
-    const holiday = await this.workingHours.isHoliday(date);
-
-    const shifts = (await this.stylists.getShiftsForDate(date, [stylistId])).map<ShiftInput>((s) => ({
-      startTime: trimSeconds(s.startTime),
-      endTime: trimSeconds(s.endTime),
-      breakStart: s.breakStart ? trimSeconds(s.breakStart) : null,
-      breakEnd: s.breakEnd ? trimSeconds(s.breakEnd) : null,
-    }));
-
-    const timeOff = (await this.stylists.getTimeOffForDate(date, [stylistId])).map<TimeOffInput>((t) => ({
-      startTime: t.startTime ? trimSeconds(t.startTime) : null,
-      endTime: t.endTime ? trimSeconds(t.endTime) : null,
-    }));
-
-    const qb = this.apptRepo.createQueryBuilder('a')
-      .where('a.stylist_id = :sid', { sid: stylistId })
-      .andWhere('a.status IN (:...st)', { st: ACTIVE_STATUSES })
-      .andWhere('a.start_at < :dayEnd AND a.end_at > :dayStart', {
-        dayStart: startOfDay(date), dayEnd: endOfDay(date),
-      });
-    if (params.excludeAppointmentId) qb.andWhere('a.id <> :ex', { ex: params.excludeAppointmentId });
-    const appts = await qb.getMany();
-
-    const toInterval = (startAt: Date, endAt: Date): Interval => {
-      const s = toSalon(startAt);
-      const e = toSalon(endAt);
-      return { start: s.hour * 60 + s.minute, end: e.hour * 60 + e.minute };
-    };
-    const apptBusy = appts.map((a) => toInterval(a.startAt, a.endAt));
-
-    // Khung giờ khách khác đang giữ chỗ (chưa hết hạn) cũng là BẬN. Hạn giữ chỗ luôn so với giờ thật.
-    const hq = this.holdRepo.createQueryBuilder('h')
-      .where('h.stylist_id = :sid', { sid: stylistId })
-      .andWhere('h.expires_at > :real', { real: new Date() })
-      .andWhere('h.start_at < :dayEnd AND h.end_at > :dayStart', { dayStart: startOfDay(date), dayEnd: endOfDay(date) });
-    if (params.holdToken) hq.andWhere('h.token <> :tok', { tok: params.holdToken });
-    const holdBusy = (await hq.getMany()).map((h) => toInterval(h.startAt, h.endAt));
-    const busy = [...apptBusy, ...holdBusy];
-
-    return {
-      salonOpen: wh ? trimSeconds(wh.openTime) : '08:00',
-      salonClose: wh ? trimSeconds(wh.closeTime) : '20:00',
-      salonClosed: !wh || wh.isClosed || !!holiday,
-      shifts,
-      timeOff,
-      busy,
-      totalDuration,
-      stepMinutes: this.config.get<number>('business.slotStepMinutes')!,
-      earliestStartMinutes: this.earliestStartMinutes(date, params.ignoreLeadTime, params.now),
-      apptBusy,
-    };
+  }): Promise<CalcInput> {
+    const { inputFor } = await this.buildCalcInputs({ ...params, dates: [params.date], stylistIds: [params.stylistId] });
+    return inputFor(params.date, params.stylistId);
   }
 
   /**
@@ -293,27 +385,24 @@ export class AvailabilityService {
     const totalDuration = params.totalDurationOverride ?? services.reduce((sum, s) => sum + s.durationMinutes, 0);
     const estimatedTotal = services.reduce((sum, s) => sum + s.price, 0);
 
-    const holiday = await this.workingHours.isHoliday(params.date);
-    const wh = await this.workingHours.getByDayOfWeek(dayOfWeek(params.date));
-    const salonClosed = !wh || wh.isClosed || !!holiday;
-
     let candidates = await this.capableStylists(params.serviceIds);
     if (params.stylistId) candidates = candidates.filter((s) => s.id === params.stylistId);
 
-    const slotMap = new Map<string, string[]>();
+    const { frames, inputFor } = await this.buildCalcInputs({
+      dates: [params.date],
+      stylistIds: candidates.map((s) => s.id),
+      totalDuration,
+      ignoreLeadTime: params.ignoreLeadTime,
+      excludeAppointmentId: params.excludeAppointmentId,
+      holdToken: params.holdToken,
+      now: params.now,
+    });
+    const frame = frames.get(params.date)!;
 
-    if (!salonClosed) {
+    const slotMap = new Map<string, string[]>();
+    if (!frame.salonClosed) {
       for (const stylist of candidates) {
-        const input = await this.buildCalcInput({
-          date: params.date,
-          stylistId: stylist.id,
-          totalDuration,
-          ignoreLeadTime: params.ignoreLeadTime,
-          excludeAppointmentId: params.excludeAppointmentId,
-          holdToken: params.holdToken,
-          now: params.now,
-        });
-        for (const time of computeAvailableSlots(input)) {
+        for (const time of computeAvailableSlots(inputFor(params.date, stylist.id))) {
           const arr = slotMap.get(time) ?? [];
           arr.push(stylist.id);
           slotMap.set(time, arr);
@@ -342,8 +431,8 @@ export class AvailabilityService {
       totalDurationMinutes: totalDuration,
       estimatedTotal,
       estimatedTotalText: formatVnd(estimatedTotal),
-      salonClosed,
-      closedReason: holiday ? holiday.reason : !wh || wh.isClosed ? MSG.SALON_CLOSED_WEEKLY : null,
+      salonClosed: frame.salonClosed,
+      closedReason: frame.closedReason,
       slots,
       suggestedDates,
       exceedsLongestShift: longest > 0 && totalDuration > longest,
@@ -366,18 +455,19 @@ export class AvailabilityService {
     if (params.stylistId) stylists = stylists.filter((x) => x.id === params.stylistId);
     const today = todaySalon(params.now);
     const start = params.fromDate < today ? today : params.fromDate;
+    const dates = Array.from({ length: days }, (_, i) => addDays(start, i));
+    const { frames, inputFor } = await this.buildCalcInputs({
+      dates, stylistIds: stylists.map((s) => s.id), totalDuration, ignoreLeadTime: true, now: params.now,
+    });
 
     const candidates: SmartSlotCandidate[] = [];
     const windows: SmartSlotsResult['windows'] = [];
-    for (let i = 0; i < days; i += 1) {
-      const date = addDays(start, i);
-      const closedReason = await this.closedReason(date);
-      if (closedReason) { windows.push({ date, closedReason, stylists: [] }); continue; }
+    dates.forEach((date, i) => {
+      const closedReason = frames.get(date)!.closedReason;
+      if (closedReason) { windows.push({ date, closedReason, stylists: [] }); return; }
       const perStylist: { id: string; name: string; load: number; free: Interval[]; starts: number[] }[] = [];
       for (const st of stylists) {
-        const input = await this.buildCalcInput({
-          date, stylistId: st.id, totalDuration, ignoreLeadTime: true, now: params.now,
-        });
+        const input = inputFor(date, st.id);
         const free = computeFreeIntervals(input).filter((f) => f.end - f.start >= totalDuration);
         const starts = computeAvailableSlots(input).map(toMinutes);
         const load = input.apptBusy.reduce((sum, b) => sum + (b.end - b.start), 0);
@@ -405,7 +495,7 @@ export class AvailabilityService {
           free: p.free.map((f) => ({ start: fmt(f.start), end: fmt(f.end) })),
         })),
       });
-    }
+    });
     return {
       fromDate: start, days, totalDurationMinutes: totalDuration,
       suggestions: rankSmartSlots(candidates, Math.min(12, Math.max(1, params.limit ?? 6))),
@@ -413,7 +503,7 @@ export class AvailabilityService {
     };
   }
 
-  /** Tìm N ngày gần nhất (tối đa 30 ngày tới) còn khung giờ trống. */
+  /** Tìm N ngày gần nhất (tối đa 30 ngày tới) còn khung giờ trống — nạp cả 30 ngày trong một lô (Part 4). */
   async findNearestAvailableDates(params: {
     serviceIds: string[];
     fromDate: string;
@@ -428,28 +518,33 @@ export class AvailabilityService {
     if (params.stylistId) candidates = candidates.filter((s) => s.id === params.stylistId);
     if (!candidates.length) return [];
 
-    const found: string[] = [];
     const today = todaySalon(params.now);
-    // Vòng lặp cộng 1 ngày trước khi xét: ngày gửi lên đã qua thì phải xét luôn HÔM NAY
-    let cursor = params.fromDate < today ? addDays(today, -1) : params.fromDate;
+    // Ngày gửi lên đã qua thì xét luôn từ HÔM NAY; còn lại xét từ ngày kế tiếp ngày gửi lên
+    const first = params.fromDate < today ? today : addDays(params.fromDate, 1);
+    const dates = Array.from({ length: 30 }, (_, i) => addDays(first, i));
+    const frames = await this.loadDayFrames(dates);
 
-    for (let i = 1; i <= 30 && found.length < count; i += 1) {
-      cursor = addDays(cursor, 1);
-      const wh = await this.workingHours.getByDayOfWeek(dayOfWeek(cursor));
-      if (!wh || wh.isClosed) continue;
-      if (await this.workingHours.isHoliday(cursor)) continue;
-
-      for (const stylist of candidates) {
-        const input = await this.buildCalcInput({
-          date: cursor, stylistId: stylist.id, totalDuration, now: params.now,
-        });
-        if (computeAvailableSlots(input).length > 0) {
-          found.push(cursor);
-          break;
-        }
+    // Nạp theo từng tuần (1 truy vấn / tuần): thường 1–2 ngày đầu đã đủ chỗ nên không đọc lịch cả tháng.
+    const found: string[] = [];
+    for (let w = 0; w < dates.length && found.length < count; w += 7) {
+      const week = dates.slice(w, w + 7).filter((d) => !frames.get(d)!.salonClosed);
+      if (!week.length) continue;
+      const { inputFor } = await this.buildCalcInputs({
+        dates: week, frames, stylistIds: candidates.map((s) => s.id), totalDuration, now: params.now,
+      });
+      for (const date of week) {
+        if (found.length >= count) break;
+        if (candidates.some((st) => computeAvailableSlots(inputFor(date, st.id)).length > 0)) found.push(date);
       }
     }
     return found;
+  }
+
+  /** Phân loại một khung giờ trên đầu vào đã dựng sẵn (dùng chung cho checkSlot và pickAutoStylist). */
+  private verdict(input: CalcInput, time: string): 'ok' | 'taken' | 'held' | 'invalid' {
+    if (input.salonClosed || !isSlotAvailable({ ...input, busy: [] }, time)) return 'invalid';
+    if (!isSlotAvailable({ ...input, busy: input.apptBusy }, time)) return 'taken';
+    return isSlotAvailable(input, time) ? 'ok' : 'held';
   }
 
   /**
@@ -469,18 +564,7 @@ export class AvailabilityService {
     holdToken?: string;
     now?: Date;
   }): Promise<'ok' | 'taken' | 'held' | 'invalid'> {
-    const input = await this.buildCalcInput({
-      date: params.date,
-      stylistId: params.stylistId,
-      totalDuration: params.totalDuration,
-      ignoreLeadTime: params.ignoreLeadTime,
-      excludeAppointmentId: params.excludeAppointmentId,
-      holdToken: params.holdToken,
-      now: params.now,
-    });
-    if (input.salonClosed || !isSlotAvailable({ ...input, busy: [] }, params.time)) return 'invalid';
-    if (!isSlotAvailable({ ...input, busy: input.apptBusy }, params.time)) return 'taken';
-    return isSlotAvailable(input, params.time) ? 'ok' : 'held';
+    return this.verdict(await this.buildCalcInput(params), params.time);
   }
 
   /** Kiểm tra một khung giờ cụ thể của một thợ có còn nhận được không. */
@@ -499,7 +583,7 @@ export class AvailabilityService {
 
   /**
    * Chọn thợ tự động: trong các thợ rảnh ở khung giờ đó, ưu tiên người có ít
-   * lịch nhất trong ngày hôm đó (S2-06).
+   * lịch nhất trong ngày hôm đó (S2-06). Nạp dữ liệu mọi thợ trong một lô (Part 4).
    */
   async pickAutoStylist(params: {
     date: string;
@@ -514,21 +598,18 @@ export class AvailabilityService {
   }): Promise<Stylist | null> {
     const excluded = new Set(params.excludeStylistIds ?? []);
     const candidates = (await this.capableStylists(params.serviceIds)).filter((s) => !excluded.has(s.id));
+    if (!candidates.length) return null;
     const loads = await this.stylists.countAppointmentsByStylist(params.date);
+    const { inputFor } = await this.buildCalcInputs({
+      dates: [params.date],
+      stylistIds: candidates.map((s) => s.id),
+      totalDuration: params.totalDuration,
+      ignoreLeadTime: params.ignoreLeadTime,
+      holdToken: params.holdToken,
+      now: params.now,
+    });
 
-    const available: Stylist[] = [];
-    for (const stylist of candidates) {
-      const ok = await this.canBook({
-        date: params.date,
-        time: params.time,
-        stylistId: stylist.id,
-        totalDuration: params.totalDuration,
-        ignoreLeadTime: params.ignoreLeadTime,
-        holdToken: params.holdToken,
-        now: params.now,
-      });
-      if (ok) available.push(stylist);
-    }
+    const available = candidates.filter((st) => this.verdict(inputFor(params.date, st.id), params.time) === 'ok');
     if (!available.length) return null;
 
     available.sort((a, b) => {

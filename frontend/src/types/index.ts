@@ -83,6 +83,8 @@ export interface ServiceItem {
   price: number;
   priceText: string;
   description: string | null;
+  /** TASK v4 · NV2: ảnh riêng của dịch vụ (null / thiếu = giao diện tự chọn ảnh theo chủ đề). */
+  imageUrl?: string | null;
   isActive: boolean;
   stylistIds: string[];
   stylistCount: number;
@@ -98,6 +100,8 @@ export interface PublicService {
   price: number;
   priceText: string;
   description: string | null;
+  /** TASK v4 · NV2: ảnh riêng của dịch vụ. */
+  imageUrl?: string | null;
 }
 
 export interface PublicCatalogGroup {
@@ -302,6 +306,8 @@ export interface SalonInfo {
   zaloUrl: string | null;
   websiteUrl: string | null;
   mapUrl: string;
+  /** Cấu hình form đặt lịch online (BOOKING_REQUIRE_EMAIL). Bản backend cũ không trả → coi như không bắt buộc. */
+  booking?: { requireEmail: boolean };
   /** Tài khoản nhận chuyển khoản VietQR, cấu hình lúc chạy (null = chưa cấu hình). */
   bank: { bin: string; accountNo: string; accountName: string } | null;
   openingHours: { dayOfWeek: number; dayLabel: string; isClosed: boolean; openTime: string; closeTime: string }[];
@@ -642,4 +648,60 @@ export interface SlotDensityReport {
     total: number; noShow: number; cancelled: number; completed: number;
     noShowRate: number; cancelRate: number; completionRate: number;
   };
+}
+
+// ----------------------------------------------------------- Part 5: Trợ lý AI
+export interface AssistantHour { dow: number; dayLabel: string; hour: number; label: string; bookings: number }
+export interface AssistantInsights {
+  windowDays: number;
+  goldenHours: AssistantHour[];
+  quietHours: AssistantHour[];
+  combos: { names: string[]; count: number; totalDuration: number; totalPrice: number; priceText: string }[];
+  topServices: { name: string; count: number }[];
+}
+export interface AssistantShiftGap {
+  date: string; dayText: string; startTime: string; endTime: string; minCount: number; hint: string | null;
+  candidates: { stylistId: string; fullName: string; weekMinutes: number }[];
+}
+/** TASK v4 · NV5: trợ lý đang chuyển câu hỏi cho AI local (Spark-X2.5-4B) hay trả lời bằng luật thông minh. */
+export interface AssistantStatus {
+  mode: 'llm' | 'rules';
+  setting: string;
+  provider: string | null;
+  model: string | null;
+  localDetected: boolean;
+  localUrl: string | null;
+}
+/** TASK v4 · NV1: số liệu tổng hợp hôm nay cho chế độ "Phân tích & số liệu". */
+export interface AssistantToday {
+  date: string;
+  dayText: string;
+  total: number;
+  byStatus: Record<string, number>;
+  revenue: number;
+  revenueText: string;
+  pendingTotal: number;
+  pendingOverdue: number;
+}
+export interface AssistantChatReply {
+  intent: 'shifts' | 'holidays' | 'golden' | 'combo' | 'today' | 'greeting' | 'identity' | 'help' | 'thanks' | 'bye' | 'general';
+  answer: string;
+  quickReplies?: string[];
+  source: 'llm' | 'rules';
+  model: string | null;
+}
+
+// ----------------------------------------------------------- TASK v3: AI tư vấn khách
+export interface ChatTurn { role: 'user' | 'assistant'; content: string }
+export interface CustomerAssistantService {
+  id: string; name: string; categoryName: string; durationMinutes: number; price: number; priceText: string; description: string | null;
+  imageUrl?: string | null;
+}
+export interface CustomerAssistantReply {
+  intent: string;
+  answer: string;
+  suggestions: CustomerAssistantService[];
+  quickReplies: string[];
+  source: 'llm' | 'rules';
+  model: string | null;
 }

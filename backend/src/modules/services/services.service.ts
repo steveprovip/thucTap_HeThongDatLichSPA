@@ -22,6 +22,8 @@ export interface ServiceView {
   price: number;
   priceText: string;
   description: string | null;
+  /** TASK v4 · NV2: ảnh riêng của dịch vụ (null = giao diện tự chọn theo chủ đề). */
+  imageUrl: string | null;
   isActive: boolean;
   stylistIds: string[];
   stylistCount: number;
@@ -122,6 +124,7 @@ export class ServicesService {
         price: s.price,
         priceText: formatVnd(s.price),
         description: s.description,
+        imageUrl: s.imageUrl ?? null,
         isActive: s.isActive,
         stylistIds,
         stylistCount: stylistIds.length,
@@ -183,6 +186,7 @@ export class ServicesService {
           durationMinutes: dto.durationMinutes,
           price: dto.price,
           description: dto.description ?? null,
+          imageUrl: dto.imageUrl?.trim() || null,
           isActive: dto.isActive ?? true,
         }),
       );
@@ -224,6 +228,7 @@ export class ServicesService {
     if (dto.durationMinutes !== undefined) service.durationMinutes = dto.durationMinutes;
     if (dto.price !== undefined) service.price = dto.price;
     if (dto.description !== undefined) service.description = dto.description;
+    if (dto.imageUrl !== undefined) service.imageUrl = dto.imageUrl?.trim() || null;
     if (dto.isActive !== undefined) service.isActive = dto.isActive;
 
     await this.dataSource.transaction(async (manager) => {

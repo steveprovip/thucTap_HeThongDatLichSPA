@@ -2,8 +2,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, ClipboardList, RefreshCw } from 'lucide-react';
 import { appointmentsApi, getErrorMessage } from '@/api';
 import type { Appointment } from '@/types';
-import { Button, Card, EmptyState, SectionTitle, Spinner, StatusBadge } from '@/components';
+import { Button, Card, EmptyState, Pagination, SectionTitle, Select, Spinner, StatusBadge } from '@/components';
 import { formatDuration } from '@/utils/format';
+import type { PendingSort } from '@/utils/opsHelpers';
 import { useToast } from '@/contexts/ToastContext';
 import { useAppointmentsSync } from '@/utils/liveSync';
 import { AppointmentDrawer } from './AppointmentDrawer';
@@ -11,25 +12,40 @@ import { AppointmentDrawer } from './AppointmentDrawer';
 /** S3-02: danh sách riêng các lịch đặt online đang chờ xác nhận. */
 export function PendingPage() {
   const [items, setItems] = useState<Appointment[]>([]);
+  /** TASK v3 · NV2: phân trang ở máy chủ (5.000+ lịch), quá hạn 12 giờ luôn ở đầu trang 1. */
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(20);
+  const [meta, setMeta] = useState({ total: 0, totalPages: 1, overdueCount: 0 });
   const [loading, setLoading] = useState(true);
+  /** TASK v4 · NV3: lỗi tải hiện ngay trong trang (kèm nút thử lại) thay vì để bảng trống / sập trắng trang. */
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Appointment | null>(null);
+  const [sort, setSort] = useState<PendingSort>('start_asc');
   const toast = useToast();
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setItems(await appointmentsApi.pending());
+      // appointmentsApi.pendingPage đã chuẩn hoá: máy chủ trả mảng hay trang đều thành { items, total, totalPages }
+      const r = await appointmentsApi.pendingPage({ page, limit, sort });
+      const list = Array.isArray(r.items) ? r.items : [];
+      setItems(list);
+      setMeta({ total: r.total ?? list.length, totalPages: Math.max(1, r.totalPages ?? 1), overdueCount: r.overdueCount ?? 0 });
+      setLoadError(null);
+      if (list.length === 0 && page > 1) setPage(Math.max(1, r.totalPages ?? 1)); // xử lý hết trang cuối → lùi trang
     } catch (e) {
-      toast.error(getErrorMessage(e));
+      const message = getErrorMessage(e);
+      setLoadError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [toast, page, limit, sort]);
 
   useEffect(() => { void load(); }, [load]);
   useAppointmentsSync(() => { void load(); });
 
-  const overdue = items.filter((i) => i.pendingOverdue);
+  const sorted = items; // máy chủ đã sắp: quá hạn trước, rồi theo lựa chọn
   const confirm = async (a: Appointment) => {
     try { await appointmentsApi.confirm(a.id); toast.success(`Đã xác nhận lịch ${a.code}`); void load(); }
     catch (e) { toast.error(getErrorMessage(e)); }
@@ -40,17 +56,33 @@ export function PendingPage() {
       <SectionTitle
         title="Lịch chờ xác nhận"
         description="Lịch khách đặt online vào đây trước, tiệm chủ động xác nhận hoặc từ chối."
-        action={<Button variant="outline" size="sm" icon={<RefreshCw size={15} />} onClick={load}>Làm mới</Button>}
+        action={
+          <div className="flex items-center gap-2">
+            <Select aria-label="Sắp xếp lịch chờ" value={sort} onChange={(e) => { setSort(e.target.value as PendingSort); setPage(1); }} className="h-9 w-auto text-sm">
+              <option value="start_asc">Giờ hẹn: cũ nhất trước</option>
+              <option value="start_desc">Giờ hẹn: mới nhất trước</option>
+              <option value="name_asc">Tên khách hàng (A–Z)</option>
+            </Select>
+            <Button variant="outline" size="sm" icon={<RefreshCw size={15} />} onClick={load}>Làm mới</Button>
+          </div>
+        }
       />
 
-      {overdue.length > 0 && (
+      {meta.overdueCount > 0 && (
         <p className="flex items-center gap-2 rounded-xl bg-amber-50 px-3.5 py-2.5 text-sm text-amber-900">
-          <AlertTriangle size={16} /> Có {overdue.length} lịch chưa xử lý quá 12 giờ.
+          <AlertTriangle size={16} /> Có {meta.overdueCount} lịch chưa xử lý quá 12 giờ — luôn xếp đầu danh sách (trang 1).
         </p>
       )}
 
-      {loading ? (
+      {loading && items.length === 0 ? (
         <Spinner />
+      ) : loadError && items.length === 0 ? (
+        <EmptyState
+          icon={<AlertTriangle size={32} />}
+          title="Chưa tải được danh sách lịch chờ"
+          description={loadError}
+          action={<Button size="sm" icon={<RefreshCw size={15} />} onClick={load}>Thử lại</Button>}
+        />
       ) : items.length === 0 ? (
         <EmptyState
           icon={<ClipboardList size={32} />}
@@ -62,27 +94,27 @@ export function PendingPage() {
         <div className="table-wrap hidden md:block">
           <table className="table">
             <thead><tr><th>Mã / thời gian</th><th>Khách hàng</th><th>Dịch vụ</th><th>Chuyên viên</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
-            <tbody>{items.map(a => <tr key={a.id}>
-              <td><span className="block font-semibold">{a.code}</span><span className="text-xs text-ink-muted">{a.startAtText}</span></td>
-              <td>{a.customer.fullName}<span className="block text-xs text-ink-muted">{a.customer.phone}</span></td>
-              <td>{a.services.map(s => s.name).join(', ')}<span className="block text-xs text-ink-muted">{formatDuration(a.totalDurationMinutes)}</span></td>
-              <td>{a.stylist.fullName}</td><td><StatusBadge status={a.status} /></td>
+            <tbody>{sorted.map(a => <tr key={a.id} className={a.pendingOverdue ? 'bg-amber-50/70' : undefined}>
+              <td><span className="flex items-center gap-1 font-semibold">{a.pendingOverdue && <AlertTriangle size={13} className="text-amber-600" aria-label="Quá hạn 12 giờ" />}{a.code}</span><span className="text-xs text-ink-muted">{a.startAtText}</span></td>
+              <td>{a.customer?.fullName ?? '—'}<span className="block text-xs text-ink-muted">{a.customer?.phone}</span></td>
+              <td>{(a.services ?? []).map(s => s.name).join(', ')}<span className="block text-xs text-ink-muted">{formatDuration(a.totalDurationMinutes)}</span></td>
+              <td>{a.stylist?.fullName ?? 'Thợ bất kỳ'}</td><td><StatusBadge status={a.status} /></td>
               <td><div className="flex gap-1"><Button size="sm" onClick={() => setSelected(a)}>Xử lý</Button><Button size="sm" variant="outline" onClick={() => confirm(a)}>Xác nhận</Button></div></td>
             </tr>)}</tbody>
           </table>
         </div>
         <div className="grid gap-2.5 md:hidden">
-          {items.map((a) => (
+          {sorted.map((a) => (
             <Card key={a.id} className={`p-4 ${a.pendingOverdue ? 'ring-2 ring-amber-300' : ''}`}>
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="text-xs tracking-widest text-ink-muted">{a.code}</p>
                   <p className="mt-0.5 font-bold">{a.startAtText}</p>
                   <p className="text-sm text-ink-soft">
-                    {a.customer.fullName} · {a.customer.phone}
+                    {a.customer?.fullName ?? '—'} · {a.customer?.phone}
                   </p>
                   <p className="mt-1 text-xs text-ink-muted">
-                    {a.services.map((s) => s.name).join(', ')} · {formatDuration(a.totalDurationMinutes)} · thợ {a.stylist.fullName}
+                    {(a.services ?? []).map((s) => s.name).join(', ')} · {formatDuration(a.totalDurationMinutes)} · thợ {a.stylist?.fullName ?? 'bất kỳ'}
                   </p>
                 </div>
                 <StatusBadge status={a.status} />
@@ -99,6 +131,8 @@ export function PendingPage() {
             </Card>
           ))}
         </div>
+        <Pagination page={page} totalPages={meta.totalPages} total={meta.total} onChange={setPage}
+                    limit={limit} onLimitChange={(n) => { setLimit(n); setPage(1); }} />
         </>
       )}
 

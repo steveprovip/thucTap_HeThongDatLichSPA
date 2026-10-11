@@ -162,7 +162,33 @@
   .receipt-print, .receipt-print * { visibility: visible !important; }
   .receipt-print { position: absolute; inset: 0 auto auto 0; width: 100%; color: #111827; background: #fff; border: 0; box-shadow: none; }
   .receipt-print .text-ink-muted { color: #4b5563; }
+  /* Hoá đơn nhiệt K80: khổ giấy 80 mm, cao tự do, phần in hiệu dụng ~72 mm */
+  body:has(.thermal-receipt) * { visibility: hidden; }
+  .thermal-receipt, .thermal-receipt * { visibility: visible !important; }
+  .thermal-receipt {
+    display: block !important; page: thermal; position: absolute; inset: 0 auto auto 0; width: 72mm; padding: 0 1mm;
+    font: 11px/1.35 'Courier New', ui-monospace, monospace; color: #000; background: #fff;
+  }
 }
+@page thermal { size: 80mm auto; margin: 3mm 4mm; }
+/* Trên màn hình phiếu nhiệt luôn ẩn (chỉ để in) */
+.thermal-receipt { display: none; }
+.thermal-receipt p { margin: 0; }
+.thermal-receipt hr { border: 0; border-top: 1px dashed #000; margin: 4px 0; }
+.thermal-receipt table { width: 100%; border-collapse: collapse; }
+.thermal-receipt th { text-align: left; font-weight: 700; border-bottom: 1px solid #000; }
+.thermal-receipt td { vertical-align: top; padding: 2px 0; }
+.thermal-receipt th:nth-child(n+2), .thermal-receipt td:nth-child(n+2) { text-align: right; white-space: nowrap; padding-left: 4px; }
+.thermal-receipt .tr-center { text-align: center; }
+.thermal-receipt .tr-logo { width: 14mm; height: 14mm; margin: 0 auto 2px; display: block; }
+.thermal-receipt .tr-shop { font-size: 14px; font-weight: 700; text-transform: uppercase; }
+.thermal-receipt .tr-title { font-size: 13px; font-weight: 700; margin: 2px 0; }
+.thermal-receipt .tr-row { display: flex; justify-content: space-between; gap: 6px; }
+.thermal-receipt .tr-total { font-size: 14px; font-weight: 700; margin-top: 2px; }
+.thermal-receipt .tr-muted { font-size: 10px; color: #333; }
+.thermal-receipt .tr-qr { margin-top: 4px; }
+.thermal-receipt .tr-qr img { width: 42mm !important; height: 42mm !important; }
+.thermal-receipt .tr-qr figure > div { border: 0; padding: 0; }
 
 /* Ẩn bộ chuyển vai trò demo khi đang mở hộp thoại để không che nút hành động */
 body:has([aria-modal='true']) .role-switcher { display: none; }

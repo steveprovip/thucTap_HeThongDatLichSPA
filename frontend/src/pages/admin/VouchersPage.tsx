@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { BadgePercent, Banknote, Pencil, Plus, Search, Ticket, Trash2 } from 'lucide-react';
 import { getErrorMessage, invoicesApi } from '@/api';
 import type { DiscountType, Voucher } from '@/types';
-import { Button, ConfirmDialog, EmptyState, Field, Input, Modal, Notice, SectionTitle, Toggle, TableSkeleton } from '@/components';
+import { Button, ConfirmDialog, EmptyState, Field, Input, Modal, Notice, Pagination, SectionTitle, Toggle, TableSkeleton } from '@/components';
+import { useClientPage } from '@/utils/useClientPage';
 import {
   addDaysISO, formatDate, formatNumber, formatVnd, matchSearch, parseNumber, todayISO,
 } from '@/utils/format';
@@ -89,6 +90,7 @@ export function VouchersPage() {
   const visible = items
     .filter((v) => filter === 'all' || stateOf(v) === filter)
     .filter((v) => !query.trim() || matchSearch(`${v.code} ${v.description ?? ''}`, query));
+  const voucherPage = useClientPage(visible, 10, `${filter}|${query}`);
 
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -193,6 +195,7 @@ export function VouchersPage() {
         <EmptyState icon={<Ticket size={30} />}
                     title={items.length ? 'Không có mã nào khớp bộ lọc' : 'Chưa có mã giảm giá nào'} />
       ) : (
+        <>
         <div className="table-wrap">
           <table className="table">
             <thead>
@@ -202,7 +205,7 @@ export function VouchersPage() {
               </tr>
             </thead>
             <tbody>
-              {visible.map((v) => {
+              {voucherPage.items.map((v) => {
                 const st = STATE_META[stateOf(v)];
                 const usage = v.maxUsage ? Math.min(100, Math.round((v.usedCount / v.maxUsage) * 100)) : null;
                 return (
@@ -252,6 +255,9 @@ export function VouchersPage() {
             </tbody>
           </table>
         </div>
+        <Pagination page={voucherPage.page} totalPages={voucherPage.totalPages} total={voucherPage.total} onChange={voucherPage.setPage}
+                    limit={voucherPage.limit} onLimitChange={voucherPage.setLimit} />
+        </>
       )}
 
       <Modal open={open} title={editing ? `Sửa mã ${editing.code}` : 'Tạo mã giảm giá'} onClose={() => setOpen(false)}

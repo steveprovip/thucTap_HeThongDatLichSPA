@@ -84,6 +84,8 @@ const configuration = () => ({
     slotStepMinutes: int(process.env.SLOT_STEP_MINUTES, 15),
     noShowAfterMinutes: int(process.env.NO_SHOW_AFTER_MINUTES, 30),
     overrunWarningMinutes: int(process.env.OVERRUN_WARNING_MINUTES, 20),
+    /** QA 11/10: bắt buộc email khi khách tự đặt online (mặc định tắt — vẫn nhắc rõ lợi ích nếu bỏ trống). */
+    requireBookingEmail: bool(process.env.BOOKING_REQUIRE_EMAIL, false),
     reviewTokenDays: int(process.env.REVIEW_TOKEN_DAYS, 7),
     minReviewsToShowAvg: int(process.env.MIN_REVIEWS_TO_SHOW_AVG, 5),
     checkInWindowMinutes: 60,
@@ -105,6 +107,23 @@ const configuration = () => ({
     workerEnabled: bool(process.env.MAIL_WORKER_ENABLED, true),
     maxAttempts: 3,
     retryMinutes: 10,
+  },
+  /** Part 5 — Trợ lý AI: mô hình nhỏ tuỳ chọn (Ollama cục bộ / API tương thích OpenAI). Trống = chỉ dùng luật. */
+  ai: {
+    // TASK v4 · NV5: để trống = 'auto' — tự dò AI local (model_AI_local) tại AI_BASE_URL, không có thì trả lời theo luật.
+    // 'off' = luôn theo luật; 'ollama' | 'openai' = cấu hình cố định như trước.
+    provider: (process.env.AI_PROVIDER ?? '').trim().toLowerCase() || 'auto',
+    baseUrl: process.env.AI_BASE_URL ?? '',
+    // Trống: chế độ auto lấy model máy chủ local đang nạp; chế độ cố định dùng qwen2.5:3b như trước
+    model: (process.env.AI_MODEL ?? '').trim(),
+    apiKey: process.env.AI_API_KEY ?? '',
+    timeoutMs: int(process.env.AI_TIMEOUT_MS, 25000),
+  },
+  // Thông báo đa kênh: webhook nhận sự kiện appointment.created / appointment.confirmed (Zalo ZNS, SMS Brandname, n8n…)
+  dispatch: {
+    webhookUrls: (process.env.DISPATCH_WEBHOOK_URLS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
+    secret: process.env.DISPATCH_WEBHOOK_SECRET ?? '',
+    timeoutMs: int(process.env.DISPATCH_TIMEOUT_MS, 5000),
   },
   upload: {
     dir: process.env.UPLOAD_DIR ?? 'uploads',

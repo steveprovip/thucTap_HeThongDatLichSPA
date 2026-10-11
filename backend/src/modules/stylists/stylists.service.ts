@@ -234,6 +234,22 @@ export class StylistsService {
     if (dto.phone !== undefined) stylist.phone = dto.phone;
     if (dto.gender !== undefined) stylist.gender = dto.gender;
     if (dto.bio !== undefined) stylist.bio = dto.bio;
+    if (dto.isActive === false && stylist.isActive) {
+      // Bất biến (audit Part 1): thợ nghỉ việc mà còn lịch sắp tới → khách đến không có thợ. Chuyển lịch trước.
+      const rows: { code: string }[] = await this.dataSource.query(
+        `SELECT code FROM appointments
+          WHERE stylist_id = $1 AND status IN (${ACTIVE_STATUSES.map((st) => `'${st}'`).join(',')}) AND end_at > now()
+          ORDER BY start_at LIMIT 20`, [id]);
+      if (rows.length) {
+        throw new ConflictException({
+          message: `Thợ còn ${rows.length === 20 ? '20+' : rows.length} lịch hẹn sắp tới (${rows.slice(0, 5).map((r) => r.code).join(', ')}`
+            + `${rows.length > 5 ? '…' : ''}). Dùng "Chuyển lịch hàng loạt" để giao cho thợ khác rồi mới ngưng hoạt động.`,
+          field: 'isActive',
+          code: ERROR_CODES.STYLIST_HAS_FUTURE_APPOINTMENTS,
+          details: { appointmentCodes: rows.map((r) => r.code) },
+        });
+      }
+    }
     if (dto.isActive !== undefined) stylist.isActive = dto.isActive;
 
     // Đồng bộ ngược sang tài khoản nhân sự: thợ nghỉ việc mất quyền truy cập ngay (S1-02, S1-07)
@@ -251,6 +267,7 @@ export class StylistsService {
       await manager.save(Stylist, stylist);
       if (user) await manager.save(User, user);
       if (dto.serviceIds) {
+        await this.assertSkillsNotInUse(manager, id, dto.serviceIds);
         await manager.delete(StylistServiceLink, { stylistId: id });
         if (dto.serviceIds.length) {
           await manager.save(
@@ -262,6 +279,33 @@ export class StylistsService {
       }
     });
     return this.findOne(id);
+  }
+
+  /**
+   * Bất biến thợ–dịch vụ (audit Part 1): bỏ một kỹ năng khi thợ còn lịch SẮP TỚI dùng dịch vụ đó sẽ để lại lịch
+   * "thợ không làm được" — chặn 409 kèm mã lịch để chủ tiệm chuyển lịch cho thợ khác trước.
+   */
+  private async assertSkillsNotInUse(manager: DataSource['manager'], stylistId: string, keep: string[]): Promise<void> {
+    const current = await manager.find(StylistServiceLink, { where: { stylistId } });
+    const removed = current.map((l) => l.serviceId).filter((sid) => !keep.includes(sid));
+    if (!removed.length) return;
+    const rows: { code: string; names: string }[] = await manager.query(
+      `SELECT a.code, string_agg(DISTINCT x.name_snapshot, ', ') AS names
+         FROM appointments a JOIN appointment_services x ON x.appointment_id = a.id
+        WHERE a.stylist_id = $1 AND a.status IN (${ACTIVE_STATUSES.map((st) => `'${st}'`).join(',')})
+          AND a.end_at > now() AND x.service_id = ANY($2::uuid[])
+        GROUP BY a.code, a.start_at ORDER BY a.start_at LIMIT 20`,
+      [stylistId, removed],
+    );
+    if (!rows.length) return;
+    const names = Array.from(new Set(rows.flatMap((r) => r.names.split(', '))));
+    throw new ConflictException({
+      message: `Không thể bỏ kỹ năng "${names.join(', ')}": thợ còn ${rows.length === 20 ? '20+' : rows.length} lịch sắp tới cần kỹ năng này `
+        + `(${rows.slice(0, 5).map((r) => r.code).join(', ')}${rows.length > 5 ? '…' : ''}). Hãy chuyển các lịch đó cho thợ khác trước.`,
+      field: 'serviceIds',
+      code: ERROR_CODES.SKILL_IN_USE,
+      details: { appointmentCodes: rows.map((r) => r.code), services: names },
+    });
   }
 
   async setAvatar(id: string, url: string): Promise<StylistView> {

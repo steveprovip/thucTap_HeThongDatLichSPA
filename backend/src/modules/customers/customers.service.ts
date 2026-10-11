@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
 import { Customer } from '../../database/entities/customer.entity';
@@ -108,9 +108,13 @@ export class CustomersService {
     const qb = this.repo.createQueryBuilder('c');
     if (q && q.trim()) {
       const term = `%${normalizeSearch(q)}%`;
-      qb.where('(f_unaccent(lower(c.full_name)) LIKE :t OR c.phone LIKE :raw)', {
-        t: term, raw: `%${q.replace(/\D/g, '')}%`,
-      });
+      const digits = q.replace(/\D/g, '');
+      // QA 11/10: gõ TÊN (không có chữ số) từng khớp mọi khách vì `phone LIKE '%%'` → chỉ so SĐT khi có ≥ 3 chữ số.
+      if (digits.length >= 3) {
+        qb.where('(f_unaccent(lower(c.full_name)) LIKE :t OR c.phone LIKE :raw)', { t: term, raw: `%${digits}%` });
+      } else {
+        qb.where('f_unaccent(lower(c.full_name)) LIKE :t', { t: term });
+      }
     }
     qb.orderBy('c.updatedAt', 'DESC').skip((page - 1) * limit).take(limit);
     const [items, total] = await qb.getManyAndCount();
@@ -131,10 +135,47 @@ export class CustomersService {
   async update(id: string, dto: UpdateCustomerDto): Promise<Customer> {
     const c = await this.repo.findOne({ where: { id } });
     if (!c) throw new NotFoundException('Không tìm thấy hồ sơ khách hàng');
-    if (dto.fullName !== undefined) c.fullName = dto.fullName.trim();
+    if (dto.fullName !== undefined) {
+      if (!dto.fullName.trim()) throw new BadRequestException({ message: 'Tên khách không được để trống', field: 'fullName' });
+      c.fullName = dto.fullName.trim();
+    }
     if (dto.email !== undefined) c.email = dto.email;
     if (dto.note !== undefined) c.note = dto.note;
     return this.repo.save(c);
+  }
+
+  /**
+   * QA Sprint 3 · đề xuất 5 + NFR "xoá dữ liệu khách theo yêu cầu trong 7 ngày".
+   * Bất biến "không xoá cứng dữ liệu đã được tham chiếu": khách CHƯA có lịch hẹn / phiếu → xoá hẳn; đã có → ẨN DANH
+   * (xoá tên, SĐT, email, ghi chú, ghi chú trên lịch hẹn, nhận xét đánh giá) nhưng giữ lịch hẹn / phiếu / điểm sao để
+   * doanh thu và thống kê không đổi. SĐT thay bằng số giả đầu "00" (không phải đầu số di động VN, không trùng khách thật).
+   */
+  async remove(id: string): Promise<{ id: string; mode: 'deleted' | 'anonymized' }> {
+    const c = await this.repo.findOne({ where: { id } });
+    if (!c) throw new NotFoundException('Không tìm thấy hồ sơ khách hàng');
+    const [{ n }] = await this.repo.query(
+      `SELECT (SELECT count(*) FROM appointments WHERE customer_id = $1)
+            + (SELECT count(*) FROM invoices WHERE customer_id = $1) AS n`, [id]);
+    if (Number(n) === 0) {
+      await this.repo.delete({ id });
+      return { id, mode: 'deleted' };
+    }
+    if (c.phone.startsWith('00')) throw new ConflictException('Hồ sơ này đã được ẩn danh trước đó');
+    await this.repo.manager.transaction(async (m) => {
+      for (let attempt = 0; ; attempt += 1) {
+        const fake = `00${String(Math.floor(Math.random() * 1e8)).padStart(8, '0')}`;
+        const taken = await m.query('SELECT 1 FROM customers WHERE phone = $1', [fake]);
+        if (taken.length && attempt < 5) continue;
+        await m.query(
+          `UPDATE customers SET full_name = 'Khách đã xoá dữ liệu', phone = $2, email = NULL, note = NULL WHERE id = $1`, [id, fake]);
+        break;
+      }
+      await m.query('UPDATE appointments SET customer_note = NULL WHERE customer_id = $1', [id]);
+      await m.query('UPDATE reviews SET comment = NULL WHERE customer_id = $1', [id]);
+      // Thư đã / sắp gửi chứa địa chỉ email + tên khách: đây là nhật ký gửi, không phải chứng từ → xoá
+      await m.query('DELETE FROM email_queue WHERE appointment_id IN (SELECT id FROM appointments WHERE customer_id = $1)', [id]);
+    });
+    return { id, mode: 'anonymized' };
   }
 
   /** S4-03: 10 lượt gần nhất của khách kèm ghi chú kỹ thuật. */

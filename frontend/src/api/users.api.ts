@@ -1,5 +1,6 @@
 import { api, unwrap } from './client';
 import type { AuditLogRow, Paginated, Role, UserRow } from '@/types';
+import { normalizePage } from '@/utils/opsHelpers';
 
 export const usersApi = {
   async list(params: { page?: number; limit?: number; role?: Role; isActive?: boolean; search?: string } = {}) {
@@ -22,7 +23,7 @@ export const usersApi = {
 };
 
 export const auditApi = {
-  async list(params: { page?: number; limit?: number; from?: string; to?: string; actorId?: string; actor?: string; action?: string; entityType?: string }) {
-    return unwrap<Paginated<AuditLogRow>>(await api.get('/audit-logs', { params }));
+  async list(params: { page?: number; limit?: number; from?: string; to?: string; actorId?: string; actor?: string; action?: string; entityType?: string }): Promise<Paginated<AuditLogRow>> {
+    return normalizePage<AuditLogRow>(unwrap<unknown>(await api.get('/audit-logs', { params })), params.page ?? 1, params.limit ?? 50);
   },
 };

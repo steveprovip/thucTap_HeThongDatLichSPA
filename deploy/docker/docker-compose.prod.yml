@@ -1,0 +1,94 @@
+# Triển khai doanh nghiệp: Nginx (giao diện, gzip/brotli, cache) → API NestJS (production) → PostgreSQL (volume riêng).
+#   Chạy 1 chạm: deploy_production.cmd (Windows) hoặc ./deploy_production.sh (Linux/macOS) ở thư mục gốc dự án.
+#   Thủ công:    docker compose -f deploy/docker/docker-compose.prod.yml --env-file deploy/docker/production.env up -d --build
+# Redis (profile "cache") để dành khi chạy NHIỀU bản sao API (bus sự kiện / giới hạn tần suất dùng chung);
+# một máy chủ thì không cần: docker compose ... --profile cache up -d để bật.
+name: salon-prod
+services:
+  postgres:
+    image: postgres:15-alpine # khớp postgresql-client-15 trong ảnh API (pg_dump không được cũ hơn máy chủ)
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${SALON_PROD_DB_USER:-salon}
+      POSTGRES_PASSWORD: ${SALON_PROD_DB_PASSWORD:?Đặt SALON_PROD_DB_PASSWORD trong production.env}
+      POSTGRES_DB: ${SALON_PROD_DB_NAME:-salon_booking}
+      TZ: Asia/Ho_Chi_Minh
+      PGTZ: Asia/Ho_Chi_Minh
+    command: ["postgres", "-c", "timezone=Asia/Ho_Chi_Minh", "-c", "max_connections=100", "-c", "shared_buffers=256MB"]
+    volumes:
+      - salon_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [backend]
+    logging: { options: { max-size: "10m", max-file: "3" } }
+
+  api:
+    image: ${SALON_PROD_IMAGE:-salon-spa-api:latest}
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.production
+      args: { COMMIT_SHA: "${SALON_PROD_REVISION:-unreleased}" }
+    restart: unless-stopped
+    init: true
+    env_file:
+      - path: ${SALON_PROD_ENV_FILE:-./production.env}
+        required: true
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      SERVE_FRONTEND: "false" # Nginx phục vụ giao diện
+      TRUST_PROXY: ${SALON_PROD_TRUST_PROXY:-1} # 1 tầng proxy (Nginx); thêm Cloudflare Tunnel phía trước thì đặt 2
+      DATABASE_URL: ""
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: ${SALON_PROD_DB_USER:-salon}
+      DB_PASSWORD: ${SALON_PROD_DB_PASSWORD:?Đặt SALON_PROD_DB_PASSWORD trong production.env}
+      DB_NAME: ${SALON_PROD_DB_NAME:-salon_booking}
+      DB_SSL: "false"
+      BACKUP_DIR: /app/backups # sao lưu tự động 02:00 hằng ngày, giữ 14 bản (BackupSchedulerService)
+      MIGRATION_BACKUP: required
+    volumes:
+      - salon_uploads:/app/backend/uploads
+      - salon_backups:/app/backups
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks: [backend, outbound]
+    logging: { options: { max-size: "10m", max-file: "3" } }
+
+  web:
+    image: ${SALON_PROD_WEB_IMAGE:-salon-spa-web:latest}
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.web
+    restart: unless-stopped
+    ports:
+      - "${SALON_WEB_BIND:-127.0.0.1}:${SALON_WEB_PORT:-8080}:80"
+    depends_on:
+      api: { condition: service_healthy }
+    networks: [backend, outbound]
+    logging: { options: { max-size: "10m", max-file: "3" } }
+
+  redis:
+    image: redis:7.4-alpine
+    profiles: ["cache"]
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks: [backend]
+
+networks:
+  backend:
+    internal: true # CSDL / Redis không ra Internet
+  outbound: {}
+
+volumes:
+  salon_pgdata:
+  salon_uploads:
+  salon_backups:

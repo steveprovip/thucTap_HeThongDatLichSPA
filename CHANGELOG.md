@@ -3,6 +3,35 @@
 Định dạng theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), phiên bản theo [Semantic Versioning](https://semver.org/lang/vi/).
 Launcher (biểu tượng Hương Sen Salon / `HoYoSalon.bat`) đọc tệp này cho mục **Có gì mới** và **Nhật ký cập nhật**.
 
+## [2.0.0] - 2026-10-11
+
+### Trí tuệ nhân tạo (AI Local & Trợ lý đàm thoại)
+- **Tích hợp mô hình AI Local Spark-X2.5-4B** (Q4_K_M ~2,6 GB) chạy trực tiếp trên GPU máy tính tiệm (hỗ trợ NVIDIA CUDA, Vulkan và CPU) đạt tốc độ ~98 tok/s.
+- Kịch bản tải và cài đặt 1-chạm `tai_model_local.cmd` và `chay_ai_local.cmd`, tự động phát hiện GPU và khôi phục khi mất mạng.
+- Trợ lý AI đàm thoại tự nhiên cho cả khách đặt lịch và quản trị viên tiệm, hỗ trợ gợi ý dịch vụ theo nhu cầu và điền thẳng vào form đặt lịch.
+- Cơ chế 2 tầng: tự nhận diện máy chủ AI local; nếu chưa bật tự chuyển về Smart Rule Assistant mà không bao giờ báo lỗi.
+
+### Dữ liệu thực tế & Giao diện người dùng (UX/UI)
+- Bộ dữ liệu thực tế: 43 dịch vụ spa & tóc với ảnh Unsplash bản quyền độ nét cao, 14 thợ chuyên nghiệp, 900 khách hàng và hơn 7.900 lịch hẹn mẫu.
+- **Phân trang toàn diện (Universal Pagination)**: Hook `useClientPage` đồng bộ giao diện phân trang 10/20/50 dòng cho toàn bộ các bảng (Doanh thu, Dịch vụ, Hồ sơ thợ, Lịch ca, Nhân sự, Mã giảm giá, Phiếu tính tiền).
+- Trang Doanh thu: Biểu đồ cột tự động chọn Top 8 dịch vụ doanh thu cao nhất (kèm nút xem Tất cả), loại bỏ hoàn toàn lỗi đè chữ trên nhãn.
+- Trang Dịch vụ: Tự động reset về trang 1 khi chuyển nhóm dịch vụ hoặc tìm kiếm.
+- Trang Hồ sơ thợ: Hỗ trợ chuyển đổi linh hoạt dạng Thẻ (8 thợ/trang) và Bảng (10 thợ/trang), lọc trạng thái và nhóm kỹ năng.
+
+### Thương mại hóa & Vận hành doanh nghiệp (B2B SaaS)
+- **In hoá đơn nhiệt K80 (80mm)**: Nút in hoá đơn nhanh tại quầy thu ngân chuẩn máy in bill POS, mã VietQR động theo mã hoá đơn.
+- **Cọc chống bùng lịch**: Đơn dịch vụ trên 500.000 đ tự động kích hoạt chính sách cọc 30% kèm hướng dẫn chuyển khoản VietQR cú pháp `COC <SĐT> <MÃ LỊCH>`.
+- **Webhook Event Dispatcher**: Hệ thống phát sự kiện đặt/xác nhận lịch ký HMAC-SHA256 sẵn sàng kết nối Zalo ZNS và SMS Brandname.
+- **Triển khai Production 1-Chạm**: `deploy_production.cmd` và `docker-compose.prod.yml` đóng gói Nginx (Brotli + Gzip), NestJS, PostgreSQL 15 an toàn.
+- Cẩm nang bàn giao 3 vai trò (Chủ tiệm, Lễ tân, Kỹ thuật viên) tại `docs/COMMERCIAL_HANDOVER.md`.
+
+## [1.6.0] - 2026-10-09
+
+### Sao lưu an toàn & Bảo vệ CSDL
+- Nâng cấp cơ chế sao lưu CSDL `pg_dump -Fc` tự động lúc 02:00, lưu trữ 14 bản gần nhất.
+- Bảo vệ giao dịch và rollback an toàn khi chạy migrations.
+- Đóng gói Docker production cơ bản.
+
 ## [1.5.2] - 2026-10-07
 
 ### Kiểm tra bản mới: báo đúng nguyên nhân

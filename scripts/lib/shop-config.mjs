@@ -29,6 +29,7 @@ const FIELDS = {
   BANK_ACCOUNT_NAME: { max: 50 },
   SMTP_USER: { max: 120, re: /^[^@\s]+@[^@\s]+\.[^@\s]+$/, msg: 'Gmail gửi thư không hợp lệ' },
   SMTP_PASSWORD: { max: 64, secret: true },
+  BOOKING_REQUIRE_EMAIL: { max: 5, re: /^(true|false)$/, msg: 'Chọn Có hoặc Không' },
   BOOTSTRAP_ADMIN_EMAIL: { max: 120, re: /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/, msg: 'Email đăng nhập chỉ gồm chữ không dấu, số và . _ % + -' },
   BOOTSTRAP_ADMIN_PASSWORD: {
     max: 64, secret: true, re: /^(?=.*[A-Za-z])(?=.*\d)[\x21-\x7e]{8,64}$/,
