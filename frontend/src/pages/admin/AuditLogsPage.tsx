@@ -4,7 +4,7 @@ import { auditApi, getErrorMessage, usersApi } from '@/api';
 import type { AuditLogRow, UserRow } from '@/types';
 import { Button, Card, EmptyState, Field, Pagination, SectionTitle, Select, TableSkeleton } from '@/components';
 import { addDaysISO, formatDateTime, todayISO } from '@/utils/format';
-import { ROLE_LABELS } from '@/utils/constants';
+import { ROLE_LABELS, STATUS_LABELS } from '@/utils/constants';
 import { useToast } from '@/contexts/ToastContext';
 
 /** Nhãn tiếng Việt cho mã thao tác máy chủ ghi lại. */
@@ -118,6 +118,12 @@ function renderValueVi(k: string, v: unknown): React.ReactNode {
   if (typeof v === 'string') {
     if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return <span className="font-medium text-slate-800">{formatIsoDateVi(v)}</span>;
     if (k === 'role') return <span className="font-semibold text-teal-800">{ROLE_LABELS[v] ?? v}</span>;
+    if (k === 'status' && v in STATUS_LABELS) {
+      return <span className="font-semibold text-teal-800">{STATUS_LABELS[v as keyof typeof STATUS_LABELS]}</span>;
+    }
+    if (/^\d{4}-\d{2}-\d{2}T/.test(v) && !Number.isNaN(Date.parse(v))) {
+      return <span className="font-medium text-slate-800">{formatDateTime(v)}</span>;
+    }
     return <span className="font-medium text-slate-800">{v}</span>;
   }
   if (Array.isArray(v)) {
@@ -141,11 +147,13 @@ function renderValueVi(k: string, v: unknown): React.ReactNode {
     const rawList = v as unknown[];
     return (
       <div className="mt-1 flex flex-wrap gap-1">
-        {rawList.map((item, idx) => (
+        {rawList.map((item, idx) => (typeof item === 'object' && item !== null ? (
+          <div key={idx} className="w-full">{renderValueVi(k, item)}</div>
+        ) : (
           <span key={idx} className="rounded bg-slate-200 px-1.5 py-0.5 text-[11px] text-slate-800 font-medium">
-            {typeof item === 'object' && item !== null ? JSON.stringify(item) : String(item ?? '')}
+            {String(item ?? '')}
           </span>
-        ))}
+        )))}
       </div>
     );
   }

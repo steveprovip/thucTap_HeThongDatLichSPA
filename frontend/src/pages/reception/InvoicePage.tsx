@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Banknote, Landmark, Lock, Plus, Printer, Receipt, Trash2 } from 'lucide-react';
+import { Banknote, CheckCircle2, Landmark, Lock, Plus, Printer, Receipt, Trash2 } from 'lucide-react';
 import { appointmentsApi, getErrorMessage, invoicesApi } from '@/api';
 import type { Appointment, Invoice, PaymentMethod } from '@/types';
 import { Button, Card, ConfirmDialog, Field, Input, SectionTitle, Spinner, StatusBadge, VietQrCode } from '@/components';
@@ -43,6 +43,7 @@ export function InvoicePage() {
   const unsaved = !!invoice && (invoice.subtotal !== subtotal || invoice.discountAmount !== discount
     || (invoice.voucherCode ?? '') !== voucherCode.trim());
   const locked = invoice?.status === 'closed' || invoice?.status === 'adjusted';
+  const isPaid = invoice?.status === 'paid';
   const editLocked = locked && !adjusting;
   /** Nội dung CK = mã phiếu (ASCII, không gạch nối) → khớp 1-1 với ghi chú đối soát. */
   const transferRef = invoice ? invoice.code.replace(/[^0-9A-Za-z]/g, '').toUpperCase() : '';
@@ -282,12 +283,21 @@ export function InvoicePage() {
 
           <div className="mt-4 flex flex-wrap gap-2">
             <Button variant="outline" loading={busy} onClick={saveLines} disabled={!invoice}>Lưu phiếu</Button>
-            <Button loading={busy} onClick={pay} disabled={!invoice}
-                    icon={paymentMethod === 'cash' ? <Banknote size={16} /> : <Landmark size={16} />}>
-              Ghi nhận thanh toán
-            </Button>
-            <Button variant="secondary" onClick={() => setConfirmClose(true)}
-                    disabled={!invoice || invoice.status !== 'paid'} icon={<Lock size={16} />}>
+            {/* QA 11/10: đã thanh toán → nút khoá lại để tránh bấm lặp; bước kế tiếp (đóng phiếu) thành nút chính. */}
+            {isPaid ? (
+              <Button variant="outline" disabled icon={<CheckCircle2 size={16} className="text-emerald-600" />}
+                      className="border-emerald-200 bg-emerald-50 text-emerald-800">
+                Đã thanh toán
+              </Button>
+            ) : (
+              <Button loading={busy} onClick={pay} disabled={!invoice}
+                      icon={paymentMethod === 'cash' ? <Banknote size={16} /> : <Landmark size={16} />}>
+                Ghi nhận thanh toán
+              </Button>
+            )}
+            <Button variant={isPaid ? 'primary' : 'secondary'} onClick={() => setConfirmClose(true)}
+                    disabled={!isPaid} icon={<Lock size={16} />}
+                    className={isPaid ? 'ring-2 ring-teal-300 ring-offset-1' : ''}>
               Đóng phiếu &amp; kết thúc lịch hẹn
             </Button>
           </div>

@@ -30,6 +30,7 @@
     "start:server": "node scripts/launcher.mjs serve",
     "stop:server": "node scripts/launcher.mjs stop",
     "update": "node scripts/update.mjs",
+    "doctor": "node scripts/launcher.mjs doctor",
     "backup": "node scripts/backup.mjs",
     "migration:generate": "npm run migration:generate --prefix backend --",
     "security:check": "npm run security:check --prefix backend",

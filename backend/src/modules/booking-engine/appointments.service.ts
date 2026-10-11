@@ -2,6 +2,7 @@ import {
   BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository } from 'typeorm';
 import {
@@ -60,6 +61,15 @@ export interface DayTimeline {
   columns: TimelineColumn[];
   summary: Record<AppointmentStatus, number>;
 }
+
+/** Con trỏ keyset của danh sách lịch hẹn: base64url("<start_at ISO>|<id>"). */
+export const encodeListCursor = (startAt: Date, id: string): string =>
+  Buffer.from(`${startAt.toISOString()}|${id}`).toString('base64url');
+export const decodeListCursor = (cursor: string): { startAt: Date; id: string } | null => {
+  const [iso, id] = Buffer.from(cursor, 'base64url').toString('utf8').split('|');
+  const startAt = new Date(iso ?? '');
+  return !Number.isNaN(startAt.getTime()) && /^[0-9a-f-]{36}$/i.test(id ?? '') ? { startAt, id } : null;
+};
 
 @Injectable()
 export class AppointmentsService {
@@ -226,12 +236,15 @@ export class AppointmentsService {
   // =========================================================================
   //  DANH SÁCH / CHI TIẾT
   // =========================================================================
-  async list(query: ListAppointmentsQuery, user: AuthUser): Promise<PaginatedResult<AppointmentView>> {
-    const qb = this.apptRepo.createQueryBuilder('a')
-      .innerJoin('customers', 'c', 'c.id = a.customer_id');
+  async list(
+    query: ListAppointmentsQuery, user: AuthUser,
+  ): Promise<PaginatedResult<AppointmentView> & { nextCursor: string | null }> {
+    const qb = this.apptRepo.createQueryBuilder('a');
+    // customer_id NOT NULL + khoá ngoại → JOIN chỉ cần khi tìm theo tên / SĐT khách (đếm tổng nhanh gấp ~5 lần ở 50k dòng)
+    if (query.search) qb.innerJoin('customers', 'c', 'c.id = a.customer_id');
 
     if (user.role === Role.STYLIST) {
-      if (!user.stylistId) return paginate<AppointmentView>([], 0, query.page, query.limit);
+      if (!user.stylistId) return { ...paginate<AppointmentView>([], 0, query.page, query.limit), nextCursor: null };
       qb.andWhere('a.stylist_id = :own', { own: user.stylistId });
     } else if (query.stylistId) {
       qb.andWhere('a.stylist_id = :sid', { sid: query.stylistId });
@@ -245,13 +258,25 @@ export class AppointmentsService {
         { raw: `%${query.search.trim()}%`, t: `%${normalizeSearch(query.search)}%` },
       );
     }
-    // skip/take + JOIN khiến TypeORM dựng truy vấn con DISTINCT: orderBy PHẢI dùng tên thuộc tính (startAt),
-    // dùng tên cột 'a.start_at' sẽ ném "Cannot read properties of undefined (reading 'databaseName')" → 500.
-    qb.orderBy('a.startAt', 'DESC').addOrderBy('a.id', 'DESC')
-      .skip((query.page - 1) * query.limit).take(query.limit);
+    const total = await qb.getCount();
+    // Part 4 (tải x10): JOIN customers là 1–1 nên dùng OFFSET/LIMIT thẳng (skip/take của TypeORM dựng thêm truy vấn
+    // con DISTINCT rất chậm ở 50.000+ lịch). Có `cursor` thì phân trang keyset theo (start_at, id) — luôn dùng chỉ mục,
+    // trang sâu nhanh như trang đầu. orderBy dùng tên thuộc tính (startAt) như cũ.
+    if (query.cursor) {
+      const c = decodeListCursor(query.cursor);
+      if (!c) throw new BadRequestException({ message: 'Con trỏ phân trang không hợp lệ', field: 'cursor' });
+      qb.andWhere('(a.start_at, a.id) < (:cs, :cid)', { cs: c.startAt, cid: c.id });
+    } else {
+      qb.offset((query.page - 1) * query.limit);
+    }
+    qb.orderBy('a.startAt', 'DESC').addOrderBy('a.id', 'DESC').limit(query.limit);
 
-    const [items, total] = await qb.getManyAndCount();
-    return paginate(await this.decorate(items, user.role), total, query.page, query.limit);
+    const items = await qb.getMany();
+    const last = items.length === query.limit ? items[items.length - 1] : null;
+    return {
+      ...paginate(await this.decorate(items, user.role), total, query.page, query.limit),
+      nextCursor: last ? encodeListCursor(last.startAt, last.id) : null,
+    };
   }
 
   async detail(id: string, user: AuthUser): Promise<AppointmentView & { changes: AppointmentChange[] }> {
@@ -325,9 +350,29 @@ export class AppointmentsService {
     return view;
   }
 
-  private async sendCancelEmail(appt: Appointment, reason: string): Promise<void> {
+  /**
+   * QA 11/10: khách có email PHẢI nhận thư khi lịch bị huỷ / dời — gửi ngay (không chờ worker mỗi phút).
+   * Thao tác nghiệp vụ đã lưu xong trước khi gọi, nên lỗi email chỉ ghi log, không biến thành 500.
+   */
+  private async safeMail(appt: Appointment, what: string, send: () => Promise<boolean>): Promise<void> {
+    try {
+      if (await send()) this.booking.kickMailWorker();
+    } catch (e) {
+      this.logger.error(`Lịch ${appt.code}: xếp email ${what} lỗi — ${(e as Error).message}`);
+    }
+  }
+
+  private sendCancelEmail(appt: Appointment, reason: string): Promise<void> {
+    return this.safeMail(appt, 'huỷ lịch', () => this.enqueueCancelEmail(appt, reason));
+  }
+
+  private sendChangedEmail(appt: Appointment, summary: string): Promise<void> {
+    return this.safeMail(appt, 'đổi lịch', () => this.enqueueChangedEmail(appt, summary));
+  }
+
+  private async enqueueCancelEmail(appt: Appointment, reason: string): Promise<boolean> {
     const customer = await this.customerRepo.findOne({ where: { id: appt.customerId } });
-    if (!customer?.email) return;
+    if (!customer?.email) return false;
     const stylist = await this.stylistRepo.findOne({ where: { id: appt.stylistId } });
     const services = await this.apptServiceRepo.find({ where: { appointmentId: appt.id } });
     const tpl = MailTemplates.bookingCancelled(
@@ -346,11 +391,12 @@ export class AppointmentsService {
       kind: EmailKind.BOOKING_CANCELLED, toEmail: customer.email, toName: customer.fullName,
       subject: tpl.subject, html: tpl.html, appointmentId: appt.id,
     });
+    return true;
   }
 
-  private async sendChangedEmail(appt: Appointment, summary: string): Promise<void> {
+  private async enqueueChangedEmail(appt: Appointment, summary: string): Promise<boolean> {
     const customer = await this.customerRepo.findOne({ where: { id: appt.customerId } });
-    if (!customer?.email) return;
+    if (!customer?.email) return false;
     const stylist = await this.stylistRepo.findOne({ where: { id: appt.stylistId } });
     const services = await this.apptServiceRepo.find({ where: { appointmentId: appt.id } });
     const tpl = MailTemplates.bookingChanged(
@@ -369,6 +415,7 @@ export class AppointmentsService {
       kind: EmailKind.BOOKING_CHANGED, toEmail: customer.email, toName: customer.fullName,
       subject: tpl.subject, html: tpl.html, appointmentId: appt.id,
     });
+    return true;
   }
 
   // =========================================================================
@@ -635,9 +682,11 @@ export class AppointmentsService {
     await this.logChange(id, 'status', 'in_progress', 'completed', user);
     await this.customers.refreshCounters(appt.customerId);
 
-    // Vượt thời lượng chuẩn quá ngưỡng thì cảnh báo lễ tân (S3-08)
+    // Vượt thời lượng chuẩn quá ngưỡng thì cảnh báo lễ tân (S3-08) — trừ khi đã cảnh báo TRONG LÚC làm (watchOverruns)
     const overrun = this.config.get<number>('business.overrunWarningMinutes')!;
-    if ((appt.actualDurationMinutes ?? 0) - appt.totalDurationMinutes > overrun) {
+    const [warned] = await this.dataSource.query(
+      `SELECT 1 FROM notifications WHERE appointment_id = $1 AND type = 'overrun_warning' LIMIT 1`, [id]);
+    if (!warned && (appt.actualDurationMinutes ?? 0) - appt.totalDurationMinutes > overrun) {
       const stylist = await this.stylistRepo.findOne({ where: { id: appt.stylistId } });
       const receptionists = await this.dataSource.query(
         `SELECT id FROM users WHERE role IN ('receptionist','owner') AND is_active = TRUE`,
@@ -656,6 +705,46 @@ export class AppointmentsService {
 
     const [view] = await this.decorate([appt], user.role);
     return view;
+  }
+
+  /**
+   * QA Sprint 3 · mục 6 — cảnh báo NGAY KHI lịch đang làm vượt thời lượng chuẩn quá ngưỡng (mặc định 20′), không đợi
+   * thợ bấm Hoàn tất: lễ tân còn kịp báo khách kế tiếp / chuyển thợ. Mỗi lịch cảnh báo đúng một lần.
+   */
+  @Cron(CronExpression.EVERY_MINUTE)
+  async watchOverruns(now: Date = new Date()): Promise<number> {
+    const overrun = this.config.get<number>('business.overrunWarningMinutes')!;
+    const rows: { id: string; code: string; full_name: string; total: number; elapsed: number; next_appt: string | null }[] =
+      await this.dataSource.query(
+        `SELECT a.id, a.code, s.full_name, a.total_duration_minutes AS total,
+                floor(extract(epoch FROM ($2::timestamptz - a.started_at)) / 60)::int AS elapsed,
+                (SELECT n.code || ' lúc ' || to_char(n.start_at AT TIME ZONE 'Asia/Ho_Chi_Minh', 'HH24:MI')
+                   FROM appointments n
+                  WHERE n.stylist_id = a.stylist_id AND n.id <> a.id AND n.status IN ('pending','confirmed','arrived')
+                    AND n.start_at >= a.start_at
+                  ORDER BY n.start_at LIMIT 1) AS next_appt
+           FROM appointments a JOIN stylists s ON s.id = a.stylist_id
+          WHERE a.status = 'in_progress' AND a.started_at IS NOT NULL
+            AND a.started_at + make_interval(mins => a.total_duration_minutes + $1) < $2::timestamptz
+            AND NOT EXISTS (SELECT 1 FROM notifications x WHERE x.appointment_id = a.id AND x.type = 'overrun_warning')`,
+        [overrun, now],
+      );
+    if (!rows.length) return 0;
+    const managers: { id: string }[] = await this.dataSource.query(
+      `SELECT id FROM users WHERE role IN ('receptionist','owner') AND is_active = TRUE`);
+    for (const r of rows) {
+      for (const m of managers) {
+        await this.notifications.create({
+          userId: m.id,
+          type: NotificationType.OVERRUN_WARNING,
+          title: `Lịch ${r.code} đang vượt giờ chuẩn`,
+          body: `${r.full_name} đã làm ${r.elapsed} phút (chuẩn ${r.total} phút, vượt ${r.elapsed - r.total} phút). `
+            + (r.next_appt ? `Lịch kế tiếp ${r.next_appt} có nguy cơ trễ — cân nhắc báo khách hoặc chuyển thợ.` : 'Thợ chưa có lịch kế tiếp.'),
+          appointmentId: r.id,
+        });
+      }
+    }
+    return rows.length;
   }
 
   // =========================================================================

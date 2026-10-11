@@ -51,6 +51,7 @@ export class PublicBookingController {
       zaloUrl: zalo ? (/^https?:\/\//.test(zalo) ? zalo : `https://zalo.me/${zalo.replace(/\D/g, '')}`) : null,
       websiteUrl: c('salonWebsiteUrl') || null,
       mapUrl: c('salonMapUrl') || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c('salonAddress'))}`,
+      booking: { requireEmail: this.config.get<boolean>('business.requireBookingEmail') ?? false },
       // Thông tin in trên mã VietQR (công khai với khách chuyển khoản); null = chưa cấu hình
       bank: /^\d{6}$/.test(c('bankBin').trim()) && c('bankAccountNo').trim()
         ? { bin: c('bankBin').trim(), accountNo: c('bankAccountNo').replace(/\s/g, ''), accountName: c('bankAccountName').trim() }

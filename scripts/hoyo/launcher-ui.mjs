@@ -25,6 +25,7 @@ import { fileURLToPath } from 'node:url';
 import { checkForUpdate, localVersion, readChangelog } from '../lib/version.mjs';
 import { buildLogBundle, deviceInfo, deviceInfoText, tailFile } from '../lib/diagnostics.mjs';
 import { BANKS, buildShopUpdates, readShopConfig, upsertEnv } from '../lib/shop-config.mjs';
+import { readinessChecks } from '../lib/env-check.mjs';
 import { ensureToolPath, macAppBrowsers } from '../lib/platform.mjs';
 
 ensureToolPath(); // macOS mở từ Finder không có PATH của Terminal
@@ -347,7 +348,11 @@ const routes = {
   'GET /api/shop-config': async () => {
     const text = existsSync(BACKEND_ENV) ? readFileSync(BACKEND_ENV, 'utf8') : '';
     const cfg = readShopConfig(text);
-    return { ...cfg, banks: BANKS, configured: !!(cfg.values.BANK_BIN && cfg.values.BANK_ACCOUNT_NO), mode: settings().mode };
+    return {
+      ...cfg, banks: BANKS, configured: !!(cfg.values.BANK_BIN && cfg.values.BANK_ACCOUNT_NO), mode: settings().mode,
+      // Part 2: việc cần làm trước khi mở bán (không gửi giá trị bí mật nào, chỉ đạt / chưa đạt)
+      checks: readinessChecks(text).map(({ id, ok, level, label, fix }) => ({ id, ok, level, label, fix })),
+    };
   },
   'POST /api/shop-config': async (body) => {
     const example = join(ROOT, 'backend', '.env.example');

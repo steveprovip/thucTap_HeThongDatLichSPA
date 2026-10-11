@@ -12,3 +12,4 @@ export * from './customers.api';
 export * from './notifications.api';
 export * from './reviews.api';
 export * from './shiftRequests.api';
+export * from './assistant.api';

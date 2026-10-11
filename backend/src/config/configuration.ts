@@ -84,6 +84,8 @@ const configuration = () => ({
     slotStepMinutes: int(process.env.SLOT_STEP_MINUTES, 15),
     noShowAfterMinutes: int(process.env.NO_SHOW_AFTER_MINUTES, 30),
     overrunWarningMinutes: int(process.env.OVERRUN_WARNING_MINUTES, 20),
+    /** QA 11/10: bắt buộc email khi khách tự đặt online (mặc định tắt — vẫn nhắc rõ lợi ích nếu bỏ trống). */
+    requireBookingEmail: bool(process.env.BOOKING_REQUIRE_EMAIL, false),
     reviewTokenDays: int(process.env.REVIEW_TOKEN_DAYS, 7),
     minReviewsToShowAvg: int(process.env.MIN_REVIEWS_TO_SHOW_AVG, 5),
     checkInWindowMinutes: 60,
@@ -105,6 +107,14 @@ const configuration = () => ({
     workerEnabled: bool(process.env.MAIL_WORKER_ENABLED, true),
     maxAttempts: 3,
     retryMinutes: 10,
+  },
+  /** Part 5 — Trợ lý AI: mô hình nhỏ tuỳ chọn (Ollama cục bộ / API tương thích OpenAI). Trống = chỉ dùng luật. */
+  ai: {
+    provider: (process.env.AI_PROVIDER ?? '').trim().toLowerCase(),
+    baseUrl: process.env.AI_BASE_URL ?? '',
+    model: process.env.AI_MODEL || 'qwen2.5:3b',
+    apiKey: process.env.AI_API_KEY ?? '',
+    timeoutMs: int(process.env.AI_TIMEOUT_MS, 15000),
   },
   upload: {
     dir: process.env.UPLOAD_DIR ?? 'uploads',

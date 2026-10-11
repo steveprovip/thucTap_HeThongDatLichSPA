@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
-import { History, Search, Users } from 'lucide-react';
+import { History, Search, Trash2, Users } from 'lucide-react';
 import { customersApi, getErrorMessage } from '@/api';
 import type { Customer, VisitHistoryItem } from '@/types';
-import { Button, EmptyState, Field, Input, Modal, Pagination, SectionTitle, Textarea, TableSkeleton } from '@/components';
+import {
+  Button, ConfirmDialog, EmailText, EmptyState, Field, Input, Modal, Pagination, SectionTitle, Textarea, TableSkeleton,
+} from '@/components';
 import { formatDate } from '@/utils/format';
 import { CUSTOMER_METRIC_LABELS, historyCaption } from '@/utils/customerMetrics';
 import { STATUS_LABELS } from '@/utils/constants';
+import { emailError } from '@/utils/validators';
+import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 
 /** S3-10 + S4-03: hồ sơ khách gộp theo số điện thoại và lịch sử dịch vụ. */
@@ -17,6 +21,11 @@ export function CustomersPage() {
   const [detail, setDetail] = useState<Customer | null>(null);
   const [history, setHistory] = useState<VisitHistoryItem[]>([]);
   const [note, setNote] = useState('');
+  /** QA Sprint 3 · đề xuất 5: sửa tên / email ngay trong hồ sơ; Chủ tiệm xoá được hồ sơ chưa có lịch hẹn. */
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const isOwner = useAuth().user?.role === 'owner';
   const toast = useToast();
 
   const load = useCallback(async () => {
@@ -38,14 +47,30 @@ export function CustomersPage() {
   const open = async (c: Customer) => {
     setDetail(c);
     setNote(c.note ?? '');
+    setName(c.fullName);
+    setEmail(c.email ?? '');
     try { setHistory(await customersApi.history(c.id)); } catch { setHistory([]); }
   };
 
-  const saveNote = async () => {
+  const nameError = !name.trim() ? 'Tên khách không được để trống' : undefined;
+  const mailError = emailError(email, false);
+  const save = async () => {
+    if (!detail || nameError || mailError) return;
+    try {
+      const updated = await customersApi.update(detail.id, { fullName: name.trim(), email: email.trim() || null, note });
+      toast.success('Đã lưu hồ sơ khách');
+      setDetail({ ...detail, ...updated });
+      void load();
+    } catch (e) { toast.error(getErrorMessage(e)); }
+  };
+  const remove = async () => {
     if (!detail) return;
     try {
-      await customersApi.update(detail.id, { note });
-      toast.success('Đã lưu ghi chú');
+      const r = await customersApi.remove(detail.id);
+      toast.success(r.mode === 'anonymized'
+        ? 'Đã xoá dữ liệu cá nhân (giữ lịch hẹn & doanh thu ở dạng ẩn danh)'
+        : 'Đã xoá hồ sơ khách');
+      setDetail(null);
       void load();
     } catch (e) { toast.error(getErrorMessage(e)); }
   };
@@ -101,18 +126,37 @@ export function CustomersPage() {
         title={detail ? `Hồ sơ ${detail.fullName}` : ''}
         onClose={() => setDetail(null)}
         size="lg"
-        footer={<div className="flex justify-end"><Button onClick={saveNote}>Lưu ghi chú</Button></div>}
+        footer={(
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            {isOwner ? (
+              <Button variant="ghost" icon={<Trash2 size={15} />} onClick={() => setConfirmDelete(true)}
+                      title="Xoá dữ liệu cá nhân khi khách yêu cầu">
+                Xoá dữ liệu khách
+              </Button>
+            ) : <span />}
+            <Button onClick={save} disabled={!!nameError || !!mailError}>Lưu thay đổi</Button>
+          </div>
+        )}
       >
         {detail && (
           <div className="space-y-4">
             <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
               <div><dt className="text-ink-muted">Số điện thoại</dt><dd className="font-semibold">{detail.phone}</dd></div>
-              <div><dt className="text-ink-muted">Email</dt><dd className="font-semibold">{detail.email ?? '—'}</dd></div>
+              <div className="min-w-0"><dt className="text-ink-muted">Email</dt><dd><EmailText email={detail.email} /></dd></div>
               <div><dt className="text-ink-muted">{CUSTOMER_METRIC_LABELS.visits}</dt><dd className="font-semibold">{detail.totalVisits}</dd></div>
               <div><dt className="text-ink-muted">{CUSTOMER_METRIC_LABELS.noShows}</dt>
                    <dd className={`font-semibold ${detail.noShowCount >= 2 ? 'text-red-600' : ''}`}>{detail.noShowCount}</dd></div>
               <div><dt className="text-ink-muted">{CUSTOMER_METRIC_LABELS.total}</dt><dd className="font-semibold">{detail.totalAppointments}</dd></div>
             </dl>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Họ tên" required error={nameError}>
+                <Input value={name} maxLength={120} onChange={(e) => setName(e.target.value)} invalid={!!nameError} />
+              </Field>
+              <Field label="Email" error={mailError} hint="Để trống nếu khách không dùng email">
+                <Input type="email" value={email} maxLength={160} onChange={(e) => setEmail(e.target.value)} invalid={!!mailError} />
+              </Field>
+            </div>
 
             <Field label="Ghi chú riêng của tiệm" hint="Chỉ nhân sự của tiệm nhìn thấy">
               <Textarea value={note} maxLength={1000} onChange={(e) => setNote(e.target.value)} />
@@ -148,6 +192,19 @@ export function CustomersPage() {
           </div>
         )}
       </Modal>
+
+      <ConfirmDialog
+        open={confirmDelete}
+        danger
+        title="Xoá dữ liệu khách theo yêu cầu"
+        confirmLabel="Xoá dữ liệu"
+        message={detail && detail.totalAppointments > 0
+          ? `${detail.fullName} (${detail.phone}) đã có ${detail.totalAppointments} lịch hẹn: hệ thống XOÁ tên, SĐT, email, ghi chú, nhận xét `
+            + 'nhưng giữ lịch hẹn / phiếu ở dạng ẩn danh để doanh thu không đổi. Không hoàn tác được.'
+          : `Xoá hẳn hồ sơ ${detail?.fullName ?? ''} (${detail?.phone ?? ''})? Không hoàn tác được.`}
+        onConfirm={remove}
+        onClose={() => setConfirmDelete(false)}
+      />
     </div>
   );
 }

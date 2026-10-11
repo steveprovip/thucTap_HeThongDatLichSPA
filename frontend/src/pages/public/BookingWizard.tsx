@@ -6,6 +6,7 @@ import type { BookingResult, Quote } from '@/types';
 import { BackButton, Button } from '@/components';
 import { formatDuration, formatVnd, VN_PHONE_MESSAGE, VN_PHONE_REGEX } from '@/utils/format';
 import { emailError } from '@/utils/validators';
+import { useSalonInfo } from '@/utils/salonInfo';
 import { useBooking } from '@/contexts/BookingContext';
 import { useToast } from '@/contexts/ToastContext';
 import { Step1Services } from './steps/Step1Services';
@@ -27,6 +28,7 @@ const STEPS = [
 /** Luồng đặt lịch 4 bước, tối ưu cho màn hình rộng 360px và dùng một tay. */
 export function BookingWizard() {
   const booking = useBooking();
+  const requireEmail = useSalonInfo().info?.booking?.requireEmail ?? false;
   const { step, setStep, selected, date, time, stylistId, customer, totalDuration, totalPrice, reset } = booking;
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<BookingResult | null>(null);
@@ -86,7 +88,7 @@ export function BookingWizard() {
     if (!VN_PHONE_REGEX.test(customer.phone)) {
       next.phone = VN_PHONE_MESSAGE;
     }
-    const invalidEmail = emailError(customer.email, false);
+    const invalidEmail = emailError(customer.email, requireEmail);
     if (invalidEmail) next.email = invalidEmail;
     if (customer.note.length > 300) next.note = 'Ghi chú tối đa 300 ký tự';
     setErrors(next);
@@ -181,7 +183,7 @@ export function BookingWizard() {
           <div className="space-y-4">
             <HoldBanner hold={slotHold.hold} state={slotHold.state} remainingMs={slotHold.remainingMs}
                         onExtend={() => void slotHold.extend()} />
-            <Step4Confirm errors={errors} />
+            <Step4Confirm errors={errors} requireEmail={requireEmail} />
           </div>
         )}
       </div>

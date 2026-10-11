@@ -220,4 +220,6 @@ export class ListAppointmentsQuery {
   @IsOptional() @IsString() @MaxLength(120) search?: string;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) page = 1;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(200) limit = 50;
+  /** Part 4: phân trang theo con trỏ (keyset) — lấy `nextCursor` của trang trước; có cursor thì bỏ qua `page`. */
+  @IsOptional() @IsString() @MaxLength(120) cursor?: string;
 }

@@ -36,21 +36,26 @@ export const appointmentsApi = {
   },
   async list(params: {
     from?: string; to?: string; status?: AppointmentStatus; stylistId?: string;
-    search?: string; page?: number; limit?: number;
-  }): Promise<Paginated<Appointment>> {
+    search?: string; page?: number; limit?: number; cursor?: string;
+  }): Promise<Paginated<Appointment> & { nextCursor?: string | null }> {
     return unwrap<Paginated<Appointment>>(await api.get('/appointments', { params }));
   },
   /**
    * Lấy TOÀN BỘ lịch hẹn trong khoảng ngày: máy chủ giới hạn tối đa 200 dòng/trang (PaginationDto),
    * nên tự lật trang thay vì gửi limit lớn (lỗi "limit must not be greater than 200").
+   * Part 4: lật bằng con trỏ keyset (`nextCursor`) — không trùng / sót dòng khi có lịch mới chen vào giữa chừng;
+   * máy chủ cũ chưa trả `nextCursor` thì lùi về lật theo số trang như trước.
    */
   async listAll(params: { from?: string; to?: string; status?: AppointmentStatus; stylistId?: string }): Promise<Appointment[]> {
     const PAGE_SIZE = 200;
     const out: Appointment[] = [];
+    let cursor: string | undefined;
     for (let page = 1; page <= 50; page += 1) {
-      const res = await appointmentsApi.list({ ...params, page, limit: PAGE_SIZE });
+      const res = await appointmentsApi.list({ ...params, limit: PAGE_SIZE, ...(cursor ? { cursor } : { page }) });
       out.push(...res.items);
-      if (page >= (res.totalPages ?? 1) || res.items.length < PAGE_SIZE) break;
+      if (res.items.length < PAGE_SIZE) break;
+      if (res.nextCursor) cursor = res.nextCursor;
+      else if (page >= (res.totalPages ?? 1)) break;
     }
     return out;
   },

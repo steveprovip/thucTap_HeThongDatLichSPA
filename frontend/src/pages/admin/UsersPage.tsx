@@ -3,6 +3,7 @@ import { KeyRound, Lock, Plus, Search, Unlock, UserCog } from 'lucide-react';
 import { getErrorMessage, usersApi } from '@/api';
 import type { Role, UserRow } from '@/types';
 import {
+  EmailText,
   Button, ConfirmDialog, EmptyState, Field, Input, Modal, Pagination, SectionTitle, Select, TableSkeleton,
   TempPasswordDialog, type TempCredential,
 } from '@/components';
@@ -128,7 +129,7 @@ export function UsersPage() {
                         <span className="ml-2 chip border border-amber-300 bg-amber-50 text-amber-800">Chờ đổi mật khẩu</span>
                       )}
                     </td>
-                    <td className="text-xs">{u.email}</td>
+                    <td><EmailText email={u.email} /></td>
                     <td>{ROLE_LABELS[u.role]}</td>
                     <td>
                       {u.isActive

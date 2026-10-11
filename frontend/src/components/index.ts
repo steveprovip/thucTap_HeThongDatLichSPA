@@ -17,3 +17,5 @@ export * from './LiveStatus';
 export * from './UpdateBanner';
 export * from './TimeSelect24';
 export * from './SmartSlotAssistant';
+export * from './EmailText';
+export * from './SmartAiAssistant';

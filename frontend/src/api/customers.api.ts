@@ -14,7 +14,11 @@ export const customersApi = {
   async history(id: string): Promise<VisitHistoryItem[]> {
     return unwrap<VisitHistoryItem[]>(await api.get(`/customers/${id}/history`));
   },
-  async update(id: string, payload: { fullName?: string; email?: string; note?: string }): Promise<Customer> {
+  async update(id: string, payload: { fullName?: string; email?: string | null; note?: string }): Promise<Customer> {
     return unwrap<Customer>(await api.patch(`/customers/${id}`, payload));
+  },
+  /** Chỉ Chủ tiệm. Khách đã có lịch hẹn → máy chủ ẩn danh thay vì xoá hẳn (giữ doanh thu, thống kê). */
+  async remove(id: string): Promise<{ id: string; mode: 'deleted' | 'anonymized' }> {
+    return unwrap(await api.delete(`/customers/${id}`));
   },
 };

@@ -20,8 +20,8 @@ export function CoveragePanel({ report, minStaff, onMinStaff, canEdit, onChanged
   onChanged: () => void;
 }) {
   const toast = useToast();
-  /** null = tự động: tuần đủ thợ thì thu gọn (đỡ chiếm chỗ), thiếu thợ thì mở sẵn. */
-  const [userOpen, setOpen] = useState<boolean | null>(null);
+  /** QA 11/10: luôn thu gọn thành MỘT dòng tóm tắt (mỗi ngày một chip %) để bảng ca vừa màn hình; bấm Chi tiết mới mở. */
+  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   /** Danh sách khoảng trống + gợi ý xếp thợ: thu gọn mặc định để bảng ca vẫn nằm trong màn hình đầu. */
   const [showGaps, setShowGaps] = useState(false);
@@ -31,7 +31,6 @@ export function CoveragePanel({ report, minStaff, onMinStaff, canEdit, onChanged
   const gapCount = report.days.reduce((n, d) => n + d.gaps.length, 0);
   const ok = gapCount === 0;
   const maxLoad = Math.max(1, ...report.workload.map((w) => w.minutes));
-  const open = userOpen ?? !ok;
 
   const fill = async (date: string, startTime: string, endTime: string, stylistId: string, name: string) => {
     const key = `${date}|${startTime}|${stylistId}`;
@@ -49,15 +48,25 @@ export function CoveragePanel({ report, minStaff, onMinStaff, canEdit, onChanged
 
   return (
     <section aria-label="Độ phủ ca làm"
-             className={`rounded-2xl border p-3 ${ok ? 'border-emerald-200 bg-emerald-50/50' : 'border-red-200 bg-red-50/40'}`}>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className={`flex items-center gap-2 text-sm font-semibold ${ok ? 'text-emerald-800' : 'text-red-800'}`}>
-          {ok ? <ShieldCheck size={16} /> : <AlertTriangle size={16} />}
-          {ok
-            ? 'Mọi khung giờ mở cửa trong tuần đều có thợ trực'
-            : `${gapCount} khung giờ chưa đủ thợ trên ${report.understaffedDays}/${openDays.length} ngày mở cửa · tổng ${formatDuration(report.totalGapMinutes)}`}
+             className={`rounded-xl border px-2.5 py-1.5 ${ok ? 'border-emerald-200 bg-emerald-50/50' : 'border-red-200 bg-red-50/40'}`}>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <h3 className={`flex items-center gap-1.5 text-xs font-semibold ${ok ? 'text-emerald-800' : 'text-red-800'}`}
+            title={ok ? undefined : `Tổng thời gian thiếu: ${formatDuration(report.totalGapMinutes)}`}>
+          {ok ? <ShieldCheck size={14} /> : <AlertTriangle size={14} />}
+          {ok ? 'Đủ thợ mọi khung giờ' : `Thiếu thợ: ${gapCount} khung · ${report.understaffedDays}/${openDays.length} ngày`}
         </h3>
-        <div className="flex items-center gap-2 text-xs text-ink-soft">
+        {!open && (
+          <ul className="flex flex-wrap gap-1" aria-label="Độ phủ từng ngày">
+            {report.days.map((d) => (
+              <li key={d.date} title={d.closedReason ?? `${d.openTime}–${d.closeTime} · ${d.staffCount} thợ`}
+                  className={`rounded px-1.5 text-[11px] leading-5 tabular-nums ${d.closedReason ? 'bg-slate-100 text-slate-400'
+                    : d.gaps.length ? 'bg-red-100 font-semibold text-red-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                {DOW_LABELS[new Date(`${d.date}T12:00:00Z`).getUTCDay()]} {d.closedReason ? 'nghỉ' : `${d.coveragePercent}%`}
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="ml-auto flex items-center gap-2 text-xs text-ink-soft">
           <label className="flex items-center gap-1">
             Tối thiểu
             <select className="rounded-md border border-slate-300 bg-white px-1.5 py-0.5" value={minStaff}

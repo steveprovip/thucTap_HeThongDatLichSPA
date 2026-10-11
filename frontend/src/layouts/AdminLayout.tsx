@@ -5,7 +5,7 @@ import {
   LogOut, Menu, Receipt, ScrollText, Scissors, Settings, Ticket, UserCircle2, Users, X,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { BackButton, ErrorBoundary, LiveStatus, NotificationBell, Spinner } from '@/components';
+import { BackButton, ErrorBoundary, LiveStatus, NotificationBell, SmartAiAssistant, Spinner } from '@/components';
 import { ROLE_LABELS, ROLE_LANDING } from '@/utils/constants';
 import type { Role } from '@/types';
 
@@ -193,6 +193,8 @@ export function AdminLayout() {
             </ErrorBoundary>
           </div>
         </main>
+        {/* Part 5: trợ lý AI nổi góc phải dưới — tự ẩn với vai trò không phải Chủ tiệm / Lễ tân */}
+        <SmartAiAssistant />
       </div>
     </div>
   );

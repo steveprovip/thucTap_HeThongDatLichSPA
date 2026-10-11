@@ -8,6 +8,7 @@ import type {
   Appointment, Customer, DayTimeline, ServiceItem, VisitHistoryItem,
 } from '@/types';
 import {
+  EmailText,
   Button, Card, CustomerMetrics, EmptyState, Field, Input, Modal, Notice, SectionTitle, SmartSlotAssistant, Spinner, StatusBadge,
   Textarea,
 } from '@/components';
@@ -83,6 +84,8 @@ export function WalkInModal({ open, onClose, onCreated }: {
   const [lookup, setLookup] = useState<'idle' | 'loading' | 'found' | 'new'>('idle');
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [history, setHistory] = useState<VisitHistoryItem[]>([]);
+  /** S3-10 / QA 11/10: SĐT đã có hồ sơ nhưng tên nhập khác → lễ tân CHỌN giữ tên hồ sơ hay cập nhật hồ sơ. */
+  const [renameProfile, setRenameProfile] = useState(false);
   const autoFilledName = useRef<string | null>(null);
   const lookupSeq = useRef(0);
 
@@ -101,6 +104,7 @@ export function WalkInModal({ open, onClose, onCreated }: {
 
   const reset = useCallback(() => {
     setPhone(''); setFullName(''); setEmail(''); setNote(''); setLookup('idle'); setCustomer(null); setHistory([]);
+    setRenameProfile(false);
     autoFilledName.current = null; setServiceQuery(''); setSelectedIds([]); setMode('now'); setTime(nowRounded());
     setDate(todayISO()); setStylistId(''); setCheckInNow(true); setTouched(false); setCreated(null);
   }, []);
@@ -221,6 +225,10 @@ export function WalkInModal({ open, onClose, onCreated }: {
     setSelectedIds([...selectedIds, id]);
   };
 
+  const sameName = (a: string, b: string): boolean =>
+    a.trim().replace(/\s+/g, ' ').toLowerCase() === b.trim().replace(/\s+/g, ' ').toLowerCase();
+  const nameDiffers = lookup === 'found' && !!customer && !!fullName.trim() && !sameName(fullName, customer.fullName);
+
   const submit = async () => {
     setTouched(true);
     if (dateChecking || blocking || !resolvedStylist) return;
@@ -232,6 +240,11 @@ export function WalkInModal({ open, onClose, onCreated }: {
         fullName: fullName.trim(), phone, email: email.trim() || undefined, note: note.trim() || undefined,
       });
       let final = res;
+      if (nameDiffers && renameProfile && customer) {
+        await customersApi.update(customer.id, { fullName: fullName.trim() })
+          .then(() => toast.success(`Đã cập nhật tên hồ sơ khách thành "${fullName.trim()}"`))
+          .catch((e: unknown) => toast.warning(`Lịch đã tạo nhưng chưa đổi được tên hồ sơ: ${getErrorMessage(e)}`));
+      }
       if (mode === 'now' && checkInNow) {
         final = await appointmentsApi.checkIn(res.id).catch(() => res);
       }
@@ -311,7 +324,7 @@ export function WalkInModal({ open, onClose, onCreated }: {
                   <UserCheck size={16} /> Khách quen: {customer.fullName}
                 </p>
                 <CustomerMetrics data={customer} className="mt-0.5 text-xs text-emerald-700" />
-                {customer.email && <p className="text-xs text-emerald-700">{customer.email}</p>}
+                {customer.email && <EmailText email={customer.email} className="flex" />}
                 {customer.note && <p className="mt-1 text-xs italic text-emerald-800">Ghi chú: {customer.note}</p>}
                 {customer.noShowCount >= 2 && (
                   <p className="mt-1.5 text-xs font-semibold text-red-600">Lưu ý: khách từng lỡ hẹn {customer.noShowCount} lần.</p>
@@ -352,6 +365,21 @@ export function WalkInModal({ open, onClose, onCreated }: {
               <Input value={fullName} maxLength={80} placeholder="Nguyễn Văn A" invalid={!!shown.fullName}
                      onChange={(e) => setFullName(e.target.value)} />
             </Field>
+            {nameDiffers && customer && (
+              <Notice tone="warning">
+                <p>Số này đã có hồ sơ tên <strong>{customer.fullName}</strong>, khác tên vừa nhập.</p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <Button size="sm" variant="outline" onClick={() => { setFullName(customer.fullName); setRenameProfile(false); }}>
+                    Dùng tên hồ sơ
+                  </Button>
+                  <label className="flex items-center gap-1.5 text-xs">
+                    <input type="checkbox" checked={renameProfile} onChange={(e) => setRenameProfile(e.target.checked)} />
+                    Cập nhật hồ sơ thành “{fullName.trim()}”
+                  </label>
+                </div>
+                {!renameProfile && <p className="mt-1 text-xs">Không chọn cập nhật: lịch hẹn vẫn ghi theo tên hồ sơ cũ.</p>}
+              </Notice>
+            )}
             <Field label="Email (tuỳ chọn)" error={shown.email}>
               <Input type="email" value={email} invalid={!!shown.email} onChange={(e) => setEmail(e.target.value)} />
             </Field>

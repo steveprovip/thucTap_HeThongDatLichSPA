@@ -49,12 +49,11 @@ export interface ShiftBoardProps {
 }
 
 /**
- * Mentor Sprint 2 · mục 2 — Bảng ca làm theo tuần, gọn & dễ đọc:
- *  - mỗi thợ MỘT dòng (ảnh, tên, tổng giờ tuần), mỗi ngày MỘT cột, cột hôm nay được tô nổi;
- *  - ca hiển thị thành "viên" màu theo buổi (sáng / chiều / tối), nghỉ giữa ca là dòng phụ nhỏ;
- *  - ngày tiệm nghỉ được gạch chéo cả cột; nghỉ riêng của thợ là viên đỏ viền đứt;
- *  - nút xoá / thêm chỉ hiện khi rê chuột hoặc focus bàn phím (giảm nhiễu thị giác);
- *  - dòng cuối đếm số thợ trực mỗi ngày.
+ * Bảng ca làm theo tuần — bản GỌN (phản hồi QA 11/10: cả tuần × toàn bộ thợ vừa một màn hình, ít khoảng trắng):
+ *  - mỗi thợ MỘT dòng thấp (ảnh 24px, tên + tổng giờ tuần cùng một khối), mỗi ngày MỘT cột, cột hôm nay tô nổi;
+ *  - ca là "viên" một dòng `08:00–17:00` màu theo buổi; nghỉ giữa ca chỉ là biểu tượng ☕ (rê chuột xem giờ);
+ *  - ngày tiệm nghỉ gạch chéo cả cột; nghỉ riêng của thợ là viên đỏ viền đứt; yêu cầu chờ duyệt viền đứt xanh;
+ *  - nút xoá / thêm chỉ hiện khi rê chuột hoặc focus bàn phím; chú thích màu gộp vào dòng tổng cuối bảng.
  */
 export function ShiftBoard({
   days, stylists, shifts, timeOff, pendingRequests = [], today, canEdit, canManageOff, understaffedDates, onAdd, onRemoveShift, onRemoveOff,
@@ -79,47 +78,31 @@ export function ShiftBoard({
   const staffCount = (date: string) => new Set(shifts.filter((s) => s.workDate === date).map((s) => s.stylistId)).size;
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-card">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-slate-100 px-4 py-2 text-xs text-ink-soft">
-        {(Object.keys(PERIOD_STYLE) as ShiftPeriod[]).map((p) => (
-          <span key={p} className="inline-flex items-center gap-1.5">
-            <span className={`h-2.5 w-2.5 rounded-full ${PERIOD_STYLE[p].dot}`} /> {PERIOD_STYLE[p].label}
-          </span>
-        ))}
-        <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full border border-dashed border-rose-400 bg-rose-50" /> Thợ nghỉ</span>
-        <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-stripes" /> Tiệm nghỉ</span>
-        <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full border border-dashed border-teal-500 bg-white" /> Thợ đăng ký, chờ duyệt</span>
-      </div>
-      <div className="thin-scroll overflow-x-auto">
-        <table className="w-full min-w-[920px] table-fixed border-collapse text-sm">
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-card">
+      <div className="thin-scroll max-h-[calc(100vh-210px)] overflow-auto">
+        <table className="w-full min-w-[760px] table-fixed border-collapse text-sm">
           <colgroup>
-            <col className="w-[200px]" />
+            <col className="w-[150px]" />
             {days.map((d) => <col key={d.date} />)}
           </colgroup>
-          <thead>
-            <tr className="bg-slate-50/80">
-              <th scope="col" className="sticky left-0 z-20 bg-slate-50 px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-ink-muted">
+          <thead className="sticky top-0 z-20">
+            <tr className="bg-slate-50">
+              <th scope="col" className="sticky left-0 z-30 bg-slate-50 px-2 py-1 text-left text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
                 Thợ · giờ/tuần
               </th>
               {days.map((d) => {
                 const isToday = d.date === today;
-                const short = understaffedDates?.has(d.date);
+                const short = understaffedDates?.has(d.date) && !d.closedReason;
                 return (
-                  <th key={d.date} scope="col"
-                      className={`border-l border-slate-100 px-2 py-2 text-left align-top ${isToday ? 'bg-teal-50' : ''}`}>
-                    <span className={`block text-xs font-semibold ${isToday ? 'text-teal-700' : 'text-ink'}`}>
+                  <th key={d.date} scope="col" title={d.closedReason ?? (short ? 'Có khung giờ thiếu thợ' : undefined)}
+                      className={`border-l border-slate-100 px-1.5 py-1 text-left ${isToday ? 'bg-teal-50' : 'bg-slate-50'}`}>
+                    <span className={`flex items-center gap-1 whitespace-nowrap text-xs font-semibold ${isToday ? 'text-teal-700' : 'text-ink'}`}>
                       {DOW_LABELS[new Date(`${d.date}T12:00:00Z`).getUTCDay()]}
-                    </span>
-                    <span className="block text-[11px] font-normal text-ink-muted">
-                      {d.date.slice(8)}/{d.date.slice(5, 7)}{isToday ? ' · Hôm nay' : ''}
+                      <span className="font-normal text-ink-muted">{d.date.slice(8)}/{d.date.slice(5, 7)}</span>
+                      {short && <span className="ml-auto h-2 w-2 shrink-0 rounded-full bg-red-500" aria-label="Thiếu thợ" />}
                     </span>
                     {d.closedReason && (
-                      <span className="mt-1 block truncate rounded bg-slate-200/70 px-1.5 py-0.5 text-[10px] font-medium text-slate-600" title={d.closedReason}>
-                        {d.closedReason}
-                      </span>
-                    )}
-                    {short && !d.closedReason && (
-                      <span className="mt-1 block rounded bg-red-50 px-1.5 py-0.5 text-[10px] font-semibold text-red-700">Thiếu thợ</span>
+                      <span className="block truncate text-[10px] font-medium text-slate-500">{d.closedReason}</span>
                     )}
                   </th>
                 );
@@ -131,12 +114,12 @@ export function ShiftBoard({
               const mins = weekMinutes(st.id);
               return (
                 <tr key={st.id} className="border-t border-slate-100 hover:bg-slate-50/50">
-                  <th scope="row" className="sticky left-0 z-10 bg-white px-3 py-2 text-left font-normal">
-                    <div className="flex items-center gap-2.5">
-                      <StylistAvatar id={st.id} name={st.fullName} url={st.avatarUrl} gender={st.gender} size="h-8 w-8" />
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-semibold text-ink">{st.fullName}</span>
-                        <span className="block text-[11px] text-ink-muted">{mins ? formatDuration(mins) : 'Chưa có ca'}</span>
+                  <th scope="row" className="sticky left-0 z-10 bg-white px-2 py-0.5 text-left font-normal">
+                    <div className="flex items-center gap-1.5">
+                      <StylistAvatar id={st.id} name={st.fullName} url={st.avatarUrl} gender={st.gender} size="h-6 w-6" />
+                      <span className="min-w-0 leading-tight">
+                        <span className="block truncate text-[13px] font-semibold text-ink" title={st.fullName}>{st.fullName}</span>
+                        <span className="block text-[10px] text-ink-muted">{mins ? formatDuration(mins) : 'Chưa có ca'}</span>
                       </span>
                     </div>
                   </th>
@@ -149,64 +132,58 @@ export function ShiftBoard({
                     const empty = !cellShifts.length && !offs.length && !reqs.length;
                     return (
                       <td key={d.date}
-                          className={`group relative border-l border-slate-100 px-1.5 py-1.5 align-top
+                          className={`group relative border-l border-slate-100 px-1 py-0.5 align-middle
                             ${closed ? 'bg-stripes' : ''} ${d.date === today ? 'bg-teal-50/40' : ''}`}>
-                        <div className="flex min-h-[40px] flex-col gap-1">
+                        <div className="flex min-h-[26px] flex-col justify-center gap-0.5">
                           {offs.map((o) => (
-                            <span key={o.id}
-                                  className="flex items-center justify-between gap-1 rounded-md border border-dashed border-rose-300 bg-rose-50 px-1.5 py-1 text-[11px] text-rose-700">
-                              <span className="truncate" title={o.reason ?? undefined}>
-                                Nghỉ {o.startTime ? `${hhmm(o.startTime)}–${hhmm(o.endTime)}` : 'cả ngày'}
-                              </span>
+                            <span key={o.id} title={o.reason ?? undefined}
+                                  className="flex items-center justify-between gap-0.5 rounded border border-dashed border-rose-300 bg-rose-50 px-1 text-[11px] leading-5 text-rose-700">
+                              <span className="truncate">Nghỉ {o.startTime ? `${hhmm(o.startTime)}–${hhmm(o.endTime)}` : 'cả ngày'}</span>
                               {canManageOff && (
                                 <button type="button" onClick={() => onRemoveOff(o)} title="Huỷ khai báo nghỉ"
                                         aria-label={`Huỷ khai báo nghỉ ngày ${o.offDate} của ${st.fullName}`}
-                                        className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-rose-600 opacity-0 hover:bg-rose-100 focus:opacity-100 group-hover:opacity-100">
-                                  <X size={12} />
+                                        className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded text-rose-600 opacity-0 hover:bg-rose-100 focus:opacity-100 group-hover:opacity-100">
+                                  <X size={11} />
                                 </button>
                               )}
                             </span>
                           ))}
                           {cellShifts.map((sh) => {
                             const style = PERIOD_STYLE[shiftPeriod(sh.startTime)];
+                            const brk = sh.breakStart ? `Nghỉ giữa ca ${hhmm(sh.breakStart)}–${hhmm(sh.breakEnd)}` : '';
                             return (
-                              <span key={sh.id} title={sh.note ?? style.label}
-                                    className={`flex items-start justify-between gap-1 rounded-md border-l-[3px] px-1.5 py-1 ${style.pill}`}>
-                                <span className="min-w-0 leading-tight">
-                                  <span className="block text-[12px] font-semibold tabular-nums">{hhmm(sh.startTime)}–{hhmm(sh.endTime)}</span>
-                                  {sh.breakStart && (
-                                    <span className="mt-0.5 flex items-center gap-0.5 text-[10px] opacity-75">
-                                      <Coffee size={10} /> {hhmm(sh.breakStart)}–{hhmm(sh.breakEnd)}
-                                    </span>
-                                  )}
+                              <span key={sh.id} title={[style.label, brk, sh.note].filter(Boolean).join(' · ')}
+                                    className={`flex items-center justify-between gap-0.5 rounded border-l-[3px] px-1 leading-5 ${style.pill}`}>
+                                <span className="flex min-w-0 items-center gap-0.5 text-[11px] font-semibold tabular-nums">
+                                  {hhmm(sh.startTime)}–{hhmm(sh.endTime)}
+                                  {brk && <Coffee size={10} className="shrink-0 opacity-60" aria-label={brk} />}
                                 </span>
                                 {canEdit && (
                                   <button type="button" onClick={() => onRemoveShift(sh)} title="Xoá ca"
                                           aria-label={`Xoá ca ${hhmm(sh.startTime)}–${hhmm(sh.endTime)} ngày ${sh.workDate} của ${st.fullName}`}
-                                          className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-red-600 opacity-0 hover:bg-white/70 focus:opacity-100 group-hover:opacity-100">
-                                    <Trash2 size={12} />
+                                          className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded text-red-600 opacity-0 hover:bg-white/70 focus:opacity-100 group-hover:opacity-100">
+                                    <Trash2 size={11} />
                                   </button>
                                 )}
                               </span>
                             );
                           })}
                           {reqs.map((r) => (
-                            <span key={r.id} title={r.note ?? 'Thợ tự đăng ký, chờ duyệt'}
-                                  className="rounded-md border border-dashed border-teal-500 bg-white px-1.5 py-1 text-[11px] text-teal-800">
-                              <span className="block font-semibold">{r.kind === 'shift' ? `${hhmm(r.startTime)}–${hhmm(r.endTime)}` : 'Xin nghỉ'}</span>
-                              <span className="block text-[10px] opacity-75">Chờ duyệt</span>
+                            <span key={r.id} title={`${r.note ?? 'Thợ tự đăng ký'} · chờ duyệt`}
+                                  className="truncate rounded border border-dashed border-teal-500 bg-white px-1 text-[11px] leading-5 text-teal-800">
+                              {r.kind === 'shift' ? `${hhmm(r.startTime)}–${hhmm(r.endTime)}` : 'Xin nghỉ'} ?
                             </span>
                           ))}
                           {canEdit && !closed && (
                             <button type="button" onClick={() => onAdd(st.id, d.date)}
                                     aria-label={`Thêm ca cho ${st.fullName} ngày ${d.date}`}
-                                    className={`flex items-center justify-center rounded-md border border-dashed border-slate-300 text-slate-400 transition
+                                    className={`flex items-center justify-center rounded border border-dashed border-slate-300 text-slate-400 transition
                                       hover:border-teal-500 hover:text-teal-600 focus:opacity-100
-                                      ${empty ? 'h-9 opacity-40 group-hover:opacity-100' : 'h-5 opacity-0 group-hover:opacity-100'}`}>
-                              <Plus size={13} />
+                                      ${empty ? 'h-6 opacity-30 group-hover:opacity-100' : 'absolute right-0.5 top-0.5 h-4 w-4 border-0 opacity-0 group-hover:opacity-100'}`}>
+                              <Plus size={12} />
                             </button>
                           )}
-                          {!canEdit && empty && !closed && <span className="pt-2 text-center text-xs text-slate-300">—</span>}
+                          {!canEdit && empty && !closed && <span className="text-center text-xs text-slate-300">—</span>}
                         </div>
                       </td>
                     );
@@ -215,13 +192,13 @@ export function ShiftBoard({
               );
             })}
           </tbody>
-          <tfoot>
-            <tr className="border-t border-slate-200 bg-slate-50/80 text-xs">
-              <th scope="row" className="sticky left-0 z-10 bg-slate-50 px-3 py-2 text-left font-semibold text-ink-soft">Số thợ trực</th>
+          <tfoot className="sticky bottom-0 z-20">
+            <tr className="border-t border-slate-200 bg-slate-50 text-xs">
+              <th scope="row" className="sticky left-0 z-30 bg-slate-50 px-2 py-1 text-left font-semibold text-ink-soft">Số thợ trực</th>
               {days.map((d) => {
                 const n = staffCount(d.date);
                 return (
-                  <td key={d.date} className="border-l border-slate-100 px-2 py-2">
+                  <td key={d.date} className="border-l border-slate-100 px-1.5 py-1">
                     {d.closedReason ? <span className="text-ink-muted">—</span> : (
                       <span className={`font-semibold ${n === 0 ? 'text-red-600' : n === 1 ? 'text-amber-700' : 'text-emerald-700'}`}>
                         {n} thợ
@@ -233,6 +210,18 @@ export function ShiftBoard({
             </tr>
           </tfoot>
         </table>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 border-t border-slate-100 px-2 py-1 text-[11px] text-ink-soft">
+        {(Object.keys(PERIOD_STYLE) as ShiftPeriod[]).map((p) => (
+          <span key={p} className="inline-flex items-center gap-1">
+            <span className={`h-2 w-2 rounded-full ${PERIOD_STYLE[p].dot}`} /> {PERIOD_STYLE[p].label}
+          </span>
+        ))}
+        <span className="inline-flex items-center gap-1"><Coffee size={10} /> Có nghỉ giữa ca</span>
+        <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full border border-dashed border-rose-400 bg-rose-50" /> Thợ nghỉ</span>
+        <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-stripes" /> Tiệm nghỉ</span>
+        <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full border border-dashed border-teal-500 bg-white" /> Chờ duyệt</span>
+        <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-red-500" /> Thiếu thợ</span>
       </div>
     </div>
   );

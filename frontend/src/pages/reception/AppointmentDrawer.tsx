@@ -8,10 +8,11 @@ import {
 import { appointmentsApi, getErrorMessage, stylistsApi } from '@/api';
 import type { Appointment, AppointmentStatus, Availability, Stylist, VisitHistoryItem } from '@/types';
 import {
-  BackButton, Button, ConfirmDialog, CustomerMetrics, Field, Modal, Notice, Select, StatusBadge, Textarea,
+  BackButton, Button, ConfirmDialog, CustomerMetrics, EmailText, Field, Modal, Notice, Select, StatusBadge, Textarea,
 } from '@/components';
 import { formatDate, formatDateTime, formatDuration, formatTime, salonClosedMessage } from '@/utils/format';
 import { historyCaption } from '@/utils/customerMetrics';
+import { describeAppointmentChange } from '@/utils/opsHelpers';
 import { STATUS_LABELS } from '@/utils/constants';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
@@ -192,6 +193,7 @@ export function AppointmentDrawer({ appointment, onClose, onChanged }: Appointme
               {a.customer.phoneMasked ? a.customer.phone : <a href={`tel:${a.customer.phone}`} className="hover:underline">{a.customer.phone}</a>}
               {a.customer.phoneMasked && <span className="text-xs text-ink-muted">(đã che theo quyền)</span>}
             </p>
+            {a.customer.email && <EmailText email={a.customer.email} className="mt-1 flex" />}
             <CustomerMetrics data={a.customer} className="mt-1 text-xs text-ink-muted" />
             {a.customer.noShowCount >= 2 && (
               <Notice tone="danger" className="mt-2">Khách đã lỡ hẹn {a.customer.noShowCount} lần — nên gọi xác nhận trước.</Notice>
@@ -247,9 +249,14 @@ export function AppointmentDrawer({ appointment, onClose, onChanged }: Appointme
             <details className="rounded-xl border border-slate-200 p-3.5">
               <summary className="flex cursor-pointer items-center gap-2 text-sm font-semibold"><Clock size={15} /> Lịch sử thay đổi</summary>
               <ul className="mt-2 space-y-1 text-xs text-ink-muted">
-                {a.changes.map((c) => (
-                  <li key={c.id}>{formatDateTime(c.createdAt)} — {c.changedByName}: {c.field} {c.oldValue} → {c.newValue}</li>
-                ))}
+                {a.changes.map((c) => {
+                  const d = describeAppointmentChange(c);
+                  return (
+                    <li key={c.id}>
+                      {formatDateTime(c.createdAt)} — {c.changedByName}: <span className="font-medium text-ink-soft">{d.label}</span> {d.from} → {d.to}
+                    </li>
+                  );
+                })}
               </ul>
             </details>
           )}

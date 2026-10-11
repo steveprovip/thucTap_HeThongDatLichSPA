@@ -46,14 +46,26 @@ export function DayTimelinePage() {
     setParams(d === todayISO() ? {} : { date: d }, { replace: true });
   }, [setParams]);
 
+  // QA 11/10: đổi ngày KHÔNG thay lưới bằng khung chờ (mất vị trí cuộn ngang/dọc, giật trang) — giữ lưới cũ mờ đi
+  // tới khi dữ liệu ngày mới về. `seq` bỏ phản hồi cũ khi bấm qua nhiều ngày liên tiếp.
+  const [switching, setSwitching] = useState(false);
+  const hasData = useRef(false);
+  const seq = useRef(0);
   const load = useCallback(async (d: string, silent = false) => {
-    if (!silent) setLoading(true);
+    const my = ++seq.current;
+    if (!silent) {
+      if (hasData.current) setSwitching(true);
+      else setLoading(true);
+    }
     try {
-      setData(await appointmentsApi.timeline(d));
+      const t = await appointmentsApi.timeline(d);
+      if (my !== seq.current) return;
+      setData(t);
+      hasData.current = true;
     } catch (e) {
-      toast.error(getErrorMessage(e));
+      if (my === seq.current) toast.error(getErrorMessage(e));
     } finally {
-      setLoading(false);
+      if (my === seq.current) { setLoading(false); setSwitching(false); }
     }
   }, [toast]);
 
@@ -164,7 +176,8 @@ export function DayTimelinePage() {
           <p className="font-semibold">Chưa có thợ nào đang làm việc</p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-card">
+        <div aria-busy={switching}
+             className={`overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-card transition-opacity ${switching ? 'opacity-60' : ''}`}>
           <div ref={scrollRef} className="thin-scroll max-h-[calc(100vh-280px)] overflow-auto">
             <div className="flex min-w-max lg:min-w-full">
               {/* Cột giờ, dính bên trái */}

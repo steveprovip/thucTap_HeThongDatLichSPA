@@ -302,6 +302,8 @@ export interface SalonInfo {
   zaloUrl: string | null;
   websiteUrl: string | null;
   mapUrl: string;
+  /** Cấu hình form đặt lịch online (BOOKING_REQUIRE_EMAIL). Bản backend cũ không trả → coi như không bắt buộc. */
+  booking?: { requireEmail: boolean };
   /** Tài khoản nhận chuyển khoản VietQR, cấu hình lúc chạy (null = chưa cấu hình). */
   bank: { bin: string; accountNo: string; accountName: string } | null;
   openingHours: { dayOfWeek: number; dayLabel: string; isClosed: boolean; openTime: string; closeTime: string }[];
@@ -642,4 +644,24 @@ export interface SlotDensityReport {
     total: number; noShow: number; cancelled: number; completed: number;
     noShowRate: number; cancelRate: number; completionRate: number;
   };
+}
+
+// ----------------------------------------------------------- Part 5: Trợ lý AI
+export interface AssistantHour { dow: number; dayLabel: string; hour: number; label: string; bookings: number }
+export interface AssistantInsights {
+  windowDays: number;
+  goldenHours: AssistantHour[];
+  quietHours: AssistantHour[];
+  combos: { names: string[]; count: number; totalDuration: number; totalPrice: number; priceText: string }[];
+  topServices: { name: string; count: number }[];
+}
+export interface AssistantShiftGap {
+  date: string; dayText: string; startTime: string; endTime: string; minCount: number; hint: string | null;
+  candidates: { stylistId: string; fullName: string; weekMinutes: number }[];
+}
+export interface AssistantChatReply {
+  intent: 'shifts' | 'holidays' | 'golden' | 'combo' | 'general';
+  answer: string;
+  source: 'llm' | 'rules';
+  model: string | null;
 }

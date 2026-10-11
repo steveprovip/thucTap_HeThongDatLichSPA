@@ -6,6 +6,7 @@ import { appointmentsApi, catalogApi, getErrorMessage, stylistsApi } from '@/api
 import { DEMO_MODE } from '@/api/mockBackend';
 import type { Appointment, ServiceCategory, ServiceItem, Shift, Stylist, StylistGender } from '@/types';
 import {
+  EmailText,
   Button, Card, EmptyState, Field, Input, Modal, Notice, SectionTitle, Spinner, StylistAvatar, Textarea, Toggle,
   TempPasswordDialog, type TempCredential,
 } from '@/components';
@@ -292,7 +293,7 @@ export function StylistsPage() {
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-bold">{s.fullName}</p>
                     <p className="text-xs text-ink-muted">{s.phone ?? 'Chưa có số điện thoại'}</p>
-                    <p className="truncate text-xs text-ink-muted">{s.email ?? 'Chưa có tài khoản đăng nhập'}</p>
+                    <EmailText email={s.email} empty="Chưa có tài khoản đăng nhập" className="block" />
                     <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                       <ActiveChip active={s.isActive} />
                       {s.avgRating !== null && (
