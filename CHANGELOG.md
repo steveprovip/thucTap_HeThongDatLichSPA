@@ -3,7 +3,7 @@
 Định dạng theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), phiên bản theo [Semantic Versioning](https://semver.org/lang/vi/).
 Launcher (biểu tượng Hương Sen Salon / `HoYoSalon.bat`) đọc tệp này cho mục **Có gì mới** và **Nhật ký cập nhật**.
 
-## [Chưa phát hành] - 2026-10-12
+## [2.1.0] - 2026-10-12
 
 ### Trợ lý AI — trả lời đúng, không gợi ý linh tinh
 - Câu số liệu / chính sách (bao nhiêu dịch vụ, rẻ nhất, đắt nhất, nhanh / lâu nhất, theo nhóm, dịch vụ hot, giá một dịch vụ, bảng giá, giờ mở cửa, cọc, huỷ lịch, thanh toán, khuyến mãi) trả lời thẳng từ dữ liệu thật — mô hình 4B không còn đếm sai ("60 dịch vụ") hay làm mất thứ hạng.
