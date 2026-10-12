@@ -68,7 +68,7 @@ export function WorkingHoursPage() {
       setLoading(false);
     }
   }, [toast]);
-
+//
   useEffect(() => { void load(); }, [load]);
 
   const dirty = JSON.stringify(rows) !== JSON.stringify(saved);
