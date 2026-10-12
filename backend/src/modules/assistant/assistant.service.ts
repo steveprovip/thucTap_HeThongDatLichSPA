@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import { formatVnd } from '../../common/utils/currency.util';
@@ -12,7 +12,8 @@ import {
 } from './assistant-rules';
 import { findLocalAiDir, isLoopbackUrl, launchLocalAi } from './local-ai-launcher';
 import {
-  CatalogItem, CUSTOMER_SYSTEM_PROMPT, customerContextForLlm, CustomerReply, customerRuleReply, SalonFacts,
+  CATALOG_FACT_INTENTS, CatalogItem, CUSTOMER_SYSTEM_PROMPT, customerContextForLlm, CustomerReply, customerRuleReply, SalonFacts,
+  sanitizeLlmAnswer,
 } from './customer-assistant-rules';
 import { callLlm, DEFAULT_LOCAL_AI_URL, LlmConfig, LlmMessage, pickModel, probeLocalServer } from './llm-client';
 
@@ -32,6 +33,8 @@ export interface AssistantStatus {
   localAvailable: boolean;
   /** Đang khởi động AI local (đã bật chay_ai_local.cmd, chờ model nạp xong). */
   localStarting: boolean;
+  /** Máy có model nhưng AI local không chạy (đã tắt / tự bật không lên) → giao diện hiện nút "Khởi động lại AI". */
+  localLost: boolean;
 }
 
 export interface AssistantInsights {
@@ -60,12 +63,16 @@ export interface AssistantChatResult {
 }
 
 const CACHE_MS = 5 * 60_000;
+/** Câu hỏi số liệu của trợ lý nhân sự trả lời thẳng bằng dữ liệu thật (không qua mô hình ngôn ngữ). */
+const STAFF_FACT_INTENTS: ReadonlySet<AssistantIntent> = new Set<AssistantIntent>(['today', 'working_stylists']);
 const INSIGHT_DAYS = 90;
 /** Dò lại máy chủ AI local sau: 30 giây khi đang chạy, 10 giây khi chưa thấy / vừa lỗi (bật model lên là dùng ngay). */
 const PROBE_OK_MS = 30_000;
 const PROBE_MISS_MS = 10_000;
 /** Nạp model 4B lên card đồ hoạ mất 20–90 giây: không bật lại chay_ai_local.cmd lần nữa trong khoảng này. */
 const AUTOSTART_COOLDOWN_MS = 3 * 60_000;
+/** Tự bật lại tối đa 3 lần liên tiếp không thành công (model hỏng / thiếu VRAM…) rồi chờ người bấm "Khởi động lại AI". */
+const MAX_AUTO_STARTS = 3;
 
 /**
  * Part 5 — Trợ lý AI cho chủ tiệm & lễ tân. Lõi là SỐ LIỆU THẬT (giờ vàng, combo, khung thiếu thợ, ngày lễ) tính bằng
@@ -73,7 +80,7 @@ const AUTOSTART_COOLDOWN_MS = 3 * 60_000;
  * của khách cho mô hình. (Excel đặt "ML gợi ý" ngoài phạm vi bản đầu → đây là phần mở rộng theo yêu cầu mentor.)
  */
 @Injectable()
-export class AssistantService {
+export class AssistantService implements OnApplicationBootstrap {
   private readonly logger = new Logger(AssistantService.name);
   private cache: { at: number; ctx: AssistantContext } | null = null;
 
@@ -122,13 +129,16 @@ export class AssistantService {
       if (cfg && !this.probe?.cfg) this.logger.log(`Phát hiện AI local ${cfg.model} tại ${this.localUrl} — chuyển câu hỏi cho mô hình`);
       if (!cfg && this.probe?.cfg) this.logger.warn('AI local đã tắt — trợ lý trả lời theo luật');
       this.probe = { at: Date.now(), cfg };
-      if (cfg) this.autostartAt = 0;
-      else if (this.config.get<boolean>('ai.autostart')) this.startLocal(false);
+      if (cfg) { this.autostartAt = 0; this.autoAttempts = 0; this.wasUp = true; }
+      else if (this.config.get<boolean>('ai.autostart') && this.autoAttempts < MAX_AUTO_STARTS) this.startLocal(false);
     }
     return this.probe?.cfg ?? null;
   }
 
   private autostartAt = 0;
+  /** AI local từng chạy trong phiên backend này (để phân biệt "mất kết nối" với "chưa bật bao giờ"). */
+  private wasUp = false;
+  private autoAttempts = 0;
 
   /** Thư mục model_AI_local nếu máy này bật được AI local (chế độ auto + địa chỉ localhost + đã tải model). */
   private localDir(): string | null {
@@ -151,9 +161,21 @@ export class AssistantService {
     const started = launchLocalAi(dir);
     if (!started) return { started: false, starting: false, message: 'Hệ điều hành này chưa hỗ trợ bật AI local một chạm' };
     this.autostartAt = Date.now();
+    this.autoAttempts = manual ? 0 : this.autoAttempts + 1; // bấm tay: cho tự phục hồi thêm một vòng nữa
     this.probe = { at: Date.now(), cfg: null }; // dò lại sau 10 giây
     this.logger.log(`${manual ? 'Người dùng bật' : 'Tự bật lại'} AI local: ${dir}`);
     return { started: true, starting: true, message: 'Đang bật AI local, khoảng 30–90 giây nữa trợ lý sẽ trả lời bằng AI' };
+  }
+
+  /**
+   * Zero-touch: backend vừa khởi động (thường ngay sau khi bật lại máy) → nếu máy này đã tải model_AI_local mà cổng AI
+   * chưa mở thì bật ngầm chay_ai_local.cmd luôn, không đợi có người hỏi trợ lý hay bấm nút. Chạy nền, không chặn khởi động.
+   */
+  onApplicationBootstrap(): void {
+    if (!this.config.get<boolean>('ai.autostart') || !this.localDir()) return;
+    void this.resolveLlm()
+      .then((cfg) => { if (cfg) this.logger.log(`AI local ${cfg.model} đã sẵn sàng khi khởi động`); })
+      .catch(() => undefined);
   }
 
   /** Mô hình vừa lỗi / quá giờ: chế độ auto tạm dùng luật 10 giây rồi mới dò lại (không bắt khách chờ timeout liên tiếp). */
@@ -164,6 +186,8 @@ export class AssistantService {
   async status(): Promise<AssistantStatus> {
     const s = this.settings;
     const cfg = await this.resolveLlm();
+    const dir = cfg ? null : this.localDir();
+    const starting = !cfg && Date.now() - this.autostartAt < AUTOSTART_COOLDOWN_MS;
     return {
       mode: cfg ? 'llm' : 'rules',
       setting: s.provider,
@@ -171,8 +195,10 @@ export class AssistantService {
       model: cfg?.model ?? null,
       localDetected: s.provider === 'auto' && !!cfg,
       localUrl: s.provider === 'auto' ? this.localUrl : null,
-      localAvailable: !cfg && !!this.localDir(),
-      localStarting: !cfg && Date.now() - this.autostartAt < AUTOSTART_COOLDOWN_MS,
+      localAvailable: !cfg && !!dir,
+      localStarting: starting,
+      // Mất kết nối = máy có model nhưng AI không chạy: đã từng chạy rồi tắt, đã tự bật mà không lên, hoặc tắt tự bật
+      localLost: !cfg && !!dir && !starting && (this.wasUp || this.autostartAt > 0 || !this.config.get<boolean>('ai.autostart')),
     };
   }
 
@@ -360,14 +386,17 @@ export class AssistantService {
     const ctx: AssistantContext = { ...cached, today, workingToday };
     const fallback = ruleAnswer(intent, ctx, { userName: opts.userName, now: new Date() });
     const base = { intent, quickReplies: quickReplies(intent) };
+    // Số liệu hôm nay / danh sách thợ đã chính xác → trả thẳng, không để mô hình nhỏ diễn đạt lại (hay sai số, rơi tên)
+    if (STAFF_FACT_INTENTS.has(intent)) return { ...base, answer: fallback, source: 'rules', model: null };
     const cfg = await this.resolveLlm();
     if (!cfg) return { ...base, answer: fallback, source: 'rules', model: null };
 
-    const answer = await callLlm(cfg, [
+    const raw = await callLlm(cfg, [
       { role: 'system', content: `${SYSTEM_PROMPT}\nNgười đang trò chuyện: ${opts.userName ?? 'nhân viên tiệm'}.\nDỮ LIỆU:\n${contextForLlm(ctx)}` },
       ...this.history(opts.history),
       { role: 'user', content: `${message.trim()}\n\n(Gợi ý theo luật, dùng nếu phù hợp: ${fallback})` },
     ]);
+    const answer = raw ? sanitizeLlmAnswer(raw) : '';
     if (!answer) {
       this.logger.warn(`Mô hình ${cfg.provider}/${cfg.model} không phản hồi kịp — dùng câu trả lời theo luật`);
       this.markLlmDown();
@@ -411,14 +440,18 @@ export class AssistantService {
   async customerChat(message: string, history: ChatTurn[] = []): Promise<CustomerChatResult> {
     const { catalog, hotIds, facts } = await this.publicData();
     const rule = customerRuleReply(message, catalog, hotIds, facts, new Date());
+    // Deterministic pre-query: đếm / rẻ nhất / đắt nhất / nhanh nhất / theo nhóm → tính trên danh mục thật, không gọi mô hình
+    // (mô hình 4B từng trả lời "60 dịch vụ" khi tiệm có 43, "rẻ nhất 100.000 ₫" khi có dịch vụ 90.000 ₫)
+    if (CATALOG_FACT_INTENTS.has(rule.intent)) return { ...rule, source: 'rules', model: null };
     const cfg = await this.resolveLlm();
     if (!cfg) return { ...rule, source: 'rules', model: null };
 
-    const answer = await callLlm(cfg, [
+    const raw = await callLlm(cfg, [
       { role: 'system', content: `${CUSTOMER_SYSTEM_PROMPT}\n${customerContextForLlm(catalog, hotIds, facts)}` },
       ...this.history(history),
       { role: 'user', content: `${message.trim()}\n\n(Gợi ý theo luật, dùng nếu phù hợp: ${rule.answer})` },
     ]);
+    const answer = raw ? sanitizeLlmAnswer(raw) : '';
     if (!answer) {
       this.markLlmDown();
       return { ...rule, source: 'rules', model: null };

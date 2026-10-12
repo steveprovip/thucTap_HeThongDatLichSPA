@@ -675,6 +675,8 @@ export interface AssistantStatus {
   localAvailable?: boolean;
   /** Đang khởi động AI local (model đang nạp). */
   localStarting?: boolean;
+  /** Máy có model nhưng AI local không chạy → hiện nút "Khởi động lại AI". */
+  localLost?: boolean;
 }
 /** TASK v4 · NV1: số liệu tổng hợp hôm nay cho chế độ "Phân tích & số liệu". */
 export interface AssistantToday {

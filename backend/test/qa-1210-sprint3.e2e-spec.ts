@@ -127,6 +127,29 @@ describe('QA 12/10 — voucher PATCH, AI thợ đang trực, duyệt nghỉ, ema
     });
   });
 
+  describe('AI tư vấn khách — số lượng / rẻ nhất tính trên danh mục thật (không bịa)', () => {
+    it('"có bao nhiêu dịch vụ", "dịch vụ rẻ nhất là" khớp đúng /api/public/catalog, thẻ gợi ý bám câu hỏi', async () => {
+      const groups = (await request(server).get('/api/public/catalog').expect(200)).body.data as
+        { categoryName: string; services: { id: string; name: string; price: number; durationMinutes: number }[] }[];
+      const all = groups.flatMap((g) => g.services);
+      expect(all.length).toBeGreaterThan(1);
+      const minPrice = Math.min(...all.map((s) => s.price));
+
+      const count = await request(server).post('/api/public/assistant/chat').send({ message: 'có bao nhiêu dịch vụ ?' }).expect(200);
+      expect(count.body.data).toMatchObject({ intent: 'count_services', source: 'rules' });
+      expect(count.body.data.answer).toContain(`có ${all.length} dịch vụ đặt online, chia thành ${groups.filter((g) => g.services.length).length} danh mục`);
+
+      const cheap = await request(server).post('/api/public/assistant/chat').send({ message: 'dịch vụ rẻ nhất là' }).expect(200);
+      expect(cheap.body.data.intent).toBe('cheapest_service');
+      expect(cheap.body.data.suggestions[0].price).toBe(minPrice);
+      expect(cheap.body.data.answer).toContain(cheap.body.data.suggestions[0].name);
+      expect(cheap.body.data.answer).not.toMatch(/\*\*|\[Đặt lịch\]/);
+
+      const pricey = await request(server).post('/api/public/assistant/chat').send({ message: 'dịch vụ đắt nhất' }).expect(200);
+      expect(pricey.body.data.suggestions[0].price).toBe(Math.max(...all.map((s) => s.price)));
+    });
+  });
+
   describe('Sprint 3 · mục 1 — Lễ tân duyệt yêu cầu xin nghỉ', () => {
     it('lễ tân duyệt / từ chối được yêu cầu nghỉ, nhưng không duyệt được đăng ký ca làm', async () => {
       const me = await request(server).get('/api/auth/me').set(as('stylist')).expect(200);

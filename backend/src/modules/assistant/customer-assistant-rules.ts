@@ -25,7 +25,19 @@ export interface SalonFacts {
 }
 
 export type CustomerIntent =
-  | 'greeting' | 'identity' | 'help' | 'thanks' | 'bye' | 'price_list' | 'hot' | 'book' | 'hours' | 'contact' | 'need' | 'unknown';
+  | 'greeting' | 'identity' | 'help' | 'thanks' | 'bye' | 'price_list' | 'hot' | 'book' | 'hours' | 'contact' | 'need' | 'unknown'
+  | CatalogFactIntent;
+
+/**
+ * Câu hỏi THỐNG KÊ / SO SÁNH trên danh mục ("có bao nhiêu dịch vụ", "dịch vụ rẻ nhất", "làm nhanh nhất"…): trả lời bằng
+ * phép tính trên danh mục thật, KHÔNG chuyển cho mô hình ngôn ngữ (mô hình nhỏ đếm / so sánh hay bịa: "60 dịch vụ").
+ */
+export type CatalogFactIntent =
+  | 'count_services' | 'cheapest_service' | 'priciest_service' | 'fastest_service' | 'longest_service' | 'filter_by_group';
+
+export const CATALOG_FACT_INTENTS: ReadonlySet<CustomerIntent> = new Set<CustomerIntent>([
+  'count_services', 'cheapest_service', 'priciest_service', 'fastest_service', 'longest_service', 'filter_by_group',
+]);
 
 export interface CustomerReply {
   intent: CustomerIntent;
@@ -82,8 +94,50 @@ export function matchServices(message: string, catalog: CatalogItem[], limit = 4
   return scored.filter((x) => x.score * 2 >= top).slice(0, limit).map((x) => x.s);
 }
 
+/** Nhóm dịch vụ khách hay hỏi → nhận diện trong câu hỏi (`ask`) và trong tên danh mục / tên dịch vụ (`cat`). */
+const GROUPS: { label: string; ask: RegExp; cat: RegExp }[] = [
+  { label: 'combo', ask: /\b(combo|goi combo|lieu trinh|goi tiet kiem)\b/, cat: /\b(combo|lieu trinh)\b/ },
+  { label: 'gội đầu', ask: /\b(goi dau|goi duong|duong sinh)\b/, cat: /\bgoi dau\b/ },
+  { label: 'tóc', ask: /\b(toc|cat toc|uon|nhuom|duoi toc)\b/, cat: /\b(toc|uon|nhuom)\b/ },
+  { label: 'chăm sóc da', ask: /\b(cham soc da|da mat|dich vu da|lam da|skin ?care|facial)\b/, cat: /\bcham soc da\b/ },
+  { label: 'massage', ask: /\b(massage|mat xa|matxa|body)\b/, cat: /\b(massage|body)\b/ },
+  { label: 'móng', ask: /\b(nail|mong|mong tay|mong chan|manicure|pedicure)\b/, cat: /\b(nail|mong)\b/ },
+  { label: 'trang điểm', ask: /\b(trang diem|make ?up|noi mi)\b/, cat: /\b(trang diem|noi mi)\b/ },
+];
+
+const FACT_RE: { intent: Exclude<CatalogFactIntent, 'filter_by_group'>; re: RegExp }[] = [
+  { intent: 'count_services', re: /(bao nhieu|may|tong (cong|so)|so luong)( loai| cai| goi)? (dich vu|danh muc|nhom)|(dich vu|danh muc)( \w+){0,3} (co )?(bao nhieu|may)\b|co (tat ca|tong cong) bao nhieu/ },
+  { intent: 'cheapest_service', re: /(re nhat|gia (thap|mem|re) nhat|thap nhat|it tien nhat|binh dan nhat|tiet kiem nhat)/ },
+  // "được đặt nhất" (= nhiều người đặt) cũng gập thành "dat nhat" → không phải hỏi giá đắt nhất
+  { intent: 'priciest_service', re: /((?<!(duoc|hay|khach|nguoi) )dat nhat|gia cao nhat|mac nhat|dat tien nhat|cao cap nhat|vip nhat|xin nhat|sang nhat)/ },
+  { intent: 'fastest_service', re: /(nhanh nhat|it thoi gian nhat|ngan nhat|lam nhanh nhat|mat it thoi gian)/ },
+  { intent: 'longest_service', re: /(lau nhat|dai nhat|ton (nhieu )?thoi gian nhat|nhieu thoi gian nhat|mat nhieu thoi gian nhat)/ },
+];
+const LIST_RE = /(co (nhung )?(dich vu|gi)|nhung dich vu|cac dich vu|liet ke|danh sach|gom (nhung )?gi|bao gom|co nhung gi|xem (cac )?dich vu)/;
+
+/** Nhóm dịch vụ khách nhắc tới trong câu hỏi (vd. "dịch vụ móng rẻ nhất") — null nếu không nhắc / nhóm không có dịch vụ. */
+export function groupScope(message: string, catalog: CatalogItem[]): { label: string; items: CatalogItem[] } | null {
+  const m = fold(message);
+  for (const g of GROUPS) {
+    if (!g.ask.test(m)) continue;
+    const items = catalog.filter((s) => g.cat.test(fold(s.categoryName)) || (g.label === 'combo' && g.cat.test(fold(s.name))));
+    if (items.length) return { label: g.label, items };
+  }
+  return null;
+}
+
+export function catalogFactIntent(message: string, catalog: CatalogItem[]): CatalogFactIntent | null {
+  const m = fold(message);
+  const fact = FACT_RE.find((f) => f.re.test(m));
+  if (fact) return fact.intent;
+  if (LIST_RE.test(m) && groupScope(message, catalog)) return 'filter_by_group';
+  return null;
+}
+
 export function detectCustomerIntent(message: string, catalog: CatalogItem[]): { intent: CustomerIntent; matches: CatalogItem[] } {
   const m = fold(message);
+  const fact = catalogFactIntent(message, catalog);
+  if (fact) return { intent: fact, matches: [] };
   const matches = matchServices(message, catalog);
   if (/(bang gia|xem gia|gia ca|price|menu|danh sach dich vu|co nhung dich vu|tat ca dich vu)/.test(m)) return { intent: 'price_list', matches };
   if (/(hot|noi bat|pho bien|ban chay|nhieu nguoi|dat nhieu|duoc yeu thich|best ?seller|nen thu)/.test(m)) return { intent: 'hot', matches };
@@ -100,6 +154,68 @@ export function detectCustomerIntent(message: string, catalog: CatalogItem[]): {
 const QUICK = ['Xem bảng giá', 'Dịch vụ hot', 'Đặt lịch ngay'];
 const line = (s: CatalogItem): string => `• ${s.name} — ${s.durationMinutes} phút · ${s.priceText}`;
 
+/** Thống kê danh mục dùng chung cho câu trả lời theo luật và cho khối tóm tắt gửi mô hình ngôn ngữ. */
+export function catalogStats(catalog: CatalogItem[]) {
+  const byPrice = [...catalog].sort((a, b) => a.price - b.price || a.durationMinutes - b.durationMinutes || a.name.localeCompare(b.name));
+  const byTime = [...catalog].sort((a, b) => a.durationMinutes - b.durationMinutes || a.price - b.price || a.name.localeCompare(b.name));
+  const groups = new Map<string, number>();
+  for (const s of catalog) groups.set(s.categoryName, (groups.get(s.categoryName) ?? 0) + 1);
+  return {
+    total: catalog.length, groups, byPrice, byTime,
+    cheapest: byPrice[0] ?? null, priciest: byPrice[byPrice.length - 1] ?? null,
+    fastest: byTime[0] ?? null, longest: byTime[byTime.length - 1] ?? null,
+  };
+}
+
+/** Câu trả lời cho câu hỏi thống kê / so sánh — tính trên danh mục thật, gợi ý đúng dịch vụ được nói tới. */
+function catalogFactReply(intent: CatalogFactIntent, message: string, catalog: CatalogItem[], shop: string): { answer: string; suggestions: CatalogItem[] } {
+  const scope = groupScope(message, catalog);
+  const items = scope?.items ?? catalog;
+  const where = scope ? ` trong nhóm ${scope.label}` : '';
+  if (!items.length) return { answer: 'Hiện tiệm chưa mở dịch vụ nào để đặt online, bạn gọi hotline giúp mình nhé.', suggestions: [] };
+  const st = catalogStats(items);
+  /** Phần tử đứng đầu theo tiêu chí + các dịch vụ BẰNG nó (cùng giá / cùng thời lượng) + 2 lựa chọn kế tiếp. */
+  const pick = (sorted: CatalogItem[], key: (s: CatalogItem) => number) => {
+    const ties = sorted.filter((s) => key(s) === key(sorted[0]));
+    return { ties, next: sorted.slice(ties.length, ties.length + 2) };
+  };
+  const extremes = (sorted: CatalogItem[], key: (s: CatalogItem) => number, title: string) => {
+    const { ties, next } = pick(sorted, key);
+    const head = ties.length > 1
+      ? `Có ${ties.length} dịch vụ ${title}${where}:\n${ties.slice(0, 4).map(line).join('\n')}`
+      : `Dịch vụ ${title}${where} là ${ties[0].name} — ${ties[0].priceText}, ${ties[0].durationMinutes} phút.`;
+    const more = next.length ? `\nTiếp theo:\n${next.map(line).join('\n')}` : '';
+    return { answer: `${head}${more}\nBấm "Chọn" rồi "Đặt lịch" nếu bạn muốn làm dịch vụ này nhé.`, suggestions: [...ties.slice(0, 3), ...next].slice(0, 3) };
+  };
+  switch (intent) {
+    case 'count_services': {
+      if (scope) {
+        return {
+          answer: `Nhóm ${scope.label} hiện có ${items.length} dịch vụ:\n${st.byPrice.slice(0, 8).map(line).join('\n')}${items.length > 8 ? `\n…và ${items.length - 8} dịch vụ khác` : ''}`,
+          suggestions: st.byPrice.slice(0, 3),
+        };
+      }
+      const groups = Array.from(st.groups.entries()).map(([name, n]) => `• ${name}: ${n} dịch vụ`);
+      return {
+        answer: `Hiện ${shop} có ${st.total} dịch vụ đặt online, chia thành ${st.groups.size} danh mục:\n${groups.join('\n')}\n`
+          + `Giá từ ${st.cheapest!.priceText} (${st.cheapest!.name}) đến ${st.priciest!.priceText} (${st.priciest!.name}).`,
+        suggestions: [],
+      };
+    }
+    case 'cheapest_service': return extremes(st.byPrice, (s) => s.price, 'có giá thấp nhất');
+    case 'priciest_service': return extremes([...st.byPrice].reverse(), (s) => s.price, 'có giá cao nhất');
+    case 'fastest_service': return extremes(st.byTime, (s) => s.durationMinutes, 'làm nhanh nhất');
+    case 'longest_service': return extremes([...st.byTime].reverse(), (s) => s.durationMinutes, 'lâu nhất');
+    case 'filter_by_group':
+    default:
+      return {
+        answer: `Các dịch vụ${where} (${items.length} dịch vụ, xếp theo giá):\n${st.byPrice.slice(0, 10).map(line).join('\n')}`
+          + `${items.length > 10 ? `\n…và ${items.length - 10} dịch vụ khác` : ''}`,
+        suggestions: st.byPrice.slice(0, 3),
+      };
+  }
+}
+
 export function customerRuleReply(
   message: string, catalog: CatalogItem[], hotIds: string[], facts: SalonFacts, now?: Date,
 ): CustomerReply {
@@ -109,6 +225,11 @@ export function customerRuleReply(
   const shop = facts.name || 'tiệm';
   const reply = (answer: string, suggestions: CatalogItem[] = [], quickReplies = QUICK): CustomerReply =>
     ({ intent, answer, suggestions, quickReplies });
+
+  if (CATALOG_FACT_INTENTS.has(intent)) {
+    const fact = catalogFactReply(intent as CatalogFactIntent, message, catalog, shop);
+    return reply(fact.answer, fact.suggestions, ['Xem bảng giá', 'Dịch vụ hot', 'Đặt lịch ngay']);
+  }
 
   switch (intent) {
     case 'greeting':
@@ -161,8 +282,16 @@ export function customerRuleReply(
 /** Ngữ cảnh cho mô hình ngôn ngữ: danh mục công khai + giờ mở cửa (không có dữ liệu khách). */
 export function customerContextForLlm(catalog: CatalogItem[], hotIds: string[], facts: SalonFacts): string {
   const hot = new Set(hotIds.slice(0, 5));
+  const st = catalogStats(catalog);
   return [
     `Tiệm: ${facts.name} · ${facts.address} · hotline ${facts.hotline}`,
+    // Số liệu đã tính sẵn — mô hình nhỏ đếm / so sánh danh dài hay sai, nên đưa đáp án đúng vào ngữ cảnh
+    `Tổng số dịch vụ: ${st.total} dịch vụ, ${st.groups.size} danh mục (${Array.from(st.groups.entries()).map(([n, c]) => `${n} ${c}`).join('; ')})`,
+    ...(st.cheapest ? [
+      `Dịch vụ giá thấp nhất: ${st.cheapest.name} (${st.cheapest.priceText})`,
+      `Dịch vụ giá cao nhất: ${st.priciest!.name} (${st.priciest!.priceText})`,
+      `Dịch vụ nhanh nhất: ${st.fastest!.name} (${st.fastest!.durationMinutes} phút); lâu nhất: ${st.longest!.name} (${st.longest!.durationMinutes} phút)`,
+    ] : []),
     `Giờ mở cửa: ${facts.openingHours.map((h) => `${h.dayLabel} ${h.isClosed ? 'nghỉ' : `${h.openTime.slice(0, 5)}-${h.closeTime.slice(0, 5)}`}`).join('; ')}`,
     'Danh mục (tên | nhóm | phút | giá):',
     ...catalog.slice(0, 80).map((s) => `- ${s.name} | ${s.categoryName} | ${s.durationMinutes} | ${s.priceText}${hot.has(s.id) ? ' | HOT' : ''}`),
@@ -172,4 +301,27 @@ export function customerContextForLlm(catalog: CatalogItem[], hotIds: string[], 
 export const CUSTOMER_SYSTEM_PROMPT = 'Bạn là nhân viên tư vấn thân thiện của một tiệm salon & spa Việt Nam, chat với khách trên website. '
   + 'Xưng "mình", gọi khách là "bạn". Chào hỏi tự nhiên, hỏi nhu cầu (tóc, da, massage, móng), gợi ý 1–3 dịch vụ CÓ TRONG DANH MỤC '
   + 'kèm thời lượng và giá đúng như danh mục. Không bịa dịch vụ, giá, khuyến mãi hay khung giờ trống. Không hỏi số điện thoại — '
-  + 'khách tự nhập ở bước đặt lịch. Trả lời ngắn (tối đa 5 dòng), cuối câu mời khách bấm "Đặt lịch".';
+  + 'khách tự nhập ở bước đặt lịch. Hỏi số lượng / rẻ nhất / đắt nhất thì CHỈ dùng các dòng "Tổng số dịch vụ", "giá thấp nhất", '
+  + '"giá cao nhất" trong DỮ LIỆU, không tự đếm. Trả lời ngắn (tối đa 5 dòng), văn bản thuần: KHÔNG dùng markdown (**, #, bảng), '
+  + 'KHÔNG tự tạo nút hay liên kết kiểu [Đặt lịch], [Book now] — giao diện đã có sẵn nút; cuối câu chỉ cần mời khách bấm nút Đặt lịch.';
+
+/**
+ * Làm sạch câu trả lời của mô hình trước khi trả về giao diện (khung chat hiển thị văn bản thuần): bỏ nút / liên kết giả
+ * "**[Đặt lịch]**", "[Book now](…)", markdown (**đậm**, # tiêu đề, ```), token đặc biệt (<|im_end|>) và dòng trống thừa.
+ */
+export function sanitizeLlmAnswer(text: string): string {
+  return text
+    .replace(/<\|[^|>]{1,40}\|>/g, '') // <|im_end|>, <|eot_id|>…
+    .replace(/<\/?(think|answer|response)>/gi, '')
+    .replace(/```[a-z]*\n?/gi, '')
+    // Nút / liên kết giả: [Đặt lịch], [Đặt lịch ngay](https://…), [Book now] — bỏ hẳn (kể cả dấu ** bao quanh)
+    .replace(/\**\[\s*(đặt lịch|dat lich|đặt ngay|đặt hẹn|book( now)?|booking|xem thêm|xem chi tiết|liên hệ|gọi ngay|chọn)[^\]]{0,30}\](\([^)]*\))?\**/gi, '')
+    .replace(/\[([^\]\n]{1,80})\]\((?:https?:\/\/|\/)[^)]*\)/g, '$1') // [chữ](url) → chữ
+    .replace(/\*\*([^*\n]+)\*\*/g, '$1').replace(/__([^_\n]+)__/g, '$1')
+    .replace(/\*{2,}|_{2,}/g, '')
+    .replace(/^\s{0,3}#{1,6}\s+/gm, '')
+    .replace(/^\s*[-*]\s+/gm, '• ')
+    .replace(/[ \t]+$/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
