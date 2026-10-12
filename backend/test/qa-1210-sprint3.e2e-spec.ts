@@ -150,6 +150,39 @@ describe('QA 12/10 — voucher PATCH, AI thợ đang trực, duyệt nghỉ, ema
     });
   });
 
+  describe('Bộ nhớ đệm danh mục công khai không làm chậm thay đổi của chủ tiệm (S1-06, S1-07, S2-03)', () => {
+    type Group = { categoryId: string; services: { id: string }[] };
+    const catalog = async (): Promise<Group[]> => (await request(server).get('/api/public/catalog').expect(200)).body.data;
+    const has = (groups: Group[], id: string) => groups.some((g) => g.services.some((s) => s.id === id));
+
+    it('ngưng tài khoản thợ ở "Tài khoản nhân sự" → dịch vụ chỉ thợ đó làm biến mất khỏi trang khách NGAY', async () => {
+      const categoryId = (await request(server).get('/api/service-categories').set(as('owner')).expect(200)).body.data[0].id;
+      const svc = await request(server).post('/api/services').set(as('owner'))
+        .send({ categoryId, name: `QA1210 Cache ${runId}`, durationMinutes: 30, price: 150000 }).expect(201);
+      const sty = await request(server).post('/api/stylists').set(as('owner')).send({
+        fullName: `QA1210 Cache ${runId}`, gender: 'female', serviceIds: [svc.body.data.id], email: `qa1210.cache.${runId}@salon.vn`,
+      }).expect(201);
+      expect(has(await catalog(), svc.body.data.id)).toBe(true); // nạp vào bộ nhớ đệm
+      await request(server).patch(`/api/users/${sty.body.data.userId}`).set(as('admin')).send({ isActive: false }).expect(200);
+      expect(has(await catalog(), svc.body.data.id)).toBe(false);
+      await request(server).patch(`/api/users/${sty.body.data.userId}`).set(as('admin')).send({ isActive: true }).expect(200);
+      expect(has(await catalog(), svc.body.data.id)).toBe(true);
+      await request(server).patch(`/api/services/${svc.body.data.id}`).set(as('owner')).send({ isActive: false }).expect(200);
+      expect(has(await catalog(), svc.body.data.id)).toBe(false);
+    });
+
+    it('đổi thứ tự hiển thị nhóm dịch vụ → trang khách đổi thứ tự ngay', async () => {
+      const before = await catalog();
+      expect(before.length).toBeGreaterThan(1);
+      const last = before[before.length - 1].categoryId;
+      const [{ display_order: old }] = await ds.query('SELECT display_order FROM service_categories WHERE id = $1', [last]);
+      await request(server).patch(`/api/service-categories/${last}`).set(as('owner')).send({ displayOrder: 0 }).expect(200);
+      expect((await catalog()).findIndex((g) => g.categoryId === last)).toBeLessThan(before.length - 1);
+      await request(server).patch(`/api/service-categories/${last}`).set(as('owner')).send({ displayOrder: old }).expect(200);
+      expect((await catalog()).at(-1)!.categoryId).toBe(last);
+    });
+  });
+
   describe('Sprint 3 · mục 1 — Lễ tân duyệt yêu cầu xin nghỉ', () => {
     it('lễ tân duyệt / từ chối được yêu cầu nghỉ, nhưng không duyệt được đăng ký ca làm', async () => {
       const me = await request(server).get('/api/auth/me').set(as('stylist')).expect(200);

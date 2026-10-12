@@ -3,6 +3,23 @@
 Định dạng theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), phiên bản theo [Semantic Versioning](https://semver.org/lang/vi/).
 Launcher (biểu tượng Hương Sen Salon / `HoYoSalon.bat`) đọc tệp này cho mục **Có gì mới** và **Nhật ký cập nhật**.
 
+## [Chưa phát hành] - 2026-10-12
+
+### Trợ lý AI — trả lời đúng, không gợi ý linh tinh
+- Câu số liệu / chính sách (bao nhiêu dịch vụ, rẻ nhất, đắt nhất, nhanh / lâu nhất, theo nhóm, dịch vụ hot, giá một dịch vụ, bảng giá, giờ mở cửa, cọc, huỷ lịch, thanh toán, khuyến mãi) trả lời thẳng từ dữ liệu thật — mô hình 4B không còn đếm sai ("60 dịch vụ") hay làm mất thứ hạng.
+- "Combo có gì hot?" xếp hạng TRONG nhóm combo; "combo khác gì đặt lẻ", "uốn lạnh với uốn nóng khác gì" được giải thích bình thường, chỉ dựa trên mô tả dịch vụ của tiệm.
+- Thẻ dịch vụ chỉ hiện khi khách đang chọn dịch vụ (tối đa 3, gọn một dòng); khung chat cuộn tới đầu câu trả lời mới.
+- Làm sạch câu trả lời của mô hình (bỏ `**[Đặt lịch]**`, markdown, token rác); không còn chèn "bấm nút Đặt lịch" vào mọi câu.
+- AI local tự bật khi backend khởi động, tự thử lại khi mất kết nối; widget hiện trạng thái (Đang chạy / Đang kết nối / Mất kết nối) và nút "Khởi động lại AI" chỉ khi cần.
+
+### Hiệu năng & chịu tải
+- 1000 khách hỏi trợ lý cùng lúc: 100% được trả lời; khi có mô hình 1 luồng, p95 giảm từ 81 giây xuống 1,4 giây (cổng chặn đồng thời, gộp câu trùng, bộ nhớ đệm câu trả lời).
+- Danh mục công khai: truy vấn song song + bộ nhớ đệm 30 giây tự xoá khi chủ tiệm sửa (447 → 2.176 yêu cầu/giây).
+- Kiểm thử tự động cho các yêu cầu phi chức năng của tài liệu (20.000 lịch hẹn, 5.000 hồ sơ, 8 thợ × 120 lịch) và dịch vụ `ai` trong Docker production.
+
+### Quy trình cập nhật an toàn hơn
+- Khoá chống hai lần cập nhật chạy chồng nhau; preflight chặn migration phá huỷ (không thể tự quay về bản cũ an toàn); smoke test chức năng sau khi bật bản mới; kiểm tra chữ ký gói npm; nhật ký `logs/update-history.jsonl`.
+
 ## [2.0.0] - 2026-10-11
 
 ### Trí tuệ nhân tạo (AI Local & Trợ lý đàm thoại)

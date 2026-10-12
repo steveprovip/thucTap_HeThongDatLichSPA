@@ -83,7 +83,7 @@ interface StylistDay { shifts: ShiftInput[]; timeOff: TimeOffInput[]; apptBusy: 
 type CalcInput = SlotCalcInput & { apptBusy: Interval[] };
 
 /** Nhóm dữ liệu mà thao tác ghi làm đổi danh mục công khai (khớp LIVE_PATH của RealtimeInterceptor). */
-const CATALOG_SCOPES = new Set(['services', 'service-categories', 'stylists']);
+const CATALOG_SCOPES = new Set(['services', 'service-categories', 'stylists', 'users']); // users: ngưng tài khoản thợ cũng ngưng hồ sơ thợ
 const CATALOG_TTL_MS = 30_000;
 
 @Injectable()

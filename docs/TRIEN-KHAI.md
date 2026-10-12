@@ -276,13 +276,16 @@ Bấm đúp `scripts\windows\update_project.bat` ở thư mục gốc (macOS/Lin
 
 | Bước | Việc làm | Nếu lỗi |
 |---|---|---|
+| 0 | **Khoá cập nhật** `.salon-update.lock`: bấm CẬP NHẬT hai lần thì lần sau bị từ chối (khoá kẹt do mất điện tự hết khi tiến trình giữ khoá không còn / quá 2 giờ) | Dừng, chưa đổi gì |
 | 1 | Kiểm tra Git, đang ở nhánh `main`, không có tệp mã nguồn bị sửa tại máy | Dừng, chưa đổi gì |
 | 2 | `git fetch` rồi `git pull --ff-only origin main` (chỉ tiến tới, không bao giờ tự hợp nhất hay ghi đè) | Dừng, chưa đổi gì |
-| 3 | Chỉ khi `package.json` / `package-lock.json` đổi: cài gói npm (dừng hệ thống trước để Windows không khoá tệp) | Quay về bản cũ |
+| 2b | **Preflight tương thích**: đọc migration MỚI của bản cập nhật; có thao tác phá huỷ trong `up()` (xoá bảng / cột, đổi kiểu, đổi tên, `TRUNCATE`, `DELETE FROM`, `SET NOT NULL`) thì dừng vì "quay về bản cũ" không còn an toàn — chạy lại với `--allow-destructive` khi đã xác nhận bản sao lưu | Dừng, chưa đổi gì |
+| 3 | Chỉ khi `package.json` / `package-lock.json` đổi: cài gói npm bằng `npm ci` (dừng hệ thống trước để Windows không khoá tệp), rồi **kiểm tra chữ ký gói** `npm audit signatures` (chỉ cảnh báo) | Quay về bản cũ |
 | 4 | **Build bản mới sang thư mục tạm** (`dist-next`) trong lúc bản cũ vẫn phục vụ khách | Bản cũ không bị đụng tới, mã nguồn đưa về bản cũ |
 | 5 | Dừng hệ thống, **sao lưu CSDL (bắt buộc)**, chạy migration, bootstrap, kiểm tra tài khoản mẫu | Mỗi migration tự hoàn tác, bật lại bản cũ, đưa mã về bản cũ |
 | 6 | Đổi `dist-next` thành `dist` (giữ bản cũ ở `dist-prev`) | – |
-| 7 | Chạy lại máy chủ, chờ `/health` và kiểm tra `version.json` khớp bản vừa build | **Tự quay về `dist-prev` và đưa mã về bản cũ** |
+| 7 | Chạy lại máy chủ, chờ `/health`, kiểm tra `version.json` khớp bản vừa build và **smoke test chức năng**: `/health` (API + CSDL), thông tin tiệm, danh mục dịch vụ, trợ lý AI khách | **Tự quay về `dist-prev` và đưa mã về bản cũ** (trừ bản có migration phá huỷ đã chạy: dừng ở chế độ khôi phục, in đường dẫn bản sao lưu) |
+| 8 | Ghi một dòng vào `logs/update-history.jsonl` (từ → tới, kết quả, thời gian, migration, bản sao lưu) | – |
 
 Điểm cần biết:
 
@@ -295,7 +298,9 @@ Bấm đúp `scripts\windows\update_project.bat` ở thư mục gốc (macOS/Lin
 - Lỗi ở bước 5 trở đi: CSDL đã giữ nguyên hoặc chỉ được **thêm** cấu trúc, nên bản cũ vẫn chạy được. Thông báo cuối cùng nêu đường dẫn bản sao lưu.
 - Nhật ký máy chủ ghi vào `logs/server.log` để người lập trình đọc khi bản mới sập.
 
-Biến tuỳ chọn: `UPDATE_BACKUP=required|auto|off` (mặc định `required`), `UPDATE_HEALTH_TIMEOUT` (giây chờ bản mới lên, mặc định 150), `SALON_NO_PAUSE=1` (không `pause` ở cuối, dùng khi chạy theo lịch).
+Biến tuỳ chọn: `UPDATE_BACKUP=required|auto|off` (mặc định `required`), `UPDATE_HEALTH_TIMEOUT` (giây chờ bản mới lên, mặc định 150), `SALON_NO_PAUSE=1` (không `pause` ở cuối, dùng khi chạy theo lịch), `UPDATE_ALLOW_DESTRUCTIVE=1` (tương đương `--allow-destructive`), `UPDATE_AUDIT_SIGNATURES=off` (bỏ kiểm tra chữ ký gói npm).
+
+Kiểm thử các bước an toàn này (không cần mạng): `npm run test:launcher`.
 
 Laptop và điện thoại **không cần cập nhật gì**: chúng mở trang từ máy chủ, nên chỉ cần bấm **Tải lại** khi thấy dải thông báo phiên bản mới.
 

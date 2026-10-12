@@ -28,6 +28,7 @@
     "build": "npm run build --prefix backend && npm run build --prefix frontend",
     "test": "npm run test --prefix backend",
     "test:e2e": "npm run test:e2e --prefix backend",
+    "test:launcher": "node --test scripts/lib/test/*.test.mjs",
     "lint": "npm run lint --prefix backend && npm run lint --prefix frontend",
     "start:server": "node scripts/launcher.mjs serve",
     "stop:server": "node scripts/launcher.mjs stop",

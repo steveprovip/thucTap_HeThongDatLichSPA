@@ -116,6 +116,31 @@ describe('AI tư vấn khách — luật dựa trên danh mục thật (TASK v3 
       expect(detectCustomerIntent('có những combo nào', real2).intent).toBe('filter_by_group');
     });
 
+    it('QA thử AI thật 12/10: câu so sánh / giải thích trả lời bình thường; "nóng" không còn kéo theo "đá nóng"', () => {
+      const real3 = [
+        ...real, svc('perm', 'Uốn sóng lơi Hàn Quốc', 'Uốn - Nhuộm - Phục hồi', 120, 850000),
+        svc('stone', 'Massage body đá nóng', 'Massage & Body', 90, 650000),
+        svc('vip2', 'Combo Thư giãn VIP: đá nóng + chăm sóc da', 'Gói combo tiết kiệm', 150, 990000),
+      ];
+      const cmp = customerRuleReply('uốn lạnh với uốn nóng khác gì nhau?', real3, [], facts);
+      expect(cmp.intent).toBe('explain');
+      expect(cmp.suggestions).toHaveLength(0);
+      expect(cmp.answer).toContain('Uốn sóng lơi Hàn Quốc');
+      expect(cmp.answer).not.toContain('đá nóng');
+      expect(detectCustomerIntent('chính sách cọc là gì', real3).intent).toBe('deposit'); // chính sách thắng "là gì"
+      expect(matchServices('massage đá nóng giá bao nhiêu', real3)[0].id).toBe('stone'); // cụm "đá nóng" khớp tên
+      expect(matchServices('uốn nóng', real3).map((s) => s.id)).not.toContain('vip2');
+      // Hỏi giá một dịch vụ: lấy thẳng bảng giá, "đá" (bỏ dấu = "da") không kéo theo nhu cầu chăm sóc da
+      const price = customerRuleReply('massage đá nóng giá bao nhiêu', real3, [], facts);
+      expect(price.intent).toBe('service_price');
+      expect(price.answer).toContain('Massage body đá nóng');
+      expect(price.answer).toContain('650.000');
+      expect(price.suggestions.map((s) => s.id)).toEqual(['stone', 'vip2']);
+      // "trị" trơn không còn khớp "trị gàu" khi khách hỏi về mụn
+      const acne = [...real3, svc('scalp', 'Detox da đầu & trị gàu chuyên sâu', 'Gội đầu dưỡng sinh', 60, 350000)];
+      expect(matchServices('da mặt bị mụn', acne).map((s) => s.id)).not.toContain('scalp');
+    });
+
     it('câu hỏi chính sách trả lời thẳng, không kèm thẻ dịch vụ', () => {
       const cases: [string, string, string][] = [
         ['đặt lịch có cần cọc không', 'deposit', 'cọc 30%'], ['tôi muốn hủy lịch thì sao', 'cancel_policy', '2 giờ'],

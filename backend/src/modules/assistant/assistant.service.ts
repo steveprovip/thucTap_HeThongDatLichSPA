@@ -14,8 +14,8 @@ import { findLocalAiDir, isLoopbackUrl, launchLocalAi } from './local-ai-launche
 import { LlmGate, SingleFlight, TtlCache } from './llm-gate';
 import { EventsService } from '../events/events.service';
 import {
-  CARD_INTENTS, CATALOG_FACT_INTENTS, CatalogItem, CUSTOMER_SYSTEM_PROMPT, customerContextForLlm, CustomerReply, customerRuleReply, SalonFacts,
-  sanitizeLlmAnswer,
+  CARD_INTENTS, CatalogItem, CUSTOMER_SYSTEM_PROMPT, customerContextForLlm, CustomerReply, customerRuleReply, SalonFacts,
+  DIRECT_INTENTS, matchServices, sanitizeLlmAnswer,
 } from './customer-assistant-rules';
 import { callLlm, DEFAULT_LOCAL_AI_URL, LlmConfig, LlmMessage, pickModel, probeLocalServer } from './llm-client';
 
@@ -473,7 +473,8 @@ export class AssistantService implements OnApplicationBootstrap {
     const rule = customerRuleReply(message, catalog, hotIds, facts, new Date());
     // Deterministic pre-query: đếm / rẻ nhất / đắt nhất / nhanh nhất / theo nhóm → tính trên danh mục thật, không gọi mô hình
     // (mô hình 4B từng trả lời "60 dịch vụ" khi tiệm có 43, "rẻ nhất 100.000 ₫" khi có dịch vụ 90.000 ₫)
-    if (CATALOG_FACT_INTENTS.has(rule.intent)) return { ...rule, source: 'rules', model: null };
+    // + số liệu / chính sách khác (DIRECT_INTENTS): hot, bảng giá, giờ mở cửa, liên hệ, cọc, huỷ, thanh toán, khuyến mãi
+    if (DIRECT_INTENTS.has(rule.intent)) return { ...rule, source: 'rules', model: null };
     const cfg = await this.resolveLlm();
     if (!cfg) return { ...rule, source: 'rules', model: null };
 
@@ -482,11 +483,17 @@ export class AssistantService implements OnApplicationBootstrap {
     const cached = key ? this.answerCache.get(key) : undefined;
     if (cached) return { ...rule, ...cached, source: 'llm', model: cfg.model };
 
+    // Câu giải thích: KHÔNG đưa câu trả lời luật ("gọi hotline…") làm gợi ý, chỉ đưa dịch vụ liên quan làm dữ liệu
+    const hint = rule.intent === 'explain'
+      ? `(Khách hỏi để hiểu: giải thích ngắn gọn CHỈ dựa trên mô tả dịch vụ của tiệm dưới đây; thiếu thông tin thì nói chuyên viên sẽ `
+        + `tư vấn tại tiệm. Mô tả: ${matchServices(message, catalog, 3, true)
+          .map((s) => `${s.name} (${s.durationMinutes} phút, ${s.priceText}): ${s.description ?? 'chưa có mô tả'}`).join(' | ') || 'không có'})`
+      : `(Gợi ý theo luật, dùng nếu phù hợp: ${rule.answer})`;
     const ask = async (): Promise<{ answer: string; suggestions: CatalogItem[] } | 'busy' | null> => {
       const call = await this.gate.run(() => callLlm(cfg, [
         { role: 'system', content: `${CUSTOMER_SYSTEM_PROMPT}\n${customerContextForLlm(catalog, hotIds, facts)}` },
         ...this.history(history),
-        { role: 'user', content: `${message.trim()}\n\n(Gợi ý theo luật, dùng nếu phù hợp: ${rule.answer})` },
+        { role: 'user', content: `${message.trim()}\n\n${hint}` },
       ]).then((text) => ({ text })));
       if (!call) return 'busy';
       const answer = call.text ? sanitizeLlmAnswer(call.text) : '';

@@ -33,7 +33,7 @@ export const DEPOSIT_PERCENT = 30;
 
 export type CustomerIntent =
   | 'greeting' | 'identity' | 'help' | 'thanks' | 'bye' | 'price_list' | 'hot' | 'book' | 'hours' | 'contact' | 'need' | 'unknown'
-  | 'combo_info' | 'deposit' | 'cancel_policy' | 'payment' | 'promotion'
+  | 'combo_info' | 'explain' | 'service_price' | 'deposit' | 'cancel_policy' | 'payment' | 'promotion'
   | CatalogFactIntent;
 
 /**
@@ -51,8 +51,17 @@ export const CATALOG_FACT_INTENTS: ReadonlySet<CustomerIntent> = new Set<Custome
  * QA 12/10 — CHỈ những câu khách đang CHỌN dịch vụ mới kèm thẻ dịch vụ. Câu hỏi thông tin ("combo khác gì đặt lẻ",
  * cọc, huỷ lịch, giờ mở cửa, bảng giá, câu chưa hiểu…) được trả lời bình thường, không chèn thẻ gợi ý "ăn theo".
  */
+/**
+ * QA 12/10 (thử trên AI local thật): câu trả lời là SỐ LIỆU / CHÍNH SÁCH của tiệm (đếm, so sánh, xếp hạng hot, bảng giá, giờ mở
+ * cửa, liên hệ, cọc, huỷ, thanh toán, khuyến mãi) trả thẳng từ dữ liệu — mô hình 4B diễn đạt lại từng làm mất thứ hạng "hot"
+ * và chèn câu mời đặt lịch thừa. Mô hình chỉ lo phần hội thoại: chào hỏi, tư vấn nhu cầu, giải thích combo, câu tự do.
+ */
+export const DIRECT_INTENTS: ReadonlySet<CustomerIntent> = new Set<CustomerIntent>([
+  ...CATALOG_FACT_INTENTS, 'hot', 'price_list', 'service_price', 'hours', 'contact', 'deposit', 'cancel_policy', 'payment', 'promotion',
+]);
+
 export const CARD_INTENTS: ReadonlySet<CustomerIntent> = new Set<CustomerIntent>([
-  'need', 'book', 'hot', 'cheapest_service', 'priciest_service', 'fastest_service', 'longest_service', 'filter_by_group',
+  'need', 'book', 'hot', 'service_price', 'cheapest_service', 'priciest_service', 'fastest_service', 'longest_service', 'filter_by_group',
 ]);
 
 export interface CustomerReply {
@@ -65,7 +74,7 @@ export interface CustomerReply {
 /** Nhu cầu → từ khoá (không dấu). Khớp với tên / nhóm / mô tả dịch vụ trong danh mục THẬT của tiệm. */
 const NEEDS: { label: string; ask: RegExp; words: string[] }[] = [
   { label: 'tóc', ask: /\b(toc|cat|goi dau|goi|nhuom|uon|duoi|phuc hoi|hu ton|xoan|tay toc|highlight|balayage|ombre|phu bac|toc bac|keratin|olaplex|rung toc|barber|rau)\b/, words: ['toc', 'cat', 'goi', 'nhuom', 'uon', 'duoi', 'phuc hoi', 'hap', 'barber', 'rau'] },
-  { label: 'da', ask: /\b(da|da mat|mat na|mun|tham mun|lam sang|duong da|facial|cham soc da|lo chan long|kho da|da dau|cap am|dien di|peel|tre hoa|vitamin c)\b/, words: ['da', 'mat', 'facial', 'mun', 'duong', 'sang', 'cap am', 'peel', 'collagen'] },
+  { label: 'da', ask: /\b(da(?! nong)|da mat|mat na|mun|tham mun|lam sang|duong da|facial|cham soc da|lo chan long|kho da|da dau|cap am|dien di|peel|tre hoa|vitamin c)\b/, words: ['da', 'mat', 'facial', 'mun', 'duong', 'sang', 'cap am', 'peel', 'collagen'] },
   { label: 'massage', ask: /\b(massage|mat xa|matxa|thu gian|dau lung|moi vai|co vai gay|vai gay|body|xong hoi|da nong|bam huyet|tam trang|phi thuyen|ngam chan)\b/, words: ['massage', 'mat xa', 'thu gian', 'body', 'vai gay', 'xong', 'da nong', 'bam huyet', 'tam trang'] },
   { label: 'móng', ask: /\b(nail|mong|son gel|son mong|ve mong|mong tay|mong chan|dap bot|up mong|manicure|pedicure)\b/, words: ['nail', 'mong', 'son', 'manicure', 'pedicure'] },
   { label: 'gội dưỡng', ask: /\b(goi duong|goi thao duoc|u toc|hap dau|duong toc|gau|da dau)\b/, words: ['goi', 'duong', 'u toc', 'hap', 'da dau'] },
@@ -75,22 +84,31 @@ const NEEDS: { label: string; ask: RegExp; words: string[] }[] = [
 /** Triệu chứng cụ thể → dịch vụ chuyên trị (trọng số cao hơn nhu cầu chung "tóc" / "da"). */
 const SYMPTOMS: { ask: RegExp; words: string[] }[] = [
   { ask: /\b(kho xo|xo roi|hu ton|che ngon|gay rung|toc yeu|toc kho|phuc hoi|nhuom nhieu|tay nhieu)\b/, words: ['phuc hoi', 'hap', 'u', 'duong'] },
-  { ask: /\b(mun|tham mun|da dau|lo chan long)\b/, words: ['mun', 'tri', 'lam sach'] },
+  { ask: /\b(mun|tham mun|da dau|lo chan long)\b/, words: ['mun', 'tri mun', 'lam sach'] }, // không dùng "tri" trơn: khớp nhầm "trị gàu"
   { ask: /\b(moi|dau lung|co vai gay|vai gay|met moi|cang thang|stress|mat ngu|thu gian)\b/, words: ['massage', 'vai gay', 'duong sinh', 'thu gian'] },
   { ask: /\b(du tiec|di tiec|dam cuoi|chup anh|su kien)\b/, words: ['trang diem', 'tiec'] },
 ];
 
 const STOP = new Set(['toi', 'minh', 'em', 'anh', 'chi', 'ban', 'muon', 'can', 'cho', 'voi', 'la', 'co', 'khong', 'gi', 'nao',
-  'bao', 'nhieu', 'tien', 'gia', 'lam', 'dich', 'vu', 'shop', 'tiem', 'oi', 'a', 'nhe', 'di', 'duoc', 'va', 'hay', 'thi', 'mot', 'cai']);
+  'bao', 'nhieu', 'tien', 'gia', 'lam', 'dich', 'vu', 'shop', 'tiem', 'oi', 'a', 'nhe', 'di', 'duoc', 'va', 'hay', 'thi', 'mot', 'cai',
+  // QA 12/10: tính từ / từ nối chung không được khớp tên dịch vụ ("uốn NÓNG" từng kéo theo "Combo ... đá NÓNG")
+  'nong', 'lanh', 'dep', 'tot', 'xau', 'nhanh', 'lau', 'moi', 'cu', 'nho', 'lon', 'khac', 'nhau', 'nen', 'hon', 'nhat', 'kieu', 'loai']);
 
 const textOf = (s: CatalogItem): string => fold(`${s.name} ${s.categoryName} ${s.description ?? ''}`);
 
 /** Chấm điểm dịch vụ theo câu khách hỏi: khớp nhu cầu + khớp chữ trong tên. */
-export function matchServices(message: string, catalog: CatalogItem[], limit = 4): CatalogItem[] {
+/**
+ * `strict`: chỉ lấy dịch vụ khớp THEO TÊN (đúng tên / cụm từ / từ trong tên) — dùng cho câu giải thích, không kéo theo
+ * cả nhóm "tóc" chỉ vì câu có nhắc tới tóc.
+ */
+export function matchServices(message: string, catalog: CatalogItem[], limit = 4, strict = false): CatalogItem[] {
   const m = fold(message);
   const needs = NEEDS.filter((n) => n.ask.test(m));
   const symptoms = SYMPTOMS.filter((x) => x.ask.test(m));
-  const tokens = m.split(/[^a-z0-9]+/).filter((t) => t.length >= 2 && !STOP.has(t));
+  const all = m.split(/[^a-z0-9]+/).filter(Boolean);
+  const tokens = all.filter((t) => t.length >= 2 && !STOP.has(t));
+  // Cụm 2 từ liền nhau ("da nong", "vai gay") khớp tên dịch vụ: chính xác hơn từ đơn, kể cả khi từng từ là từ chung
+  const bigrams = all.slice(0, -1).map((t, i) => [t, all[i + 1]]).filter(([a, b]) => !(STOP.has(a) && STOP.has(b))).map(([a, b]) => `${a} ${b}`);
   const scored = catalog.map((s) => {
     const t = textOf(s);
     const name = fold(s.name);
@@ -101,13 +119,15 @@ export function matchServices(message: string, catalog: CatalogItem[], limit = 4
     for (const n of needs) if (n.words.some(has)) score += 3;
     const inName = (w: string) => new RegExp(`\\b${w}\\b`).test(name);
     for (const sy of symptoms) if (sy.words.some(inName)) score += 10; else if (sy.words.some(has)) score += 4;
-    for (const tok of tokens) if (tok.length >= 3 && words.has(tok)) score += 2; // trọn từ: "ai" không khớp "vai"
-    return { s, score };
+    let byName = name.length >= 4 && m.includes(name) ? 1 : 0;
+    for (const tok of tokens) if (tok.length >= 3 && words.has(tok)) { score += 2; byName += 1; } // trọn từ: "ai" không khớp "vai"
+    for (const bg of bigrams) if (new RegExp(`\\b${bg}\\b`).test(name)) { score += 4; byName += 1; }
+    return { s, score: strict && !byName ? 0 : score };
   }).filter((x) => x.score > 0);
   scored.sort((a, b) => b.score - a.score || a.s.price - b.s.price);
   // Bỏ gợi ý "ăn theo" yếu (chỉ khớp một chữ chung) khi đã có dịch vụ khớp rõ ràng
   const top = scored[0]?.score ?? 0;
-  return scored.filter((x) => x.score * 2 >= top).slice(0, limit).map((x) => x.s);
+  return scored.filter((x) => x.score >= top * 0.6).slice(0, limit).map((x) => x.s);
 }
 
 /** Nhóm dịch vụ khách hay hỏi → nhận diện trong câu hỏi (`ask`) và trong tên danh mục / tên dịch vụ (`cat`). */
@@ -134,6 +154,9 @@ const HOT_RE = /(\bhot\b|noi bat|pho bien|ban chay|nhieu nguoi|dat nhieu|duoc (y
 const COMBO_RE = /\b(combo|goi combo|goi tiet kiem|lieu trinh)\b/;
 /** "combo có gì khác so với bình thường", "combo lợi gì hơn đặt lẻ", "combo là gì"… → giải thích, không liệt kê thẻ. */
 const COMBO_INFO_RE = /(khac (gi|nhau|biet)|khac so voi|so voi|loi (ich|gi|hon)|co loi|tiet kiem (hon|duoc|bao nhieu)|\bla gi\b|nghia la|nen chon|hon (gi|khong)|dat le|lam le|binh thuong|co gi (hay|dac biet|khac))/;
+/** Câu hỏi so sánh / giải thích ("uốn lạnh với uốn nóng khác gì", "keratin là gì", "có hại tóc không") → trả lời bình thường. */
+const PRICE_RE = /(gia (bao nhieu|the nao|sao|nhieu|bn)|bao nhieu tien|bao tien|het bao nhieu|ton bao nhieu|gia ca|bao nhieu vay|bao nhieu a)/;
+const EXPLAIN_RE = /(khac (gi|nhau|biet|cho nao)|khac so voi|so voi|giong (nhau|gi)|\bla gi\b|nghia la|co hai|hai (toc|da) khong|an toan khong|giu (duoc )?bao lau|duoc bao lau|bao lau thi)/;
 const POLICY_RE: { intent: 'deposit' | 'cancel_policy' | 'payment' | 'promotion'; re: RegExp }[] = [
   { intent: 'deposit', re: /\b(coc|dat coc|tien coc|giu cho bang tien|tra truoc)\b/ },
   { intent: 'cancel_policy', re: /\b(huy (lich|hen|dat)|muon huy|doi (lich|gio|ngay|hen)|doi sang|hoan lich|tra cuu|xem lai lich|kiem tra lich)\b/ },
@@ -170,9 +193,12 @@ export function detectCustomerIntent(message: string, catalog: CatalogItem[]): {
   if (COMBO_RE.test(m) && COMBO_INFO_RE.test(m)) return { intent: 'combo_info', matches: [] };
   const policy = POLICY_RE.find((x) => x.re.test(m));
   if (policy) return { intent: policy.intent, matches: [] };
+  if (EXPLAIN_RE.test(m)) return { intent: 'explain', matches: [] };
   const matches = matchServices(message, catalog);
   if (/(bang gia|xem gia|gia ca|price|menu|danh sach dich vu|co nhung dich vu|tat ca dich vu)/.test(m)) return { intent: 'price_list', matches };
   if (HOT_RE.test(m)) return { intent: 'hot', matches };
+  // "massage đá nóng giá bao nhiêu" → giá lấy thẳng từ bảng giá (không để mô hình đọc lại con số)
+  if (PRICE_RE.test(m) && matches.length) return { intent: 'service_price', matches };
   if (/(dat lich|dat cho|dat hen|book|giu cho|hen gio|muon den|dat ngay)/.test(m)) return { intent: 'book', matches };
   if (/(may gio|gio mo cua|mo cua|dong cua|lam viec den|gio lam|chu nhat|thu bay|cuoi tuan co lam)/.test(m) && !matches.length) return { intent: 'hours', matches };
   if (/(dia chi|o dau|cho nao|duong nao|hotline|so dien thoai|lien he|ban do|zalo)/.test(m)) return { intent: 'contact', matches };
@@ -302,6 +328,22 @@ export function customerRuleReply(
       return reply(popular.length ? `Dịch vụ được đặt nhiều nhất gần đây:\n${popular.slice(0, 3).map(line).join('\n')}`
         : 'Tiệm chưa có dịch vụ nào đang mở đặt online.', popular.slice(0, 3), ['Xem bảng giá', 'Combo có gì hot?', 'Đặt lịch ngay']);
     }
+    case 'explain': {
+      // Chế độ luật không tự giải thích chuyên môn được → nói thật, đưa dịch vụ liên quan để khách tự xem (không chèn thẻ)
+      const related = matchServices(message, catalog, 3, true);
+      // Chỉ dựa trên MÔ TẢ DỊCH VỤ do chủ tiệm khai báo; không tự suy kiến thức chuyên môn
+      return reply(related.length
+        ? `Theo mô tả dịch vụ của tiệm:\n${related.map((s) => `• ${s.name}: ${s.description ?? 'chưa có mô tả'} (${s.durationMinutes} phút · ${s.priceText})`).join('\n')}\n`
+          + `Chuyên viên sẽ tư vấn kỹ theo tình trạng tóc / da của bạn tại tiệm hoặc qua ${facts.hotline || 'hotline'}.`
+        : `Câu này cần chuyên viên tư vấn kỹ theo tình trạng tóc / da của bạn — bạn gọi ${facts.hotline || 'hotline của tiệm'} `
+          + 'hoặc hỏi trực tiếp khi đến tiệm nhé.', [], ['Xem bảng giá', 'Dịch vụ hot']);
+    }
+    case 'service_price': {
+      const list = matches.slice(0, 3);
+      return reply(list.length === 1
+        ? `${list[0].name}: ${list[0].priceText}, khoảng ${list[0].durationMinutes} phút (giá tạm tính, tiệm chốt khi thanh toán).`
+        : `Giá tại tiệm (tạm tính, tiệm chốt khi thanh toán):\n${list.map(line).join('\n')}`, list, ['Xem bảng giá', 'Đặt lịch ngay']);
+    }
     case 'combo_info': {
       const combos = catalog.filter((s) => COMBO_RE.test(fold(s.categoryName)) || COMBO_RE.test(fold(s.name)));
       const list = combos.length ? `\nCombo hiện có:\n${catalogStats(combos).byPrice.map(line).join('\n')}` : '';
@@ -312,7 +354,7 @@ export function customerRuleReply(
         + list, [], ['Combo có gì hot?', 'Xem bảng giá', 'Đặt lịch ngay']);
     }
     case 'deposit':
-      return reply(`Lịch có tổng tạm tính trên ${formatVnd(DEPOSIT_THRESHOLD)} cần đặt cọc ${DEPOSIT_PERCENT}% (làm tròn lên 10.000 ₫) `
+      return reply(`Lịch có tổng tạm tính trên ${formatVnd(DEPOSIT_THRESHOLD)} cần đặt cọc ${DEPOSIT_PERCENT}% (làm tròn lên ${formatVnd(10_000)}) `
         + 'để tiệm giữ thợ và khung giờ. Sau khi đặt, bạn quét mã VietQR và chuyển khoản trong 2 giờ với nội dung "COC <SĐT> <MÃ LỊCH>". '
         + `Tiền cọc được trừ thẳng vào hoá đơn; huỷ trước giờ hẹn 24 giờ được hoàn cọc. Lịch từ ${formatVnd(DEPOSIT_THRESHOLD)} trở xuống không cần cọc.`);
     case 'cancel_policy': {
@@ -373,8 +415,9 @@ export const CUSTOMER_SYSTEM_PROMPT = 'Bạn là nhân viên tư vấn thân thi
   + 'Xưng "mình", gọi khách là "bạn". Chào hỏi tự nhiên, hỏi nhu cầu (tóc, da, massage, móng), gợi ý 1–3 dịch vụ CÓ TRONG DANH MỤC '
   + 'kèm thời lượng và giá đúng như danh mục. Không bịa dịch vụ, giá, khuyến mãi hay khung giờ trống. Không hỏi số điện thoại — '
   + 'khách tự nhập ở bước đặt lịch. Hỏi số lượng / rẻ nhất / đắt nhất thì CHỈ dùng các dòng "Tổng số dịch vụ", "giá thấp nhất", '
-  + '"giá cao nhất" trong DỮ LIỆU, không tự đếm. Câu hỏi thông tin (giải thích, so sánh, chính sách) thì trả lời thẳng vào câu hỏi, KHÔNG liệt kê dịch vụ nếu khách không hỏi. Trả lời ngắn (tối đa 5 dòng), văn bản thuần: KHÔNG dùng markdown (**, #, bảng), '
-  + 'KHÔNG tự tạo nút hay liên kết kiểu [Đặt lịch], [Book now] — giao diện đã có sẵn nút; cuối câu chỉ cần mời khách bấm nút Đặt lịch.';
+  + '"giá cao nhất" trong DỮ LIỆU, không tự đếm. Câu hỏi thông tin (giải thích, so sánh, chính sách) thì trả lời thẳng vào câu hỏi, KHÔNG liệt kê dịch vụ nếu khách không hỏi. Giải thích kỹ thuật làm tóc / da CHỈ dựa trên mô tả dịch vụ trong DỮ LIỆU; không đủ thông tin thì nói chuyên viên sẽ tư vấn kỹ tại tiệm, KHÔNG tự suy ra kiến thức chuyên môn. Trả lời ngắn (tối đa 5 dòng), văn bản thuần: KHÔNG dùng markdown (**, #, bảng), '
+  + 'KHÔNG tự tạo nút hay liên kết kiểu [Đặt lịch], [Book now] — giao diện đã có sẵn nút. Chỉ mời đặt lịch khi khách đang chọn '
+  + 'dịch vụ; trả lời câu hỏi thông tin xong là đủ, KHÔNG thêm câu "bấm nút Đặt lịch" vào cuối mọi câu trả lời.';
 
 /**
  * Làm sạch câu trả lời của mô hình trước khi trả về giao diện (khung chat hiển thị văn bản thuần): bỏ nút / liên kết giả
