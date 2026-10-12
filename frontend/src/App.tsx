@@ -49,6 +49,7 @@ const ShiftRegistrationPage = lazyPage(() => import('@/pages/stylist/ShiftRegist
 const DashboardPage = lazyPage(() => import('@/pages/owner/DashboardPage'), 'DashboardPage');
 const RevenuePage = lazyPage(() => import('@/pages/owner/RevenuePage'), 'RevenuePage');
 const SlotDensityPage = lazyPage(() => import('@/pages/owner/SlotDensityPage'), 'SlotDensityPage');
+const AiImprovementPage = lazyPage(() => import('@/pages/owner/AiImprovementPage'), 'AiImprovementPage');
 
 // Quản trị
 const UsersPage = lazyPage(() => import('@/pages/admin/UsersPage'), 'UsersPage');
@@ -154,6 +155,8 @@ export default function App() {
               <RequireAuth roles={['owner', 'admin', 'receptionist']}><RevenuePage /></RequireAuth>} />
             <Route path="phan-bo-khung-gio" element={
               <RequireAuth roles={['owner', 'admin']}><SlotDensityPage /></RequireAuth>} />
+            <Route path="cai-tien-ai" element={
+              <RequireAuth roles={['owner', 'admin', 'receptionist']}><AiImprovementPage /></RequireAuth>} />
 
             <Route path="dich-vu" element={
               <RequireAuth roles={['owner', 'admin', 'receptionist', 'stylist']}><ServicesPage /></RequireAuth>} />

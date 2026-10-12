@@ -4,7 +4,7 @@ import { ArrowLeft, ArrowRight, Check, Clock, Wallet } from 'lucide-react';
 import { getErrorField, getErrorMessage, publicApi } from '@/api';
 import type { BookingResult, Quote } from '@/types';
 import { BackButton, Button, CustomerAiAssistant } from '@/components';
-import { formatDuration, formatVnd, VN_PHONE_MESSAGE, VN_PHONE_REGEX } from '@/utils/format';
+import { formatDuration, formatVnd, todayISO, VN_PHONE_MESSAGE, VN_PHONE_REGEX } from '@/utils/format';
 import { emailError } from '@/utils/validators';
 import { useSalonInfo } from '@/utils/salonInfo';
 import { useBooking } from '@/contexts/BookingContext';
@@ -49,26 +49,28 @@ export function BookingWizard() {
   }, [searchParams, booking, selected, toast]);
 
   // TASK v3 · NV1: trợ lý tư vấn chọn dịch vụ → điền giỏ theo giá / thời lượng HIỆN HÀNH rồi sang bước chọn giờ
-  const { replaceServices } = booking;
-  const applyServices = useCallback(async (ids: string[]) => {
+  const { replaceServices, setDate } = booking;
+  /** `date` (yyyy-MM-dd): ngày trợ lý vừa tra giờ trống → bước chọn giờ mở sẵn đúng ngày đó. */
+  const applyServices = useCallback(async (ids: string[], date?: string | null) => {
     try {
       const all = (await publicApi.catalog()).flatMap((g) => g.services);
       const list = ids.map((id) => all.find((s) => s.id === id)).filter((s): s is NonNullable<typeof s> => !!s);
       if (!list.length) { toast.warning('Dịch vụ vừa chọn hiện không còn nhận đặt online'); return; }
       replaceServices(list);
+      if (date && /^\d{4}-\d{2}-\d{2}$/.test(date) && date >= todayISO()) setDate(date);
       setStep(2);
       toast.success(`Đã điền ${list.length} dịch vụ — chọn ngày giờ phù hợp nhé`);
     } catch (e) {
       toast.error(getErrorMessage(e));
     }
-  }, [replaceServices, setStep, toast]);
+  }, [replaceServices, setDate, setStep, toast]);
   const servicesParam = searchParams.get('services');
   const appliedParam = useRef<string | null>(null);
   useEffect(() => {
     if (!servicesParam || appliedParam.current === servicesParam) return;
     appliedParam.current = servicesParam;
-    void applyServices(servicesParam.split(',').filter(Boolean).slice(0, 5));
-  }, [servicesParam, applyServices]);
+    void applyServices(servicesParam.split(',').filter(Boolean).slice(0, 5), searchParams.get('date'));
+  }, [servicesParam, applyServices, searchParams]);
 
   // QA-01: hỏi máy chủ tổng thời lượng so với ca dài nhất trong tuần ngay khi giỏ thay đổi
   const [quote, setQuote] = useState<Quote | null>(null);
@@ -243,7 +245,7 @@ export function BookingWizard() {
         </div>
       </div>
       {/* Nâng nút tư vấn lên trên thanh "Tiếp tục" dính đáy trên điện thoại */}
-      <CustomerAiAssistant liftPx={110} onBook={(services) => void applyServices(services.map((s) => s.id))} />
+      <CustomerAiAssistant liftPx={110} onBook={(services, date) => void applyServices(services.map((s) => s.id), date)} />
     </div>
   );
 }

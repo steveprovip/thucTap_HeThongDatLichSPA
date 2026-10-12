@@ -1,7 +1,7 @@
 import { Suspense, useMemo, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
-  BarChart3, CalendarClock, CalendarDays, ClipboardList, Clock, FileText, Gauge, Home,
+  BarChart3, Bot, CalendarClock, CalendarDays, ClipboardList, Clock, FileText, Gauge, Home,
   LogOut, Menu, Receipt, ScrollText, Scissors, Settings, Ticket, UserCircle2, Users, X,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -51,6 +51,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
     items: [
       { to: '/quan-ly/doanh-thu', label: 'Doanh thu', icon: <BarChart3 size={18} />, roles: ['owner', 'admin', 'receptionist'] },
       { to: '/quan-ly/phan-bo-khung-gio', label: 'Khung giờ & no-show', icon: <Clock size={18} />, roles: ['owner', 'admin'] },
+      { to: '/quan-ly/cai-tien-ai', label: 'Cải tiến Trợ lý AI', icon: <Bot size={18} />, roles: ['owner', 'admin', 'receptionist'] },
     ],
   },
   {

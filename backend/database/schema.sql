@@ -441,6 +441,10 @@ CREATE TABLE IF NOT EXISTS vouchers (
   )
 );
 CREATE UNIQUE INDEX IF NOT EXISTS ux_voucher_code ON vouchers (upper(code));
+-- QA 12/10: giá trị đơn tối thiểu để áp mã (NULL = không yêu cầu)
+ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS min_order_value NUMERIC(12,0);
+ALTER TABLE vouchers DROP CONSTRAINT IF EXISTS voucher_min_order;
+ALTER TABLE vouchers ADD CONSTRAINT voucher_min_order CHECK (min_order_value IS NULL OR min_order_value >= 0);
 DROP TRIGGER IF EXISTS trg_vouchers_updated ON vouchers;
 CREATE TRIGGER trg_vouchers_updated BEFORE UPDATE ON vouchers
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();

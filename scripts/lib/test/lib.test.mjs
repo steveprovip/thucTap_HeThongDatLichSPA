@@ -1,5 +1,5 @@
 /**
- * Kiểm thử mô-đun dùng chung của Launcher (chạy: node --test scripts/lib/test/).
+ * Kiểm thử mô-đun dùng chung của Launcher (chạy: npm run test:launcher).
  * Không cần gói npm, không cần mạng.
  */
 import assert from 'node:assert/strict';

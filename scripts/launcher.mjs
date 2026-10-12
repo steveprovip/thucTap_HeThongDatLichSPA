@@ -45,6 +45,7 @@ import { classifyGitError, problemOf } from './lib/version.mjs';
 import { cwdInside, mentionsRoot, parseNetstatListeners, parsePidList } from './lib/ports.mjs';
 import { installLockedDependencies } from './lib/dependencies.mjs';
 import { mergeNewEnvKeys, readinessChecks, snapshotEnvFile } from './lib/env-check.mjs';
+import { acquireUpdateLock, migrationPreflight, recordUpdate, releaseUpdateLock, smokeFailures, SMOKE_CHECKS } from './lib/update-safety.mjs';
 
 // macOS mở từ Finder không có PATH của Terminal: bổ sung để thấy docker / npm / git (xem lib/platform.mjs)
 ensureToolPath();
@@ -1258,7 +1259,22 @@ ${BAR}`);
 
 
 /** Bước 1 (chạy bằng mã CŨ): kiểm tra Git, lấy mã mới. Sau đó chạy lại chính launcher bằng mã MỚI (update-apply). */
+/** Một bản cài chỉ một lần cập nhật cùng lúc (bấm CẬP NHẬT hai lần không còn hai lần git pull / build / migration song song). */
 async function update() {
+  const lock = acquireUpdateLock(ROOT);
+  if (!lock.ok) {
+    err(`[LỖI] Đang có một lần cập nhật khác chạy (PID ${lock.holder?.pid}, bắt đầu ${new Date(lock.holder?.at ?? Date.now()).toLocaleTimeString('vi-VN')}).`);
+    err('      Chờ lần đó xong rồi bấm CẬP NHẬT lại. CHƯA có gì bị thay đổi.');
+    return 1;
+  }
+  try {
+    return await updateLocked();
+  } finally {
+    releaseUpdateLock(ROOT);
+  }
+}
+
+async function updateLocked() {
   if (checkNode() !== 0) return 1;
   const force = process.argv.includes('--force');
   log(BAR);
@@ -1312,6 +1328,26 @@ async function update() {
     log(`      Đã là phiên bản mới nhất (${short(oldRev)}). Không có gì để cập nhật.`);
     return 0;
   }
+  // Preflight tương thích: migration MỚI phá huỷ cấu trúc (xoá / đổi kiểu / đổi tên cột…) thì "tự quay về bản cũ" không còn
+  // an toàn — mã cũ không chạy đúng trên CSDL mới. Dừng trước khi đụng vào gì, trừ khi người vận hành cho phép rõ ràng.
+  let destructive = false;
+  if (remoteRev !== oldRev) {
+    const added = gitOut(['diff', '--name-only', '--diff-filter=A', `${oldRev}..origin/main`, '--', 'backend/src/database/migrations'])
+      .split('\n').filter((f) => f.endsWith('.ts'));
+    const risky = migrationPreflight(added.map((path) => ({ path, source: gitOut(['show', `origin/main:${path}`]) })));
+    if (risky.length) {
+      destructive = true;
+      log('      [CẢNH BÁO] Bản mới có migration KHÔNG tương thích ngược:');
+      for (const r of risky) log(`        - ${r.path}: ${r.reasons.join(', ')}`);
+      if (!process.argv.includes('--allow-destructive') && process.env.UPDATE_ALLOW_DESTRUCTIVE !== '1') {
+        err('[DỪNG] Cập nhật này đổi cấu trúc CSDL theo cách không quay lại được tự động. CHƯA có gì bị thay đổi.');
+        err('      Người vận hành xác nhận đã có bản sao lưu rồi chạy: node scripts/update.mjs --allow-destructive');
+        return 1;
+      }
+      log('      Đã cho phép (--allow-destructive): nếu bản mới lỗi sau migration, KHÔNG tự bật bản cũ — khôi phục từ bản sao lưu.');
+    }
+  }
+
   log('[3/8] Sao lưu CSDL trước khi cập nhật ...');
   let preBackup = '';
   if (process.env.UPDATE_BACKUP === 'off') {
@@ -1359,9 +1395,59 @@ async function update() {
   const newRev = currentCommit();
   // Từ đây chạy bằng mã MỚI vừa kéo về: logic cập nhật mới (nếu có) áp dụng ngay trong lần này
   const r = spawnSync(process.execPath, [SELF, 'update-apply', oldRev, newRev], {
-    cwd: ROOT, stdio: 'inherit', windowsHide: true, env: { ...process.env, SALON_PRE_UPDATE_BACKUP: preBackup },
+    cwd: ROOT, stdio: 'inherit', windowsHide: true,
+    env: { ...process.env, SALON_PRE_UPDATE_BACKUP: preBackup, SALON_DESTRUCTIVE_UPDATE: destructive ? '1' : '' },
   });
   return r.status ?? 1;
+}
+
+/** Gọi HTTP JSON tới máy chủ vừa bật (smoke test). status 0 = không phản hồi. */
+function httpJson(method, url, body, timeoutMs = 10_000) {
+  return new Promise((resolve) => {
+    const data = body ? JSON.stringify(body) : undefined;
+    const req = http.request(url, {
+      method, timeout: timeoutMs,
+      headers: { 'Content-Type': 'application/json', ...(data ? { 'Content-Length': Buffer.byteLength(data) } : {}) },
+    }, (res) => {
+      let buf = '';
+      res.setEncoding('utf8');
+      res.on('data', (c) => { buf += c; });
+      res.on('end', () => {
+        let json = null;
+        try { json = JSON.parse(buf); } catch { /* không phải JSON */ }
+        resolve({ status: res.statusCode ?? 0, json });
+      });
+    });
+    req.on('timeout', () => req.destroy());
+    req.on('error', () => resolve({ status: 0, json: null }));
+    req.end(data);
+  });
+}
+
+/** Smoke test bản vừa bật: /health (API + CSDL) và các API công khai khách dùng thật. Trả danh sách mục lỗi. */
+async function smokeTest() {
+  const prefix = (readEnvValue(join(ROOT, 'backend', '.env'), 'API_PREFIX') || 'api').replace(/^\/+|\/+$/g, '');
+  const results = [];
+  for (const c of SMOKE_CHECKS) {
+    const path = c.path.replace(/^\/api\//, `/${prefix}/`);
+    const r = await httpJson(c.body ? 'POST' : 'GET', `http://127.0.0.1:${API_PORT}${path}`, c.body);
+    results.push({ name: c.name, status: r.status, ok: !!c.check(r.json) });
+  }
+  return smokeFailures(results);
+}
+
+/**
+ * Chuỗi cung ứng: gói npm vừa cài có chữ ký registry / provenance hợp lệ không (`npm audit signatures`). Chỉ CẢNH BÁO —
+ * registry nội bộ / mất mạng không được chặn tiệm cập nhật; UPDATE_AUDIT_SIGNATURES=off để bỏ qua.
+ */
+async function auditSignatures(dirs) {
+  if (process.env.UPDATE_AUDIT_SIGNATURES === 'off' || !dirs.length) return;
+  log('      Kiểm tra chữ ký gói npm (npm audit signatures) ...');
+  for (const dir of dirs) {
+    const r = await npmCapture(['audit', 'signatures'], { cwd: join(ROOT, dir), label: `chữ ký gói ${dir}`, heartbeat: false });
+    const line = r.out.split('\n').map((l) => l.trim()).filter(Boolean).slice(0, 3).join(' · ');
+    log(r.status === 0 ? `      ${dir}: ${line || 'chữ ký hợp lệ'}` : `      [CẢNH BÁO] ${dir}: ${line || 'không kiểm tra được chữ ký (mạng / registry)'}`);
+  }
 }
 
 /** Bước 2 (chạy bằng mã MỚI): gói npm, build, dừng, sao lưu + migration, chạy lại, kiểm tra, tự quay về nếu lỗi. */
@@ -1376,6 +1462,11 @@ async function updateApply() {
   const oldBuilt = !!oldRev && readStampCommit() === oldRev; // thư mục dist hiện tại được build đúng từ bản cũ
   let stopped = false; // đã dừng hệ thống cũ chưa
   let swapped = false; // đã đổi dist-next -> dist chưa
+  let migrated = false; // đã chạy migration của bản mới chưa
+  const destructive = process.env.SALON_DESTRUCTIVE_UPDATE === '1';
+  const history = (result, extra = {}) => recordUpdate(ROOT, {
+    from: short(oldRev), to: short(newRev), result, seconds: Math.round((Date.now() - t0) / 1000), mode, ...extra,
+  });
 
   /**
    * Cập nhật hỏng -> đưa MÃ NGUỒN về bản cũ (cây mã đã được kiểm tra là sạch nên không mất gì của máy này).
@@ -1401,6 +1492,15 @@ async function updateApply() {
   };
   const fail = async (...lines) => {
     for (const l of lines) err(l);
+    if (destructive && migrated) {
+      // Mã cũ không chạy đúng trên cấu trúc CSDL mới → không tự bật bản cũ (tránh ghi sai dữ liệu khách)
+      const backup = process.env.SALON_PRE_UPDATE_BACKUP || '(xem thư mục backups/)';
+      err('      Bản cập nhật có migration KHÔNG tương thích ngược nên KHÔNG tự bật lại bản cũ.');
+      err(`      Khôi phục: pg_restore --clean --if-exists từ ${backup} rồi git reset --hard ${short(oldRev)} (docs/TRIEN-KHAI.md mục 4.5).`);
+      history('fail-needs-restore', { backup });
+      return 1;
+    }
+    history('rollback', { reason: lines[0] });
     revertCode();
     // npm ci may have replaced dependencies before the new build failed. Restore the old lockfile's packages first.
     if (wasRunning && stopped && !(await ensureDeps())) {
@@ -1423,7 +1523,9 @@ async function updateApply() {
     if (!(await stopRunning(state))) return fail(`[LỖI] Không dừng được hệ thống cũ (cổng ${API_PORT} vẫn bận). Chưa thay đổi gì.`);
     stopped = true;
   }
+  const staleBefore = staleDeps();
   if (!(await ensureDeps())) return fail('[LỖI] Cài gói thất bại.');
+  if (staleBefore.length) await auditSignatures(staleBefore.filter((d) => d !== '.'));
 
   const needBuild = mode === 'serve' && needsBuild();
   if (mode !== 'serve') {
@@ -1445,6 +1547,7 @@ async function updateApply() {
   if (!(await ensureDatabase('     -'))) return fail('[LỖI] Không kết nối được PostgreSQL.');
   // Bản biên dịch mới nằm ở dist-next (chưa swap) hoặc dist (đã khớp mã nguồn); chế độ phát triển không build -> ts-node
   const mig = await migrateAndBootstrap(backupPolicy, mode !== 'serve' ? null : needBuild ? 'dist-next' : 'dist');
+  if (mig.ok) migrated = mig.applied.length > 0;
   if (!mig.ok) {
     return fail(
       '[LỖI] Cập nhật cấu trúc CSDL thất bại. Dữ liệu cũ được giữ nguyên (mỗi migration chạy trong một giao dịch, lỗi thì tự huỷ).',
@@ -1479,8 +1582,12 @@ async function updateApply() {
     } catch { versionOk = false; }
   }
 
-  if (!healthy || !versionOk) {
-    err(`[LỖI] Bản mới không chạy đúng (${healthy ? 'giao diện không khớp bản build' : 'API không phản hồi'}). Quay lại bản cũ ...`);
+  // Health gate theo CHỨC NĂNG (không chỉ tiến trình sống): API công khai khách dùng thật phải trả đúng
+  const smokeBad = healthy && versionOk ? await smokeTest() : [];
+  if (healthy && versionOk) log(smokeBad.length ? `      Smoke test lỗi: ${smokeBad.join('; ')}` : `      Smoke test: ${SMOKE_CHECKS.map((c) => c.name).join(', ')} — đạt.`);
+  if (!healthy || !versionOk || smokeBad.length) {
+    const why = !healthy ? 'API không phản hồi' : !versionOk ? 'giao diện không khớp bản build' : `chức năng lỗi: ${smokeBad.join('; ')}`;
+    err(`[LỖI] Bản mới không chạy đúng (${why}). Quay lại bản cũ ...`);
     await stopRunning(readState());
     if (swapped) await restorePrev(oldBuilt ? oldRev : '');
     return fail(
@@ -1490,6 +1597,7 @@ async function updateApply() {
   }
 
   const secs = Math.round((Date.now() - t0) / 1000);
+  history('ok', { migrations: mig.applied, backup: mig.backupFile ?? (process.env.SALON_PRE_UPDATE_BACKUP || null) });
   log('');
   log(BAR);
   log(`  CẬP NHẬT XONG sau ${secs} giây`);
@@ -1500,6 +1608,7 @@ async function updateApply() {
   log('  Phiên đăng nhập  : giữ nguyên (khoá JWT trong backend/.env không đổi, phiên lưu trong CSDL)');
   log(`  Địa chỉ          : ${mode === 'serve' ? SERVER_URL : APP_URL}`);
   log('  Thiết bị đang mở trang sẽ thấy nút "Tải lại" để lấy giao diện mới.');
+  log(`  Nhật ký cập nhật : ${join('logs', 'update-history.jsonl')}`);
   if (!wasRunning) log('  (Trước đó hệ thống chưa chạy - đã bật ở chế độ máy chủ.)');
   log(BAR);
   return 0;

@@ -22,15 +22,25 @@ describe('Hồi quy lỗi QA (EP-01 → EP-03)', () => {
     const res = await request(server).post('/api/auth/login').send({ email, password }).expect(200);
     return res.body.data.accessToken as string;
   };
-  const shortService = async (): Promise<PublicService> => {
-    const catalog = await request(server).get('/api/public/catalog').expect(200);
-    return catalog.body.data
-      .flatMap((g: { services: PublicService[] }) => g.services)
-      .find((s: PublicService) => s.durationMinutes <= 45);
-  };
   const slotsOf = async (date: string, serviceId: string): Promise<Slot[]> => {
     const res = await request(server).get('/api/public/availability').query({ date, serviceIds: serviceId }).expect(200);
     return res.body.data.slots as Slot[];
+  };
+  /**
+   * Dịch vụ ngắn (≤ 45 phút) CÒN khung giờ trống ở mọi ngày cần dùng. Trước đây lấy dịch vụ ngắn ĐẦU TIÊN trong danh mục:
+   * hỏng khi bộ kiểm thử khác thêm dịch vụ ngắn mà thợ chỉ có ca ở ngày khác (lỗi phụ thuộc thứ tự chạy).
+   */
+  const shortService = async (...dates: string[]): Promise<PublicService> => {
+    const catalog = await request(server).get('/api/public/catalog').expect(200);
+    const short = catalog.body.data
+      .flatMap((g: { services: PublicService[] }) => g.services)
+      .filter((s: PublicService) => s.durationMinutes <= 45);
+    for (const s of short) {
+      let ok = true;
+      for (const d of dates) if (!(await slotsOf(d, s.id)).some((x) => x.stylistIds.length > 0)) { ok = false; break; }
+      if (ok) return s;
+    }
+    throw new Error(`Không có dịch vụ ngắn còn khung giờ trống ngày ${dates.join(', ')}`);
   };
 
   beforeAll(async () => {
@@ -45,7 +55,7 @@ describe('Hồi quy lỗi QA (EP-01 → EP-03)', () => {
 
   it('QA-14: chọn đích danh thợ nhưng gửi giờ ngoài ca / lệch lưới 15 phút bị từ chối', async () => {
     const date = tomorrowISO(5);
-    const service = await shortService();
+    const service = await shortService(date);
     const slot = (await slotsOf(date, service.id)).find((s) => s.stylistIds.length > 0)!;
     const base = { serviceIds: [service.id], date, stylistId: slot.stylistIds[0], fullName: 'QA 14' };
 
@@ -92,7 +102,7 @@ describe('Hồi quy lỗi QA (EP-01 → EP-03)', () => {
 
   it('QA-17: cùng một SĐT gửi song song không vượt quá 3 lịch chưa hoàn tất', async () => {
     const p = phone('096', 0).replace(/^096/, '097');
-    const service = await shortService();
+    const service = await shortService(tomorrowISO(9), tomorrowISO(10), tomorrowISO(11));
     const first = (await slotsOf(tomorrowISO(9), service.id)).find((s) => s.stylistIds.length > 0)!;
     await request(server).post('/api/public/bookings')
       .send({ serviceIds: [service.id], date: tomorrowISO(9), time: first.time, fullName: 'QA 17', phone: p }).expect(201);

@@ -21,8 +21,9 @@ export const stylistsApi = {
   async create(payload: Partial<Stylist> & { fullName: string }): Promise<Stylist & { tempPassword?: string | null }> {
     return unwrap<Stylist & { tempPassword?: string | null }>(await api.post('/stylists', payload));
   },
-  async update(id: string, payload: Partial<Stylist>): Promise<Stylist> {
-    return unwrap<Stylist>(await api.patch(`/stylists/${id}`, payload));
+  /** QA Sprint 3 · mục 2: gửi `email` để gắn / tạo / đổi tài khoản đăng nhập; tài khoản mới trả `tempPassword` một lần. */
+  async update(id: string, payload: Partial<Stylist>): Promise<Stylist & { tempPassword?: string | null }> {
+    return unwrap<Stylist & { tempPassword?: string | null }>(await api.patch(`/stylists/${id}`, payload));
   },
   async uploadAvatar(id: string, file: File): Promise<Stylist> {
     const form = new FormData();

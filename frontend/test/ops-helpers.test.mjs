@@ -102,3 +102,27 @@ test('cọc chống bùng lịch: chỉ lịch trên 500.000 đ, 30% làm tròn 
   assert.equal(depositAmount(Number.NaN), 0);
   assert.equal(depositTransferNote('0983 415 276', 'ab-12cd34'), 'COC 0983415276 AB12CD34');
 });
+
+test('QA Sprint 3 · mục 3: "Không đến" chỉ bật sau giờ hẹn 30 phút và khi lịch chưa check-in', () => {
+  const { canMarkNoShow } = module.exports;
+  const start = Date.parse('2026-10-12T09:00:00+07:00');
+  const at = (min) => start + min * 60_000;
+  assert.equal(canMarkNoShow('confirmed', start, at(0)), false);
+  assert.equal(canMarkNoShow('confirmed', start, at(29)), false);
+  assert.equal(canMarkNoShow('confirmed', start, at(30)), true);
+  assert.equal(canMarkNoShow('arrived', start, at(90)), false); // đã check-in
+  assert.equal(canMarkNoShow('in_progress', start, at(90)), false);
+});
+
+test('QA Sprint 3 · mục 4: cảnh báo lịch đang làm vượt thời lượng chuẩn (vàng), quá 20 phút (đỏ)', () => {
+  const { overrunInfo } = module.exports;
+  const startedAt = '2026-10-12T02:00:00.000Z';
+  const at = (min) => Date.parse(startedAt) + min * 60_000;
+  const appt = { status: 'in_progress', startedAt, totalDurationMinutes: 60 };
+  assert.deepEqual(plain(overrunInfo(appt, at(60))), { overMinutes: 0, level: 'none' });
+  assert.deepEqual(plain(overrunInfo(appt, at(75))), { overMinutes: 15, level: 'warn' });
+  assert.deepEqual(plain(overrunInfo(appt, at(80))), { overMinutes: 20, level: 'warn' });
+  assert.deepEqual(plain(overrunInfo(appt, at(81))), { overMinutes: 21, level: 'danger' });
+  assert.equal(overrunInfo({ ...appt, status: 'completed' }, at(120)).level, 'none');
+  assert.equal(overrunInfo({ ...appt, startedAt: null }, at(120)).level, 'none');
+});

@@ -6,6 +6,7 @@ import type { Appointment, DayTimeline } from '@/types';
 import { Button, DateNav, SectionTitle, StylistAvatar, TimelineSkeleton } from '@/components';
 import { STATUS_BLOCK, STATUS_DOT, STATUS_LABELS, STATUS_STYLES } from '@/utils/constants';
 import { timeToMinutes, todayISO } from '@/utils/format';
+import { overrunInfo } from '@/utils/opsHelpers';
 import { stylistColorMap } from '@/utils/stylistColors';
 import { useAppointmentsSync } from '@/utils/liveSync';
 import { useAuth } from '@/contexts/AuthContext';
@@ -290,15 +291,20 @@ export function DayTimelinePage() {
                       const tone = colorBy === 'stylist' && c
                         ? `${c.soft} ${c.edge} ${c.text} ${a.status === 'cancelled' ? 'line-through opacity-60' : a.status === 'no_show' ? 'opacity-60' : ''}`
                         : STATUS_BLOCK[a.status];
+                      // QA Sprint 3 · mục 4: lịch đang làm quá thời lượng chuẩn → viền vàng; quá hơn 20′ → viền đỏ nhấp nháy
+                      const over = overrunInfo(a, clock);
+                      const overRing = over.level === 'danger' ? 'z-[6] ring-2 ring-red-500 ring-offset-1 animate-pulse-subtle'
+                        : over.level === 'warn' ? 'ring-2 ring-amber-400' : '';
                       return (
                       <button
                         key={a.id}
                         onClick={() => setSelected(a)}
                         className={`absolute inset-x-1 z-[5] overflow-hidden rounded-md border-l-4 px-2 py-1 text-left
                                     animate-fade-in text-[11px] leading-tight shadow-sm ring-1 ring-slate-900/[0.04] transition-all duration-200 hover:z-[6] hover:-translate-y-px hover:shadow-md active:scale-[0.98]
-                                    ${tone} ${flashId === a.id ? 'z-[6] animate-pulse-subtle ring-2 ring-teal-500 ring-offset-1' : ''}`}
+                                    ${tone} ${overRing} ${flashId === a.id ? 'z-[6] animate-pulse-subtle ring-2 ring-teal-500 ring-offset-1' : ''}`}
                         style={{ top: topOf(a.startTime) + 1, height: heightOf(a.totalDurationMinutes) - 2, animationDelay: `${index * 40}ms` }}
-                        title={`${a.startTime}–${a.endTime} · ${a.customer.fullName} · ${a.services.map((s) => s.name).join(', ')} · ${STATUS_LABELS[a.status]}`}
+                        title={`${a.startTime}–${a.endTime} · ${a.customer.fullName} · ${a.services.map((s) => s.name).join(', ')} · ${STATUS_LABELS[a.status]}`
+                          + (over.level !== 'none' ? ` · Quá thời lượng chuẩn ${over.overMinutes} phút${over.level === 'danger' ? ' — các lịch sau có nguy cơ trễ' : ''}` : '')}
                       >
                         <span className="flex items-center gap-1 truncate font-semibold">
                         {colorBy === 'stylist' && a.status !== 'in_progress' && (
@@ -310,6 +316,11 @@ export function DayTimelinePage() {
                         {a.totalDurationMinutes >= 30 && (
                           <span className="block truncate opacity-80">
                             {a.services.map((s) => s.name).join(', ')}
+                          </span>
+                        )}
+                        {over.level !== 'none' && (
+                          <span className={`block truncate font-semibold ${over.level === 'danger' ? 'text-red-700' : 'text-amber-700'}`}>
+                            ⚠ Quá giờ {over.overMinutes}′
                           </span>
                         )}
                         {a.isLate && a.totalDurationMinutes >= 45 && (

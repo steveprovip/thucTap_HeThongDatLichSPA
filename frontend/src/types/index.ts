@@ -671,6 +671,12 @@ export interface AssistantStatus {
   model: string | null;
   localDetected: boolean;
   localUrl: string | null;
+  /** QA 12/10: máy chạy backend đã tải model_AI_local — bật được AI local một chạm. */
+  localAvailable?: boolean;
+  /** Đang khởi động AI local (model đang nạp). */
+  localStarting?: boolean;
+  /** Máy có model nhưng AI local không chạy → hiện nút "Khởi động lại AI". */
+  localLost?: boolean;
 }
 /** TASK v4 · NV1: số liệu tổng hợp hôm nay cho chế độ "Phân tích & số liệu". */
 export interface AssistantToday {
@@ -704,4 +710,42 @@ export interface CustomerAssistantReply {
   quickReplies: string[];
   source: 'llm' | 'rules';
   model: string | null;
+  /** Ngày trợ lý vừa tra giờ trống — "Đặt" mở phiếu đặt lịch đúng ngày này. */
+  bookDate?: string;
+  /** Trạng thái hội thoại (đang tra giờ ngày nào, buổi nào, dịch vụ nào…) — gửi lại nguyên vẹn ở câu kế tiếp. */
+  state?: CustomerDialogState;
+  /** Câu khách gõ khó hiểu được trợ lý viết lại rõ nghĩa → hiện "Mình hiểu là: …". */
+  understoodAs?: string;
+}
+
+/** Đề xuất học / câu đã học của trợ lý tư vấn (vòng tự cải tiến có người duyệt). */
+export interface AssistantLearnedPhrase {
+  id: string;
+  kind: 'question' | 'alias' | 'answer';
+  phrase: string;
+  rewrite: string;
+  intent: string | null;
+  status: 'suggested' | 'approved' | 'rejected';
+  source: 'llm' | 'rephrase' | 'owner';
+  hits: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AssistantImprovementReport {
+  gaps: { days: number; total: number; items: { question: string; intent: string; count: number; lastAt: string }[] };
+  suggestions: AssistantLearnedPhrase[];
+  approved: number;
+  feedback: { up: number; down: number };
+  ungroundedBlocked: number;
+}
+
+export interface CustomerDialogState {
+  task?: 'availability';
+  date?: string;
+  part?: 'sang' | 'trua' | 'chieu' | 'toi';
+  time?: string;
+  serviceId?: string;
+  awaitingService?: boolean;
+  misses?: number;
 }

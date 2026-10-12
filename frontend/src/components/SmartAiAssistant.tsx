@@ -1,7 +1,7 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  BarChart3, CalendarHeart, ClipboardList, Clock3, Gauge, Loader2, MessageCircle, Send, Sparkles, UserPlus, Users, X,
+  BarChart3, CalendarHeart, ClipboardList, Clock3, Gauge, Loader2, MessageCircle, RotateCcw, Send, Sparkles, UserPlus, Users, X,
 } from 'lucide-react';
 import { assistantApi, getErrorMessage, stylistsApi, workingHoursApi } from '@/api';
 import type {
@@ -76,6 +76,28 @@ export function SmartAiAssistant() {
     if (!open) return;
     assistantApi.status().then(setAiStatus).catch(() => setAiStatus(null));
   }, [open]);
+
+  // Zero-touch: máy chủ tự bật AI local — giao diện chỉ theo dõi trạng thái (10 giây khi đang nạp model, 30 giây khi đã ổn)
+  const starting = !!aiStatus?.localStarting && aiStatus.mode !== 'llm';
+  const lost = !!aiStatus?.localLost && aiStatus.mode !== 'llm';
+  useEffect(() => {
+    if (!open) return;
+    const id = window.setInterval(() => { assistantApi.status().then(setAiStatus).catch(() => undefined); }, starting ? 10_000 : 30_000);
+    return () => window.clearInterval(id);
+  }, [open, starting]);
+
+  const startLocalAi = async () => {
+    setBusy('ai-local');
+    try {
+      const r = await assistantApi.startLocal();
+      if (r.started || r.starting) toast.toast(r.message, 'info'); else toast.warning(r.message);
+      setAiStatus(await assistantApi.status());
+    } catch (e) {
+      toast.error(getErrorMessage(e));
+    } finally {
+      setBusy(null);
+    }
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -154,10 +176,12 @@ export function SmartAiAssistant() {
   ];
   const usingLlm = aiStatus?.mode === 'llm';
   const chip = usingLlm
-    ? { dot: 'bg-emerald-500', text: `AI local · ${aiStatus?.model ?? ''}`, title: 'Câu hỏi đang được trả lời bởi mô hình AI chạy ngay trên máy này' }
-    : { dot: 'bg-slate-400', text: 'Trợ lý thông minh', title: aiStatus?.localUrl
-      ? `Chưa bật AI local (${aiStatus.localUrl}) — trợ lý trả lời theo luật dựa trên số liệu thật. Bật AI: chạy model_AI_local\\chay_ai_local.cmd`
-      : 'Trợ lý trả lời theo luật dựa trên số liệu thật của tiệm' };
+    ? { dot: 'bg-emerald-500', text: `Đang chạy · ${aiStatus?.model ?? 'AI local'}`, title: 'Câu hỏi đang được trả lời bởi mô hình AI chạy ngay trên máy này' }
+    : starting
+      ? { dot: 'bg-amber-400 animate-pulse', text: 'Đang kết nối AI local…', title: 'Máy chủ tự bật AI local, model đang nạp lên card đồ hoạ — trong lúc chờ, trợ lý vẫn trả lời theo số liệu thật' }
+      : lost
+        ? { dot: 'bg-red-500', text: 'Mất kết nối AI local', title: 'AI local không phản hồi — trợ lý tạm trả lời theo số liệu thật. Bấm "Khởi động lại AI" để bật lại.' }
+        : { dot: 'bg-slate-400', text: 'Trợ lý thông minh', title: 'Trợ lý trả lời theo luật dựa trên số liệu thật của tiệm' };
 
   return (
     <div className="no-print">
@@ -182,8 +206,15 @@ export function SmartAiAssistant() {
                 <span className={`h-1.5 w-1.5 rounded-full ${chip.dot}`} aria-hidden /> <span className="truncate">{chip.text}</span>
               </p>
             </div>
+            {lost && (
+              <button type="button" onClick={() => void startLocalAi()} disabled={busy === 'ai-local'}
+                      title="Bật lại máy chủ AI local (Spark-X2.5-4B) trên máy này — không cần mở cửa sổ dòng lệnh"
+                      className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-lg border border-red-200 bg-white px-2 py-1 text-[11px] font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60">
+                {busy === 'ai-local' ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />} Khởi động lại AI
+              </button>
+            )}
             <button type="button" onClick={() => setOpen(false)} aria-label="Đóng trợ lý"
-                    className="ml-auto inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-500 hover:bg-white"><X size={15} /></button>
+                    className={`${lost ? '' : 'ml-auto '}inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-500 hover:bg-white`}><X size={15} /></button>
           </header>
           <div className="border-b border-slate-100 px-2.5 py-2">
             <div role="tablist" aria-label="Chế độ trợ lý" className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1">

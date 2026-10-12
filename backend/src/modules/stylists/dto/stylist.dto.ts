@@ -41,6 +41,14 @@ export class UpdateStylistDto {
   @IsOptional() @Matches(VN_PHONE_REGEX, { message: VN_PHONE_MESSAGE }) phone?: string;
   @IsOptional() @IsString() @MaxLength(500) bio?: string;
   @IsOptional() @IsBoolean() isActive?: boolean;
+
+  /**
+   * QA Sprint 3 · mục 2 — email đăng nhập của thợ: hồ sơ chưa có tài khoản → gắn tài khoản Thợ sẵn có cùng email
+   * (tạo ở "Tài khoản nhân sự") hoặc tạo mới kèm mật khẩu tạm; đã có tài khoản → đổi email đăng nhập.
+   */
+  @IsOptional() @IsEmail({}, { message: 'Email không đúng định dạng' }) @IsAsciiEmail() @MaxLength(160)
+  email?: string;
+
   @IsOptional() @IsArray() @ArrayMaxSize(50) @ArrayUnique() @IsUUID('4', { each: true, message: 'Mã dịch vụ không hợp lệ' })
   serviceIds?: string[];
 }

@@ -1,13 +1,17 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CalendarCheck, Check, Clock3, Flower2, Loader2, MessageCircleHeart, Plus, Send, X } from 'lucide-react';
+import { CalendarCheck, Check, Clock3, Flower2, Loader2, MessageCircleHeart, Plus, Send, ThumbsDown, ThumbsUp, X } from 'lucide-react';
 import { assistantApi, getErrorMessage } from '@/api';
-import type { ChatTurn, CustomerAssistantService } from '@/types';
+import type { ChatTurn, CustomerAssistantService, CustomerDialogState } from '@/types';
 import { formatVnd } from '@/utils/format';
 import { serviceImage, serviceMediaKind } from '@/utils/images';
 import { SmartImage } from './Media';
 
-interface Line { from: 'me' | 'bot'; text: string; suggestions?: CustomerAssistantService[]; meta?: string }
+interface Line {
+  from: 'me' | 'bot'; text: string; suggestions?: CustomerAssistantService[]; meta?: string; bookDate?: string;
+  /** Câu khách + ý định — để gửi 👍 / 👎; `understoodAs`: trợ lý đã viết lại câu khó hiểu thành câu này. */
+  q?: string; intent?: string; understoodAs?: string; rated?: 'up' | 'down';
+}
 
 const QUICK = ['Xem bảng giá', 'Dịch vụ hot', 'Đặt lịch ngay'];
 /** TASK v4 · NV4: chủ đề tư vấn nhanh như quầy lễ tân spa — bấm là hỏi ngay. */
@@ -31,7 +35,7 @@ const greeting = (): string => `Chào bạn, chúc bạn buổi ${partOfDay()} t
  *  - `liftPx`: nâng nút lên trên thanh thao tác dính đáy của wizard trên điện thoại.
  */
 export function CustomerAiAssistant({ onBook, liftPx = 0 }: {
-  onBook?: (services: CustomerAssistantService[]) => void;
+  onBook?: (services: CustomerAssistantService[], date?: string) => void;
   liftPx?: number;
 }) {
   const navigate = useNavigate();
@@ -41,9 +45,23 @@ export function CustomerAiAssistant({ onBook, liftPx = 0 }: {
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [picked, setPicked] = useState<CustomerAssistantService[]>([]);
+  /** Trạng thái hội thoại server trả về (ngày / buổi / dịch vụ đang hỏi) — để "cắt tóc nữ ?" nối tiếp "sáng mai có giờ trống?". */
+  const dialog = useRef<CustomerDialogState | undefined>(undefined);
   const logRef = useRef<HTMLDivElement>(null);
+  const lastBotRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: 'smooth' }); }, [lines, busy, open]);
+  // QA 12/10: câu trả lời mới → cuộn tới ĐẦU câu trả lời (đọc được ngay), không cuộn tuột xuống đáy danh sách thẻ dịch vụ
+  useEffect(() => {
+    const log = logRef.current;
+    if (!log) return;
+    const last = lines[lines.length - 1];
+    const bot = lastBotRef.current;
+    if (!busy && last?.from === 'bot' && bot && lines.length > 1) {
+      log.scrollTo({ top: Math.max(0, bot.offsetTop - log.offsetTop - 8), behavior: 'smooth' });
+    } else {
+      log.scrollTo({ top: log.scrollHeight, behavior: 'smooth' });
+    }
+  }, [lines, busy, open]);
 
   const history = (): ChatTurn[] => lines.slice(1).map((l) => ({ role: l.from === 'me' ? 'user' : 'assistant', content: l.text.slice(0, 1500) }));
 
@@ -55,8 +73,12 @@ export function CustomerAiAssistant({ onBook, liftPx = 0 }: {
     setDraft('');
     setBusy(true);
     try {
-      const r = await assistantApi.customerChat(q, past);
-      setLines((l) => [...l, { from: 'bot', text: r.answer, suggestions: r.suggestions, meta: r.source === 'llm' ? 'AI tư vấn' : undefined }]);
+      const r = await assistantApi.customerChat(q, past, dialog.current);
+      dialog.current = r.state;
+      setLines((l) => [...l, {
+        from: 'bot', text: r.answer, suggestions: r.suggestions, meta: r.source === 'llm' ? 'AI tư vấn' : undefined, bookDate: r.bookDate,
+        q, intent: r.intent, understoodAs: r.understoodAs,
+      }]);
       if (r.quickReplies?.length) setQuick(r.quickReplies);
     } catch (e) {
       setLines((l) => [...l, { from: 'bot', text: getErrorMessage(e, 'Mình đang bận một chút, bạn thử lại sau ít phút nhé.') }]);
@@ -65,12 +87,20 @@ export function CustomerAiAssistant({ onBook, liftPx = 0 }: {
     }
   };
 
-  const book = (services: CustomerAssistantService[]) => {
+  /** `date`: ngày trợ lý vừa tra giờ trống → phiếu đặt lịch mở sẵn đúng ngày đó. */
+  const book = (services: CustomerAssistantService[], date?: string) => {
     if (!services.length) return;
     setOpen(false);
     setPicked([]);
-    if (onBook) onBook(services);
-    else navigate(`/dat-lich?services=${services.map((s) => encodeURIComponent(s.id)).join(',')}`);
+    if (onBook) onBook(services, date);
+    else navigate(`/dat-lich?services=${services.map((s) => encodeURIComponent(s.id)).join(',')}${date ? `&date=${date}` : ''}`);
+  };
+  /** 👍 / 👎: câu bị chê vào báo cáo "Cải tiến AI" của chủ tiệm (phân tích lỗi trên hội thoại thật). */
+  const rate = (i: number, helpful: boolean) => {
+    const l = lines[i];
+    if (!l?.q || l.rated) return;
+    setLines((all) => all.map((x, k) => (k === i ? { ...x, rated: helpful ? 'up' : 'down' } : x)));
+    void assistantApi.customerFeedback(l.q, l.intent ?? 'unknown', helpful).catch(() => undefined);
   };
   const toggle = (s: CustomerAssistantService) =>
     setPicked((p) => (p.some((x) => x.id === s.id) ? p.filter((x) => x.id !== s.id) : p.length >= 5 ? p : [...p, s]));
@@ -130,39 +160,49 @@ export function CustomerAiAssistant({ onBook, liftPx = 0 }: {
               </div>
             )}
             {lines.map((l, i) => (
-              <div key={i} className={l.from === 'me' ? 'flex justify-end' : ''}>
+              <div key={i} ref={i === lines.length - 1 && l.from === 'bot' ? lastBotRef : undefined}
+                   className={l.from === 'me' ? 'flex justify-end' : ''}>
                 <div className={`max-w-[90%] whitespace-pre-line rounded-2xl px-3 py-2 ${l.from === 'me' ? 'rounded-br-md bg-teal-600 text-white' : 'rounded-bl-md bg-white text-slate-800 shadow-sm'}`}>
+                  {l.understoodAs && <span className="mb-1 block text-[11px] italic text-slate-500">Mình hiểu là: “{l.understoodAs}”</span>}
                   {l.text}
                   {l.meta && <span className="mt-1 block text-[10px] opacity-50">{l.meta}</span>}
+                  {l.from === 'bot' && l.q && (
+                    <span className="mt-1 flex items-center gap-1 text-[10px] text-slate-400">
+                      {l.rated ? (l.rated === 'up' ? 'Cảm ơn bạn!' : 'Cảm ơn bạn — tiệm sẽ cải thiện câu này.') : (
+                        <>
+                          <span>Câu trả lời có giúp ích?</span>
+                          <button type="button" onClick={() => rate(i, true)} aria-label="Hữu ích" className="rounded p-0.5 hover:bg-slate-100 hover:text-teal-700"><ThumbsUp size={12} /></button>
+                          <button type="button" onClick={() => rate(i, false)} aria-label="Chưa đúng ý" className="rounded p-0.5 hover:bg-slate-100 hover:text-rose-600"><ThumbsDown size={12} /></button>
+                        </>
+                      )}
+                    </span>
+                  )}
                 </div>
                 {!!l.suggestions?.length && (
-                  <ul className="mt-1.5 space-y-1.5">
-                    {l.suggestions.map((s) => {
+                  // Gợi ý GỌN: mỗi dịch vụ một dòng (ảnh nhỏ · tên · giá · Chọn / Đặt), tối đa 3 — không lấn át câu trả lời
+                  <ul className="mt-1.5 max-w-[90%] divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white" aria-label="Dịch vụ liên quan">
+                    {l.suggestions.slice(0, 3).map((s) => {
                       const on = picked.some((x) => x.id === s.id);
                       return (
-                        <li key={s.id} className={`flex gap-2.5 rounded-2xl border bg-white p-2 shadow-sm transition ${on ? 'border-teal-400 ring-1 ring-teal-200' : 'border-slate-100 hover:shadow-md'}`}>
+                        <li key={s.id} className={`flex items-center gap-2 px-2 py-1.5 ${on ? 'bg-teal-50/70' : ''}`}>
                           <SmartImage src={serviceImage({ id: s.id, name: s.name, categoryName: s.categoryName, imageUrl: s.imageUrl })}
-                                      alt={s.name} loading="lazy" seed={s.id} className="h-[72px] w-[72px] shrink-0 rounded-xl"
+                                      alt="" loading="lazy" seed={s.id} className="h-8 w-8 shrink-0 rounded-lg"
                                       kind={serviceMediaKind({ name: s.name, categoryName: s.categoryName })} />
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-start justify-between gap-2">
-                              <p className="line-clamp-2 font-semibold leading-snug text-slate-900">{s.name}</p>
-                              <span className="shrink-0 rounded-full bg-teal-50 px-2 py-0.5 text-xs font-bold text-teal-700">{s.priceText}</span>
-                            </div>
-                            <p className="mt-0.5 flex items-center gap-1 text-[11px] text-slate-500">
-                              <Clock3 size={11} /> {s.durationMinutes} phút · {s.categoryName}
+                          <div className="min-w-0 flex-1 leading-tight">
+                            <p className="truncate text-[12.5px] font-medium text-slate-900" title={s.name}>{s.name}</p>
+                            <p className="flex items-center gap-1 text-[11px] text-slate-500">
+                              <span className="font-semibold text-teal-700">{s.priceText}</span> · <Clock3 size={10} /> {s.durationMinutes}′
                             </p>
-                            <div className="mt-1.5 flex gap-1.5">
-                              <button type="button" onClick={() => toggle(s)} aria-pressed={on}
-                                      className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-semibold ${on ? 'border-teal-500 bg-teal-50 text-teal-800' : 'border-slate-200 text-slate-600 hover:border-teal-400'}`}>
-                                {on ? <Check size={12} /> : <Plus size={12} />} {on ? 'Đã chọn' : 'Chọn thêm'}
-                              </button>
-                              <button type="button" onClick={() => book([s])}
-                                      className="inline-flex items-center gap-1 rounded-lg bg-teal-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-teal-700">
-                                <CalendarCheck size={12} /> Đặt lịch ngay
-                              </button>
-                            </div>
                           </div>
+                          <button type="button" onClick={() => toggle(s)} aria-pressed={on}
+                                  aria-label={on ? `Bỏ chọn ${s.name}` : `Chọn thêm ${s.name}`} title={on ? 'Bỏ chọn' : 'Chọn thêm để đặt chung'}
+                                  className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border ${on ? 'border-teal-500 bg-teal-50 text-teal-700' : 'border-slate-200 text-slate-500 hover:border-teal-400 hover:text-teal-700'}`}>
+                            {on ? <Check size={14} /> : <Plus size={14} />}
+                          </button>
+                          <button type="button" onClick={() => book([s], l.bookDate)} title={`Đặt lịch ${s.name}${l.bookDate ? ` ngày ${l.bookDate.slice(8, 10)}/${l.bookDate.slice(5, 7)}` : ''}`}
+                                  className="inline-flex h-7 shrink-0 items-center gap-1 rounded-lg bg-teal-600 px-2 text-[11px] font-semibold text-white hover:bg-teal-700">
+                            <CalendarCheck size={12} /> Đặt
+                          </button>
                         </li>
                       );
                     })}
@@ -170,7 +210,7 @@ export function CustomerAiAssistant({ onBook, liftPx = 0 }: {
                 )}
               </div>
             ))}
-            {busy && <p className="flex items-center gap-1.5 text-xs text-slate-500"><Loader2 size={13} className="animate-spin" /> Đang tìm dịch vụ phù hợp…</p>}
+            {busy && <p className="flex items-center gap-1.5 text-xs text-slate-500"><Loader2 size={13} className="animate-spin" /> Đang trả lời…</p>}
           </div>
 
           {picked.length > 0 && (

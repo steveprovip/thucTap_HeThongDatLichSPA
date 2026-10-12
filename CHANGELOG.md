@@ -3,6 +3,47 @@
 Định dạng theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), phiên bản theo [Semantic Versioning](https://semver.org/lang/vi/).
 Launcher (biểu tượng Hương Sen Salon / `HoYoSalon.bat`) đọc tệp này cho mục **Có gì mới** và **Nhật ký cập nhật**.
 
+## [2.1.0] - 2026-10-12
+
+### Trợ lý AI — trả lời đúng, không gợi ý linh tinh
+- Câu số liệu / chính sách (bao nhiêu dịch vụ, rẻ nhất, đắt nhất, nhanh / lâu nhất, theo nhóm, dịch vụ hot, giá một dịch vụ, bảng giá, giờ mở cửa, cọc, huỷ lịch, thanh toán, khuyến mãi) trả lời thẳng từ dữ liệu thật — mô hình 4B không còn đếm sai ("60 dịch vụ") hay làm mất thứ hạng.
+- "Combo có gì hot?" xếp hạng TRONG nhóm combo; "combo khác gì đặt lẻ", "uốn lạnh với uốn nóng khác gì" được giải thích bình thường, chỉ dựa trên mô tả dịch vụ của tiệm.
+- Thẻ dịch vụ chỉ hiện khi khách đang chọn dịch vụ (tối đa 3, gọn một dòng); khung chat cuộn tới đầu câu trả lời mới.
+- Làm sạch câu trả lời của mô hình (bỏ `**[Đặt lịch]**`, markdown, token rác); không còn chèn "bấm nút Đặt lịch" vào mọi câu.
+- AI local tự bật khi backend khởi động, tự thử lại khi mất kết nối; widget hiện trạng thái (Đang chạy / Đang kết nối / Mất kết nối) và nút "Khởi động lại AI" chỉ khi cần.
+
+### Trợ lý AI — kiểm thử nhập vai khách (2 bộ, 75 câu hỏi nhiều lượt trên AI local thật)
+- **Tra giờ trống thật** ngay trong khung chat ("massage chân hôm nay còn giờ nào", "mai 9h còn chỗ không", "chủ nhật 10h được không", "15/10…"): dùng đúng bộ tính khung giờ của trang đặt lịch; bấm "Đặt" mở phiếu đặt lịch đúng dịch vụ và ngày.
+- **Hiểu ngữ cảnh hội thoại**: "cái đó giá bao nhiêu", "làm mất bao lâu", "cái nào rẻ hơn", "trọn gói gồm những gì" hiểu theo dịch vụ / nhóm vừa nói tới.
+- Thêm: nhiều dịch vụ trong một câu + tổng thời lượng, so sánh "A hay B", hỏi theo ngân sách ("dưới 200k", "tầm 300 nghìn"), giờ mở cửa theo ngày, đi nhóm, hỏi về thợ, dịch vụ tiệm không có ("nối tóc", "xăm chân mày" → nói thật là chưa có), tiếng Anh cơ bản.
+- Sửa lỗi bỏ dấu tiếng Việt: "cô dâu" ≠ "ở đâu", "giá cắt" ≠ "giá cả", "mất" ≠ "mặt", "thứ" ≠ "thư", "tháng" ≠ "thẳng", "gói" ≠ "gội", "đau" ≠ "đầu", "tiệm" ≠ "tiêm", "tôi" ≠ "tối".
+- "Combo có gì hot" xếp theo lượt đặt thật 90 ngày của mọi dịch vụ; mô hình chỉ viết một câu dẫn ngắn, danh sách / giá luôn lấy từ dữ liệu; không còn tự nhận "không phải bot".
+
+### Trợ lý AI — nhớ đang hỏi gì, không bịa số liệu (nhập vai khách lần 3)
+- **Trạng thái hội thoại**: "sáng mai có giờ nào trống?" → "cắt tóc nữ ?" → "thế giờ trống là ?" giữ đúng ngày mai buổi sáng + dịch vụ vừa chọn; "thế chiều thì sao", "vậy tối được không", "còn thứ 7 thì sao" đổi buổi / ngày mà giữ dịch vụ; hỏi giá giữa chừng thì thoát nhiệm vụ tra giờ.
+- "Bây giờ còn mở cửa không?" trả lời theo giờ thật (chưa mở / đang mở, còn bao lâu / đã đóng, mai mở lúc mấy giờ / hôm nay nghỉ lễ) thay vì in cả bảng giờ 7 ngày; "mấy giờ đóng cửa" chỉ nêu hôm nay và ngày mai.
+- Ngữ cảnh có từ 2 dịch vụ trở lên ("massage cổ vai gáy giá bao nhiêu" → "mai còn giờ không") thì hỏi lại khách chọn dịch vụ nào, không tự chọn bừa.
+- **Kiểm tra bám dữ liệu**: câu trả lời tự do của mô hình mà khẳng định giờ trống hoặc một mức giá không có trong danh mục bị loại, trả bằng dữ liệu thật (thử thật: mô hình 4B từng bịa "còn 12 khung giờ trống").
+- Chưa hiểu 2 lần liên tiếp → chuyển sang hotline / Zalo của tiệm thay vì hỏi lại mãi.
+- Ghi "lỗ hổng kiến thức" (câu chưa trả lời được, đã che SĐT / email) — chủ tiệm / lễ tân xem qua `GET /api/assistant/knowledge-gaps`.
+- Bộ chấm điểm nhiều lượt kiểu τ-bench `npm run eval:ai` (12 kịch bản, 33 lượt, k = 3): AI local đạt pass^3 = 100%.
+
+### Trợ lý AI — tự cải tiến có người duyệt (nhập vai khách lần 4–7 trên AI local thật)
+- Log 12/10 lần 4: "ngày kia có dịch vụ mát xoa nào trống lịch" tra giờ trống **cả nhóm massage** (dịch vụ nào còn mấy giờ, sớm nhất mấy giờ, dịch vụ nào kín); "có những thợ gì có thể làm" nêu **tên thợ** làm được dịch vụ đang nói và ai còn giờ trống ngày đó; mã giảm giá đọc **ưu đãi đang chạy thật** (không lộ mã); không bao giờ lặp nguyên văn câu vừa trả lời.
+- Hiểu lỗi gõ / tiếng lóng: "mát xoa", "bn", "k", "đc", "j", "z", "mấy h", "bao nhiu", "dịch dụ", "thư dãn", "tỉa lại", "sdt"; sửa va chạm khi bỏ dấu ("mún" = muốn ≠ "mụn", "thứ năm" ≠ "tóc nam"); "làm đẹp da mặt" ra nhóm Chăm sóc da (không còn "Cạo mặt & tỉa râu"); combo / dịch vụ trẻ em chỉ gợi ý khi khách nhắc tới.
+- **Viết lại câu khó hiểu** bằng AI local rồi trả lời bằng dữ liệu thật ("Mình hiểu là: …"), có **kiểm tra trung thực** (không được thêm dịch vụ khách không nhắc — thử thật mô hình 4B từng viết "mát xoa giá" thành "Chăm sóc da Vitamin C giá").
+- Trang **Cải tiến Trợ lý AI**: đề xuất học chờ duyệt (từ AI viết lại / khách tự hỏi lại), dạy cụm từ / cả câu / **câu trả lời soạn sẵn** cho câu hỏi ngoài dữ liệu ("chỗ để xe"), câu chưa trả lời tốt, phản hồi 👍 / 👎 của khách, số câu AI bịa số liệu bị chặn.
+- Câu dẫn tư vấn soạn sẵn theo nhu cầu (AI 4B viết câu dẫn sai nghĩa 3/6 lượt); bật lại câu dẫn của AI bằng `AI_LLM_LEAD=1`.
+- Bộ chấm điểm `npm run eval:ai:full`: 45 kịch bản / 135 lượt gồm biến thể không dấu + viết tắt (kiểm thử bất biến kiểu CheckList), AI local đạt pass^3 = 100%.
+
+### Hiệu năng & chịu tải
+- 1000 khách hỏi trợ lý cùng lúc: 100% được trả lời; khi có mô hình 1 luồng, p95 giảm từ 81 giây xuống 1,4 giây (cổng chặn đồng thời, gộp câu trùng, bộ nhớ đệm câu trả lời).
+- Danh mục công khai: truy vấn song song + bộ nhớ đệm 30 giây tự xoá khi chủ tiệm sửa (447 → 2.176 yêu cầu/giây).
+- Kiểm thử tự động cho các yêu cầu phi chức năng của tài liệu (20.000 lịch hẹn, 5.000 hồ sơ, 8 thợ × 120 lịch) và dịch vụ `ai` trong Docker production.
+
+### Quy trình cập nhật an toàn hơn
+- Khoá chống hai lần cập nhật chạy chồng nhau; preflight chặn migration phá huỷ (không thể tự quay về bản cũ an toàn); smoke test chức năng sau khi bật bản mới; kiểm tra chữ ký gói npm; nhật ký `logs/update-history.jsonl`.
+
 ## [2.0.0] - 2026-10-11
 
 ### Trí tuệ nhân tạo (AI Local & Trợ lý đàm thoại)

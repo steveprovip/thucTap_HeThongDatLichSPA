@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import {
-  Ban, CalendarClock, CheckCircle2, Clock, History, LogIn, NotebookPen, Phone, Play, Receipt, Square,
+  AlertTriangle, Ban, CalendarClock, CheckCircle2, Clock, History, LogIn, NotebookPen, Phone, Play, Receipt, Square,
   Undo2, UserRound, UserX, X, XCircle,
 } from 'lucide-react';
 import { appointmentsApi, getErrorMessage, stylistsApi } from '@/api';
@@ -12,7 +12,7 @@ import {
 } from '@/components';
 import { formatDate, formatDateTime, formatDuration, formatTime, salonClosedMessage } from '@/utils/format';
 import { historyCaption } from '@/utils/customerMetrics';
-import { describeAppointmentChange } from '@/utils/opsHelpers';
+import { canMarkNoShow, describeAppointmentChange, NO_SHOW_AFTER_MIN, overrunInfo } from '@/utils/opsHelpers';
 import { STATUS_LABELS } from '@/utils/constants';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
@@ -78,7 +78,13 @@ export function AppointmentDrawer({ appointment, onClose, onChanged }: Appointme
     appointmentsApi.customerHistory(appointment.id)
       .then((r) => setHistory(r.history))
       .catch(() => undefined);
-    return () => window.cancelAnimationFrame(t);
+    // QA Sprint 3 · mục 5: lịch lấy từ danh sách / lưới ngày KHÔNG kèm lịch sử thay đổi → nạp chi tiết mỗi lần mở
+    // ngăn kéo, để đóng rồi mở lại vẫn thấy đủ lịch sử (trước đây chỉ hiện ngay sau một thao tác).
+    let alive = true;
+    appointmentsApi.detail(appointment.id)
+      .then((fresh) => { if (alive) setCurrent((cur) => (cur && cur.id === fresh.id ? fresh : cur)); })
+      .catch(() => undefined);
+    return () => { alive = false; window.cancelAnimationFrame(t); };
   }, [appointment]);
 
   useEffect(() => {
@@ -128,7 +134,9 @@ export function AppointmentDrawer({ appointment, onClose, onChanged }: Appointme
       canCheckIn: Math.abs(diffMin) <= CHECK_IN_WINDOW_MIN,
       checkInFrom: formatTime(new Date(start - CHECK_IN_WINDOW_MIN * 60_000)),
       checkInTo: formatTime(new Date(start + CHECK_IN_WINDOW_MIN * 60_000)),
-      canNoShow: diffMin >= 0,
+      // QA Sprint 3 · mục 3: chỉ sau giờ hẹn 30 phút và khi lịch chưa check-in (trạng thái "đã xác nhận")
+      canNoShow: canMarkNoShow(current.status, start, now),
+      overrun: overrunInfo(current, now),
     };
   }, [current, now]);
 
@@ -172,6 +180,18 @@ export function AppointmentDrawer({ appointment, onClose, onChanged }: Appointme
 
         <div className="thin-scroll flex-1 space-y-5 overflow-y-auto px-5 py-4">
           <StatusTimeline appointment={a} />
+
+          {timing.overrun.level !== 'none' && (
+            <Notice tone={timing.overrun.level === 'danger' ? 'danger' : 'warning'}
+                    title={`Đang làm quá thời lượng chuẩn ${formatDuration(timing.overrun.overMinutes)}`}>
+              <span className="flex items-start gap-1.5">
+                <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                {timing.overrun.level === 'danger'
+                  ? `Vượt hơn 20 phút — các lịch sau của ${a.stylist.fullName} có nguy cơ trễ, nên báo khách kế tiếp hoặc chuyển thợ.`
+                  : `Chuẩn ${formatDuration(a.totalDurationMinutes)}. Quá 20 phút sẽ ảnh hưởng các lịch sau của ${a.stylist.fullName}.`}
+              </span>
+            </Notice>
+          )}
 
           <dl className="grid grid-cols-2 gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-4 text-sm">
             <div><dt className="text-xs text-ink-muted">Giờ hẹn</dt>
@@ -246,8 +266,10 @@ export function AppointmentDrawer({ appointment, onClose, onChanged }: Appointme
           )}
 
           {a.changes && a.changes.length > 0 && (
-            <details className="rounded-xl border border-slate-200 p-3.5">
-              <summary className="flex cursor-pointer items-center gap-2 text-sm font-semibold"><Clock size={15} /> Lịch sử thay đổi</summary>
+            <details open className="rounded-xl border border-slate-200 p-3.5">
+              <summary className="flex cursor-pointer items-center gap-2 text-sm font-semibold">
+                <Clock size={15} /> Lịch sử thay đổi ({a.changes.length})
+              </summary>
               <ul className="mt-2 space-y-1 text-xs text-ink-muted">
                 {a.changes.map((c) => {
                   const d = describeAppointmentChange(c);
@@ -271,7 +293,9 @@ export function AppointmentDrawer({ appointment, onClose, onChanged }: Appointme
               </p>
             )}
             {isStaff && a.status === 'confirmed' && !timing.canNoShow && (
-              <p className="text-xs text-ink-muted">Chỉ báo “Không đến” sau giờ hẹn {a.startTime}.</p>
+              <p className="text-xs text-ink-muted">
+                Chỉ báo “Không đến” sau giờ hẹn {NO_SHOW_AFTER_MIN} phút (từ <strong>{formatTime(new Date(startMs(a) + NO_SHOW_AFTER_MIN * 60_000))}</strong>).
+              </p>
             )}
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {isStaff && a.status === 'pending' && (
@@ -293,6 +317,7 @@ export function AppointmentDrawer({ appointment, onClose, onChanged }: Appointme
                     Check-in
                   </Button>
                   <Button size="sm" variant="outline" disabled={!timing.canNoShow} icon={<UserX size={15} />}
+                          title={timing.canNoShow ? 'Khách không đến' : `Mở sau giờ hẹn ${NO_SHOW_AFTER_MIN} phút`}
                           onClick={() => setNoShowOpen(true)}>
                     Không đến
                   </Button>

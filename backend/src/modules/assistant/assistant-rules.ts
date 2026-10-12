@@ -4,7 +4,8 @@
  */
 
 export type AssistantIntent =
-  | 'shifts' | 'holidays' | 'golden' | 'combo' | 'today' | 'greeting' | 'identity' | 'help' | 'thanks' | 'bye' | 'general';
+  | 'shifts' | 'working_stylists' | 'holidays' | 'golden' | 'combo' | 'today' | 'greeting' | 'identity' | 'help' | 'thanks' | 'bye'
+  | 'general';
 
 /** TASK v4 · NV1 — số liệu TỔNG HỢP của hôm nay (không tên / SĐT khách) cho câu "tình hình hôm nay thế nào?". */
 export interface TodaySnapshot {
@@ -18,6 +19,19 @@ export interface TodaySnapshot {
   /** Lịch online chờ xác nhận (mọi ngày) và số lịch đã chờ quá 12 giờ. */
   pendingTotal: number;
   pendingOverdue: number;
+}
+
+/** QA 12/10 — thợ có ca hôm nay (tên NHÂN SỰ, không phải dữ liệu khách) cho câu "đang có thợ nào làm việc?". */
+export interface WorkingStylist {
+  fullName: string;
+  /** Các ca trong ngày, ví dụ "09:00–18:00 (nghỉ 12:00–13:00)". */
+  shiftsText: string;
+  /** Đang trong giờ ca (không tính giờ nghỉ giữa ca / giờ xin nghỉ). */
+  onShiftNow: boolean;
+  /** Đang phục vụ khách (lịch đang làm hoặc lịch đã xác nhận trùng giờ hiện tại). */
+  busyNow: boolean;
+  /** Giờ xin nghỉ đã duyệt trong ngày, ví dụ "cả ngày" / "14:00–16:00". */
+  timeOff: string | null;
 }
 
 export interface GoldenHour { dow: number; dayLabel: string; hour: number; label: string; bookings: number }
@@ -36,6 +50,8 @@ export interface AssistantContext {
   gaps: ShiftGapSuggestion[];
   holidays: HolidayLite[];
   today?: TodaySnapshot | null;
+  /** Thợ có ca hôm nay; null = chưa đọc được bảng ca, undefined = không nạp. */
+  workingToday?: WorkingStylist[] | null;
 }
 
 export const DOW_VI = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
@@ -73,10 +89,20 @@ export function smallTalkIntent(message: string): SmallTalkIntent | null {
   return null;
 }
 
+/** QA 12/10 — câu hỏi nhân sự đang trực: "Đang có thợ nào làm việc vậy?", "Ai đang rảnh?", "Hôm nay ai đi làm?"… */
+const WORKING_RE = new RegExp([
+  'tho nao', 'ai dang (lam|truc|ranh|o tiem|co mat)', 'tho (dang )?truc', 'dang truc', 'ai lam viec', 'ai (di )?lam (hom nay|bua nay)',
+  'danh sach tho', 'co ai (dang )?lam', 'ai (dang |con )?ranh', 'tho (dang |con )?ranh', 'tho dang lam', 'co (may|bao nhieu) tho',
+  'nhan vien (nao|dang (lam|truc))', 'hom nay ai', 'ai di lam', 'tho (lam|di lam) hom nay', 'tho hom nay',
+].map((p) => `(${p})`).join('|'));
+
 /** Nhận diện ý định từ câu hỏi tiếng Việt (có hoặc không dấu). Chủ đề nghiệp vụ thắng câu xã giao ("chào, tuần này thiếu thợ không?"). */
 export function detectIntent(message: string): AssistantIntent {
   const m = fold(message);
-  if (/(thieu tho|xep ca|ca lam|lich lam|phan ca|thieu nguoi|ca truc|do phu)/.test(m)) return 'shifts';
+  // "thiếu thợ ca nào" là câu XẾP CA → xét trước câu "thợ nào đang làm" để "thieu tho nao" không bị hiểu nhầm
+  if (/(thieu tho|thieu nguoi|xep ca|phan ca|do phu)/.test(m)) return 'shifts';
+  if (WORKING_RE.test(m)) return 'working_stylists';
+  if (/(ca lam|lich lam|ca truc)/.test(m)) return 'shifts';
   if (/(nghi le|ngay le|\ble\b|tet|quoc khanh|30\/4|2\/9|gio to)/.test(m)) return 'holidays';
   if (/(combo|goi dich vu|ban kem|lam them|dich vu kem|up ?sell|goi y dich vu)/.test(m)) return 'combo';
   if (/(gio vang|cao diem|dong khach|gio nao|khung gio|vang khach|thap diem|gio dep|gio vang)/.test(m)) return 'golden';
@@ -87,7 +113,8 @@ export function detectIntent(message: string): AssistantIntent {
 /** Gợi ý câu hỏi tiếp theo (nút bấm nhanh) theo ngữ cảnh vừa trả lời. */
 export function quickReplies(intent: AssistantIntent): string[] {
   const all: Record<string, string> = {
-    today: 'Tình hình hôm nay thế nào?', golden: 'Giờ vàng tuần này?', shifts: '7 ngày tới thiếu thợ ca nào?',
+    today: 'Tình hình hôm nay thế nào?', working_stylists: 'Đang có thợ nào làm việc?', golden: 'Giờ vàng tuần này?',
+    shifts: '7 ngày tới thiếu thợ ca nào?',
     combo: 'Gợi ý combo cho khách', holidays: 'Ngày lễ sắp tới?',
   };
   return Object.entries(all).filter(([k]) => k !== intent).map(([, v]) => v).slice(0, 3);
@@ -119,6 +146,7 @@ export function ruleAnswer(
     case 'identity':
       return 'Mình là Trợ lý vận hành của tiệm — một trợ lý ảo đọc số liệu lịch hẹn thật để giúp bạn:\n'
         + '• Nắm nhanh tình hình hôm nay: số lịch, lịch chờ xác nhận, doanh thu đã thu\n'
+        + '• Cho biết thợ nào có ca hôm nay, ai đang làm khách, ai đang rảnh\n'
         + '• Tư vấn khung giờ vàng / giờ vắng khi khách gọi đặt lịch\n• Gợi ý combo dịch vụ khách hay đặt cùng\n'
         + '• Phát hiện khung giờ thiếu thợ và gợi ý ai nên xếp\n• Sinh ngày lễ trong năm để thêm vào lịch nghỉ\n'
         + 'Mình không xem được thông tin cá nhân của khách. Cứ hỏi tự nhiên như nói chuyện với đồng nghiệp nhé!';
@@ -128,7 +156,7 @@ export function ruleAnswer(
         + '2. Chờ xác nhận: xử lý lịch khách đặt online (lịch chờ quá 12 giờ luôn nằm đầu danh sách).\n'
         + '3. Khách vãng lai: tạo lịch cho khách gọi điện hoặc ghé thẳng tiệm.\n'
         + '4. Bảng ca làm: bấm ô trống để thêm ca sáng / chiều / cả ngày chỉ một chạm.\n'
-        + 'Bạn có thể hỏi tự nhiên, ví dụ: "Hôm nay có bao nhiêu lịch?", "Khách muốn cắt tóc chiều thứ 7, giờ nào đẹp?", '
+        + 'Bạn có thể hỏi tự nhiên, ví dụ: "Hôm nay có bao nhiêu lịch?", "Đang có thợ nào làm việc?", "Khách muốn cắt tóc chiều thứ 7, giờ nào đẹp?", '
         + '"Tuần sau thiếu thợ ca nào?". Hoặc chuyển sang chế độ "Phân tích & số liệu" để xem bảng tổng hợp.';
     case 'thanks':
       return `Không có gì${name ? ` ${name}` : ''}! Rất vui được giúp bạn — cần gì cứ hỏi mình nhé.`;
@@ -148,6 +176,23 @@ export function ruleAnswer(
       return t.total
         ? `Hôm nay (${t.dayText}) tiệm có ${t.total} lịch hẹn: ${parts.join(', ')}. Doanh thu đã thu: ${t.revenueText}.${pending}`
         : `Hôm nay (${t.dayText}) chưa có lịch hẹn nào.${pending}`;
+    }
+    case 'working_stylists': {
+      const w = ctx.workingToday;
+      if (!w) return 'Mình chưa đọc được bảng ca hôm nay, bạn mở mục "Bảng ca làm" để xem trực tiếp nhé.';
+      if (!w.length) {
+        return 'Hôm nay chưa có thợ nào được xếp ca. Mở "Bảng ca làm" để thêm ca hoặc duyệt yêu cầu đăng ký ca của thợ nhé.';
+      }
+      const onShift = w.filter((x) => x.onShiftNow);
+      const free = onShift.filter((x) => !x.busyNow);
+      const lines = w.slice(0, 12).map((x) => {
+        const state = x.onShiftNow ? (x.busyNow ? ' — đang làm khách' : ' — đang rảnh') : '';
+        return `• ${x.fullName}: ${x.shiftsText}${x.timeOff ? ` · xin nghỉ ${x.timeOff}` : ''}${state}`;
+      });
+      const now = onShift.length
+        ? `Lúc này ${onShift.length} thợ đang trong ca${free.length ? `, đang rảnh: ${free.map((x) => x.fullName).join(', ')}` : ', tất cả đều đang làm khách'}.`
+        : 'Lúc này chưa có thợ nào trong giờ ca.';
+      return `Hôm nay có ${w.length} thợ có ca làm:\n${lines.join('\n')}${w.length > 12 ? '\n…' : ''}\n${now}`;
     }
     case 'shifts': {
       if (!ctx.gaps.length) return 'Tuần tới mọi khung giờ mở cửa đều đủ thợ trực. Không cần xếp thêm ca.';
@@ -181,7 +226,7 @@ export function ruleAnswer(
         + ' — giữ giờ vàng cho khách chỉ rảnh khung đó.';
     }
     default:
-      return 'Mình chưa chắc đã hiểu đúng ý bạn 😊 Mình trả lời tốt nhất các câu về tình hình hôm nay, giờ vàng, combo dịch vụ,'
+      return 'Mình chưa chắc đã hiểu đúng ý bạn 😊 Mình trả lời tốt nhất các câu về tình hình hôm nay, thợ đang trực, giờ vàng, combo dịch vụ,'
         + ' ca thiếu thợ và ngày lễ — bạn thử hỏi lại theo một trong các chủ đề đó, hoặc bấm gợi ý bên dưới nhé.';
   }
 }
@@ -192,6 +237,9 @@ export function contextForLlm(ctx: AssistantContext): string {
   return [
     ...(t ? [`Hôm nay ${t.dayText}: ${t.total} lịch (${Object.entries(t.byStatus).filter(([, n]) => n > 0).map(([k, n]) => `${k} ${n}`).join(', ') || 'chưa có'}), `
       + `đã thu ${t.revenueText}, chờ xác nhận ${t.pendingTotal} (quá 12 giờ ${t.pendingOverdue})`] : []),
+    ...(ctx.workingToday === undefined ? [] : [`Thợ có ca hôm nay: ${ctx.workingToday === null ? 'chưa đọc được bảng ca'
+      : ctx.workingToday.map((x) => `${x.fullName} ${x.shiftsText}${x.timeOff ? ` (xin nghỉ ${x.timeOff})` : ''}`
+        + `${x.onShiftNow ? (x.busyNow ? ' — đang làm khách' : ' — đang rảnh') : ''}`).join('; ') || 'chưa có ai được xếp ca'}`]),
     `Giờ vàng: ${ctx.goldenHours.map((g) => `${g.label} (${g.bookings} lượt)`).join('; ') || 'chưa có'}`,
     `Giờ vắng: ${ctx.quietHours.map((g) => g.label).join('; ') || 'chưa có'}`,
     `Combo hay đặt cùng: ${ctx.combos.map((c) => `${c.names.join(' + ')} (${c.count} lượt, ${c.totalDuration}′, ${c.priceText})`).join('; ') || 'chưa có'}`,
@@ -205,4 +253,5 @@ export const SYSTEM_PROMPT = 'Bạn là trợ lý vận hành thân thiện củ
   + 'Xưng "mình", gọi người dùng là "bạn", lịch sự và ấm áp. Trả lời tự nhiên như đồng nghiệp: chào hỏi thì chào lại, hỏi bạn là ai '
   + 'thì giới thiệu ngắn, xin hướng dẫn thì chỉ từng bước; KHÔNG đưa bảng số liệu khi người dùng chỉ chào hỏi. Với câu nghiệp vụ, CHỈ dùng số liệu '
   + 'trong phần DỮ LIỆU, không bịa. Tiếng Việt, ngắn gọn (tối đa 6 dòng), có hành động cụ thể. '
-  + 'Không hứa giờ trống cụ thể — nhắc lễ tân kiểm tra trên màn hình đặt lịch.';
+  + 'Không hứa giờ trống cụ thể — nhắc lễ tân kiểm tra trên màn hình đặt lịch. '
+  + 'Viết văn bản thuần: KHÔNG dùng markdown (**, #, bảng) và KHÔNG tự tạo nút / liên kết kiểu [Mở lịch ngày].';

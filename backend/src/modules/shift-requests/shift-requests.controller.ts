@@ -47,21 +47,22 @@ export class ShiftRequestsController {
   }
 
   @Post('approve-batch')
-  @Roles(Role.OWNER)
+  @Roles(Role.OWNER, Role.RECEPTIONIST)
   @Audit(AuditAction.UPDATE, 'shift_request', 'Duyệt nhiều yêu cầu đăng ký ca')
   approveMany(@CurrentUser() user: AuthUser, @Body() dto: BatchApproveShiftRequestsDto) {
     return this.service.approveMany(dto.ids, user);
   }
 
+  // QA Sprint 3 · mục 1: Lễ tân duyệt / từ chối được yêu cầu XIN NGHỈ (như khai báo nghỉ trực tiếp); xếp ca vẫn là của Chủ tiệm
   @Post(':id/approve')
-  @Roles(Role.OWNER)
+  @Roles(Role.OWNER, Role.RECEPTIONIST)
   @Audit(AuditAction.UPDATE, 'shift_request', 'Duyệt yêu cầu đăng ký ca / nghỉ')
   approve(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ApproveShiftRequestDto) {
     return this.service.approve(id, user, dto);
   }
 
   @Post(':id/reject')
-  @Roles(Role.OWNER)
+  @Roles(Role.OWNER, Role.RECEPTIONIST)
   @Audit(AuditAction.UPDATE, 'shift_request', 'Từ chối yêu cầu đăng ký ca / nghỉ')
   reject(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RejectShiftRequestDto) {
     return this.service.reject(id, user, dto.note);

@@ -171,7 +171,8 @@ export function StylistsPage() {
     fullName: !fullName.trim() ? 'Vui lòng nhập họ tên thợ' : undefined,
     phone: phone && !VN_PHONE_REGEX.test(phone) ? VN_PHONE_MESSAGE : undefined,
     gender: !gender ? 'Vui lòng chọn giới tính Nam hoặc Nữ' : undefined,
-    email: !editing ? emailError(email, false) : undefined, // QA-02
+    // QA-02; QA Sprint 3 · mục 2: sửa được email — hồ sơ đã có tài khoản thì không được để trống
+    email: emailError(email, !!editing?.userId),
     skills: serviceIds.length === 0 ? 'Chọn ít nhất một dịch vụ thợ làm được' : undefined,
   };
   const shown: Partial<typeof fieldErrors> = touched ? fieldErrors : {};
@@ -198,9 +199,18 @@ export function StylistsPage() {
       let id: string;
       if (editing) {
         // Bản demo lưu ảnh dạng data URL; backend thật nhận ảnh qua POST /stylists/:id/avatar
-        await stylistsApi.update(editing.id, DEMO_MODE ? { ...payload, avatarUrl: avatar } : payload);
+        const nextEmail = email.trim().toLowerCase();
+        const emailChanged = !!nextEmail && nextEmail !== (editing.email ?? '').toLowerCase();
+        const body = { ...payload, ...(emailChanged ? { email: nextEmail } : {}) };
+        const updated = await stylistsApi.update(editing.id, DEMO_MODE ? { ...body, avatarUrl: avatar } : body);
         id = editing.id;
-        toast.success('Đã cập nhật hồ sơ thợ và tài khoản nhân sự đi kèm');
+        if (emailChanged && !editing.userId) {
+          // Hồ sơ chưa có tài khoản: máy chủ gắn tài khoản Thợ sẵn có cùng email, hoặc tạo mới kèm mật khẩu tạm
+          if (updated.tempPassword) setCredential({ fullName: updated.fullName, email: nextEmail, password: updated.tempPassword, kind: 'created' });
+          else toast.success(`Đã gắn tài khoản ${nextEmail} vào hồ sơ thợ`);
+        } else {
+          toast.success(emailChanged ? `Đã cập nhật hồ sơ thợ, email đăng nhập mới: ${nextEmail}` : 'Đã cập nhật hồ sơ thợ và tài khoản nhân sự đi kèm');
+        }
       } else {
         const created = await stylistsApi.create({ ...payload, email: email.trim() || undefined });
         id = created.id;
@@ -476,10 +486,10 @@ export function StylistsPage() {
           </Field>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label={editing ? 'Email đăng nhập' : 'Email đăng nhập (tuỳ chọn)'} error={shown.email}
-                   hint={editing
-                     ? 'Đổi email hoặc vai trò ở mục “Tài khoản nhân sự”'
-                     : 'Có email: tự tạo tài khoản vai trò Thợ, mật khẩu tạm gửi qua email'}>
-              <Input type="email" value={email} disabled={!!editing} invalid={!!shown.email}
+                   hint={editing?.userId
+                     ? 'Đổi email là đổi email đăng nhập của thợ (đồng bộ với “Tài khoản nhân sự”)'
+                     : 'Có email: gắn tài khoản Thợ sẵn có cùng email, hoặc tạo tài khoản mới (mật khẩu tạm gửi qua email)'}>
+              <Input type="email" value={email} invalid={!!shown.email}
                      placeholder={editing ? 'Chưa có tài khoản đăng nhập' : 'ten@salon.vn'}
                      onChange={(e) => setEmail(e.target.value)} />
             </Field>

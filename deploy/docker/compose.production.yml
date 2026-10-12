@@ -44,6 +44,8 @@ services:
       DB_SSL: "false"
       BACKUP_DIR: /app/backups
       MIGRATION_BACKUP: required
+      # Trợ lý AI: dịch vụ "ai" bên dưới (đặt AI_BASE_URL trong production.env để dùng API khác)
+      AI_BASE_URL: ${AI_BASE_URL:-http://ai:11434/v1}
     ports:
       - "127.0.0.1:${SALON_PROD_PORT:-3000}:3000"
     volumes:
@@ -54,6 +56,25 @@ services:
     networks: [database, outbound]
     logging:
       options: { max-size: "10m", max-file: "3" }
+  # AI local Spark-X2.5-4B (llama.cpp) — chạy cùng `docker compose up`, đọc model từ model_AI_local/ của dự án
+  # (tải bằng model_AI_local/tai_model_local.cmd hoặc chép tệp .gguf vào). Chưa có model: container chờ, API trả lời theo
+  # số liệu thật; có model: API dò thấy trong ~10 giây (AI_BASE_URL=http://ai:11434/v1). Không dùng AI: --scale ai=0.
+  ai:
+    image: ${SALON_AI_IMAGE:-ghcr.io/ggml-org/llama.cpp:server}
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        if [ ! -f "/models/$${AI_MODEL_FILE}" ]; then echo "[ai] Chưa có /models/$${AI_MODEL_FILE} - trợ lý trả lời theo luật"; exec sleep infinity; fi;
+        exec /app/llama-server -m "/models/$${AI_MODEL_FILE}" --host 0.0.0.0 --port 11434 -a spark-x2.5-4b -c $${AI_CTX} -np 1 -rea off
+    environment:
+      AI_MODEL_FILE: ${SALON_AI_MODEL_FILE:-Spark-X2.5-4B-Q4_K_M.gguf}
+      AI_CTX: ${SALON_AI_CTX:-4096}
+    volumes:
+      - ${SALON_AI_MODEL_DIR:-../../model_AI_local}:/models:ro
+    networks: [database]
+    logging: { options: { max-size: "10m", max-file: "3" } }
+
 networks:
   database:
     internal: true

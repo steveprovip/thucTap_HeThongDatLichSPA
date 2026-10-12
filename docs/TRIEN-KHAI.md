@@ -276,13 +276,16 @@ Bấm đúp `scripts\windows\update_project.bat` ở thư mục gốc (macOS/Lin
 
 | Bước | Việc làm | Nếu lỗi |
 |---|---|---|
+| 0 | **Khoá cập nhật** `.salon-update.lock`: bấm CẬP NHẬT hai lần thì lần sau bị từ chối (khoá kẹt do mất điện tự hết khi tiến trình giữ khoá không còn / quá 2 giờ) | Dừng, chưa đổi gì |
 | 1 | Kiểm tra Git, đang ở nhánh `main`, không có tệp mã nguồn bị sửa tại máy | Dừng, chưa đổi gì |
 | 2 | `git fetch` rồi `git pull --ff-only origin main` (chỉ tiến tới, không bao giờ tự hợp nhất hay ghi đè) | Dừng, chưa đổi gì |
-| 3 | Chỉ khi `package.json` / `package-lock.json` đổi: cài gói npm (dừng hệ thống trước để Windows không khoá tệp) | Quay về bản cũ |
+| 2b | **Preflight tương thích**: đọc migration MỚI của bản cập nhật; có thao tác phá huỷ trong `up()` (xoá bảng / cột, đổi kiểu, đổi tên, `TRUNCATE`, `DELETE FROM`, `SET NOT NULL`) thì dừng vì "quay về bản cũ" không còn an toàn — chạy lại với `--allow-destructive` khi đã xác nhận bản sao lưu | Dừng, chưa đổi gì |
+| 3 | Chỉ khi `package.json` / `package-lock.json` đổi: cài gói npm bằng `npm ci` (dừng hệ thống trước để Windows không khoá tệp), rồi **kiểm tra chữ ký gói** `npm audit signatures` (chỉ cảnh báo) | Quay về bản cũ |
 | 4 | **Build bản mới sang thư mục tạm** (`dist-next`) trong lúc bản cũ vẫn phục vụ khách | Bản cũ không bị đụng tới, mã nguồn đưa về bản cũ |
 | 5 | Dừng hệ thống, **sao lưu CSDL (bắt buộc)**, chạy migration, bootstrap, kiểm tra tài khoản mẫu | Mỗi migration tự hoàn tác, bật lại bản cũ, đưa mã về bản cũ |
 | 6 | Đổi `dist-next` thành `dist` (giữ bản cũ ở `dist-prev`) | – |
-| 7 | Chạy lại máy chủ, chờ `/health` và kiểm tra `version.json` khớp bản vừa build | **Tự quay về `dist-prev` và đưa mã về bản cũ** |
+| 7 | Chạy lại máy chủ, chờ `/health`, kiểm tra `version.json` khớp bản vừa build và **smoke test chức năng**: `/health` (API + CSDL), thông tin tiệm, danh mục dịch vụ, trợ lý AI khách | **Tự quay về `dist-prev` và đưa mã về bản cũ** (trừ bản có migration phá huỷ đã chạy: dừng ở chế độ khôi phục, in đường dẫn bản sao lưu) |
+| 8 | Ghi một dòng vào `logs/update-history.jsonl` (từ → tới, kết quả, thời gian, migration, bản sao lưu) | – |
 
 Điểm cần biết:
 
@@ -295,7 +298,9 @@ Bấm đúp `scripts\windows\update_project.bat` ở thư mục gốc (macOS/Lin
 - Lỗi ở bước 5 trở đi: CSDL đã giữ nguyên hoặc chỉ được **thêm** cấu trúc, nên bản cũ vẫn chạy được. Thông báo cuối cùng nêu đường dẫn bản sao lưu.
 - Nhật ký máy chủ ghi vào `logs/server.log` để người lập trình đọc khi bản mới sập.
 
-Biến tuỳ chọn: `UPDATE_BACKUP=required|auto|off` (mặc định `required`), `UPDATE_HEALTH_TIMEOUT` (giây chờ bản mới lên, mặc định 150), `SALON_NO_PAUSE=1` (không `pause` ở cuối, dùng khi chạy theo lịch).
+Biến tuỳ chọn: `UPDATE_BACKUP=required|auto|off` (mặc định `required`), `UPDATE_HEALTH_TIMEOUT` (giây chờ bản mới lên, mặc định 150), `SALON_NO_PAUSE=1` (không `pause` ở cuối, dùng khi chạy theo lịch), `UPDATE_ALLOW_DESTRUCTIVE=1` (tương đương `--allow-destructive`), `UPDATE_AUDIT_SIGNATURES=off` (bỏ kiểm tra chữ ký gói npm).
+
+Kiểm thử các bước an toàn này (không cần mạng): `npm run test:launcher`.
 
 Laptop và điện thoại **không cần cập nhật gì**: chúng mở trang từ máy chủ, nên chỉ cần bấm **Tải lại** khi thấy dải thông báo phiên bản mới.
 
@@ -312,6 +317,47 @@ Laptop và điện thoại **không cần cập nhật gì**: chúng mở trang 
 
 Nhờ vậy test không làm bẩn dữ liệu bạn đang xem trên giao diện.
 
+### 6.1 Chấm điểm Trợ lý tư vấn khách (`npm run eval:ai`)
+
+Chạy khi máy chủ đang bật (có hoặc không có AI local): `npm run eval:ai` (tuỳ chọn `-- --k 5 --base http://<máy chủ>/api --min 0.9`).
+
+- Mỗi kịch bản là **một cuộc hội thoại nhiều lượt** nhập vai khách, gửi kèm lịch sử và **trạng thái hội thoại** (`state`) y như widget.
+- Chấm theo **kết quả** (ý định, ngày tra giờ trống, dịch vụ trong thẻ, giá đúng danh mục), không so từng chữ của câu văn.
+- Mỗi kịch bản chạy `k` lần (mặc định 3) → **pass^k** = tỉ lệ kịch bản đạt cả k lần, đo độ ổn định của mô hình (phương pháp τ-bench).
+- Báo cáo `logs/ai-eval-<ngày>.md`; mã thoát khác 0 khi pass^k dưới ngưỡng `--min` → dùng làm **cổng hồi quy** trước khi đổi model / prompt / luật.
+- `npm run eval:ai:full` (`--perturb`): kiểm thử **bất biến** kiểu CheckList — mỗi kịch bản chạy thêm bản khách gõ **không dấu** và bản
+  **viết tắt kiểu nhắn tin** ("k", "đc", "bn", "j"); kết quả phải y như câu gốc. Lượt của bộ chấm gửi `X-Assistant-Eval: 1` nên
+  không lẫn vào báo cáo "Cải tiến AI".
+
+### 6.2 Vòng tự cải tiến của Trợ lý (trang **Quản lý → Cải tiến Trợ lý AI**)
+
+```
+khách hỏi → luật hiểu? ──có──→ trả lời bằng dữ liệu thật
+                │không
+                ▼
+     AI local VIẾT LẠI câu cho rõ (ví dụ mẫu = câu chủ tiệm đã duyệt)
+                │ kiểm tra trung thực: không được thêm dịch vụ khách không nhắc
+                ▼
+     luật hiểu câu viết lại? ──có──→ trả lời ("Mình hiểu là: …") + ghi ĐỀ XUẤT HỌC
+                │không                                    │
+                ▼                                         ▼
+     ghi "câu chưa trả lời được"                chủ tiệm DUYỆT → lần sau hiểu ngay,
+     (2 lần liền → chuyển hotline / Zalo)        không cần AI (rẻ, nhanh, ổn định)
+```
+
+- **Đề xuất học** đến từ 2 nguồn: AI viết lại thành công, hoặc khách tự diễn đạt lại sau một câu trợ lý chưa hiểu.
+  Không có gì được dùng cho tới khi chủ tiệm duyệt; trước khi duyệt hệ thống chạy thử, câu luật vẫn không hiểu thì không cho duyệt.
+- **Dạy trực tiếp**: *Cụm từ* ("mát xoa" → "massage"), *Cả câu* ("tiệm còn nhận k" → "Bây giờ tiệm còn mở cửa không?") hoặc
+  *Câu trả lời* cho câu hỏi ngoài dữ liệu ("chỗ để xe" → câu trả lời chủ tiệm soạn; khớp khi câu khách chứa đủ các từ đó).
+- **Khách bấm 👍 / 👎** dưới mỗi câu trả lời; câu bị 👎, câu bị khách hỏi lại y hệt và câu chưa hiểu đều vào báo cáo (đã che SĐT / email).
+- **Chặn bịa số liệu**: câu trả lời tự do của AI nêu giờ trống hoặc giá không có trong danh mục bị loại, trả bằng dữ liệu thật
+  (số câu bị chặn hiện trên trang).
+- Quy trình khuyến nghị mỗi tuần: duyệt đề xuất → dạy câu trả lời cho câu hỏi hay gặp → thêm câu mới vào
+  `scripts/ai/eval-assistant.mjs` → `npm run eval:ai:full` đạt 100% rồi mới cập nhật.
+
+API: `GET /api/assistant/improvement`, `GET /api/assistant/learning?status=suggested|approved|rejected` (Chủ tiệm, Quản trị, Lễ tân);
+`PATCH /api/assistant/learning/:id`, `POST /api/assistant/learning` (Chủ tiệm, Quản trị); `POST /api/public/assistant/feedback` (công khai, 30 lần / 10 phút / IP).
+
 ---
 
 ## 7. Biến môi trường mới
@@ -321,6 +367,8 @@ Mẫu đầy đủ, có chú thích tiếng Việt, ở `backend/.env.example` (
 | Biến | Mặc định | Tác dụng |
 |---|---|---|
 | `DATABASE_URL` | trống | Chuỗi kết nối kiểu đám mây; có thì `DB_HOST`… bị bỏ qua |
+| `AI_LLM_LEAD` | tắt | `1`: câu dẫn tư vấn do AI viết (mặc định dùng câu dẫn soạn sẵn — mô hình 4B hay viết sai nghĩa) |
+| `ASSISTANT_GAP_LOG` | `logs/assistant-gaps.jsonl` | Nơi ghi câu trợ lý chưa trả lời được |
 | `DB_SSL` | `false` | `true`: mã hoá + kiểm tra chứng chỉ; `require`: mã hoá, không kiểm tra |
 | `DB_POOL_MAX` | `20` | Số kết nối tối đa của API (gói Free của CSDL nên đặt 10) |
 | `DB_STARTUP_TIMEZONE` | `true` | Đặt `false` với Neon / Supabase pooler |

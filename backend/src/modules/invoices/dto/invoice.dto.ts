@@ -78,6 +78,31 @@ export class CreateVoucherDto {
   @IsDateString({}, { message: 'Ngày bắt đầu không hợp lệ' }) startDate!: string;
   @IsDateString({}, { message: 'Ngày kết thúc không hợp lệ' }) endDate!: string;
 
-  @IsOptional() @Type(() => Number) @IsInt() @Min(1) maxUsage?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0, { message: 'Giá trị đơn tối thiểu không được âm' }) @Max(999_999_999)
+  minOrderValue?: number | null;
+
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) maxUsage?: number | null;
+  @IsOptional() @IsBoolean() isActive?: boolean;
+}
+
+/** QA 12/10 — sửa / bật / tắt mã giảm giá (PATCH /vouchers/:id). Trường nào gửi lên mới đổi; null = xoá giá trị tuỳ chọn. */
+export class UpdateVoucherDto {
+  @IsOptional() @IsString() @IsNotEmpty({ message: 'Vui lòng nhập mã giảm giá' }) @MaxLength(30)
+  @Matches(/^[A-Za-z0-9_-]+$/, { message: 'Mã chỉ gồm chữ, số, gạch ngang và gạch dưới' })
+  code?: string;
+
+  @IsOptional() @IsString() @MaxLength(255) description?: string | null;
+  @IsOptional() @IsEnum(DiscountType, { message: 'Kiểu giảm giá không hợp lệ' }) discountType?: DiscountType;
+
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1, { message: 'Giá trị giảm phải lớn hơn 0' })
+  discountValue?: number;
+
+  @IsOptional() @IsDateString({}, { message: 'Ngày bắt đầu không hợp lệ' }) startDate?: string;
+  @IsOptional() @IsDateString({}, { message: 'Ngày kết thúc không hợp lệ' }) endDate?: string;
+
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0, { message: 'Giá trị đơn tối thiểu không được âm' }) @Max(999_999_999)
+  minOrderValue?: number | null;
+
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) maxUsage?: number | null;
   @IsOptional() @IsBoolean() isActive?: boolean;
 }
