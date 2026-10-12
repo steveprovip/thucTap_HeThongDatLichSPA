@@ -33,6 +33,7 @@ describe('Chịu tải — 1000 khách hỏi trợ lý AI cùng lúc (có mô h�
     });
     await new Promise<void>((r) => llm.listen(0, '127.0.0.1', r));
     Object.assign(process.env, {
+      AI_LLM_LEAD: '1', // bài tải đo đường gọi mô hình: bật câu dẫn của mô hình cho câu tư vấn nhu cầu
       AI_PROVIDER: 'openai', AI_BASE_URL: `http://127.0.0.1:${(llm.address() as AddressInfo).port}/v1`, AI_MODEL: 'mock-4b',
       AI_TIMEOUT_MS: '20000', AI_MAX_CONCURRENCY: '2', AI_MAX_QUEUE: '6', AI_QUEUE_WAIT_MS: '3000', AI_CACHE_MINUTES: '10',
     });

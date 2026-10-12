@@ -34,7 +34,7 @@ const dowOf = (date: string): number => new Date(`${date}T00:00:00Z`).getUTCDay(
 /** Câu có hỏi về khung giờ còn trống / còn nhận khách không. */
 export const AVAILABILITY_RE = new RegExp([
   'con (gio|cho|slot|trong|lich|nhan|dat duoc|kip)', '(gio|khung gio|lich|cho) (nao )?(con )?trong', 'gio nao', 'khung gio',
-  'dat duoc (nua|khong|ko|k)', 'con dat duoc', 'nhan khach', 'het cho', 'kin lich', 'co cho', 'ranh (khong|ko|k)', 'luc may gio',
+  'trong lich', 'lich trong', 'con trong', 'trong (khong|ko|k)\\b', 'dat duoc (nua|khong|ko|k)', 'con dat duoc', 'nhan khach', 'het cho', 'kin lich', 'co cho(?! (de|dau|do|gui) (xe|oto|o to))', 'ranh (khong|ko|k)', 'ai ranh', 'tho ranh', 'luc may gio',
   'may gio (con|thi|duoc|ranh|trong)', 'dat (luc|vao luc|vao)', 'xep (cho|duoc)',
 ].map((p) => `\\b${p}\\b`).join('|'));
 

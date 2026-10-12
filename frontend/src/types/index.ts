@@ -714,6 +714,30 @@ export interface CustomerAssistantReply {
   bookDate?: string;
   /** Trạng thái hội thoại (đang tra giờ ngày nào, buổi nào, dịch vụ nào…) — gửi lại nguyên vẹn ở câu kế tiếp. */
   state?: CustomerDialogState;
+  /** Câu khách gõ khó hiểu được trợ lý viết lại rõ nghĩa → hiện "Mình hiểu là: …". */
+  understoodAs?: string;
+}
+
+/** Đề xuất học / câu đã học của trợ lý tư vấn (vòng tự cải tiến có người duyệt). */
+export interface AssistantLearnedPhrase {
+  id: string;
+  kind: 'question' | 'alias' | 'answer';
+  phrase: string;
+  rewrite: string;
+  intent: string | null;
+  status: 'suggested' | 'approved' | 'rejected';
+  source: 'llm' | 'rephrase' | 'owner';
+  hits: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AssistantImprovementReport {
+  gaps: { days: number; total: number; items: { question: string; intent: string; count: number; lastAt: string }[] };
+  suggestions: AssistantLearnedPhrase[];
+  approved: number;
+  feedback: { up: number; down: number };
+  ungroundedBlocked: number;
 }
 
 export interface CustomerDialogState {

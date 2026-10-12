@@ -1,13 +1,17 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CalendarCheck, Check, Clock3, Flower2, Loader2, MessageCircleHeart, Plus, Send, X } from 'lucide-react';
+import { CalendarCheck, Check, Clock3, Flower2, Loader2, MessageCircleHeart, Plus, Send, ThumbsDown, ThumbsUp, X } from 'lucide-react';
 import { assistantApi, getErrorMessage } from '@/api';
 import type { ChatTurn, CustomerAssistantService, CustomerDialogState } from '@/types';
 import { formatVnd } from '@/utils/format';
 import { serviceImage, serviceMediaKind } from '@/utils/images';
 import { SmartImage } from './Media';
 
-interface Line { from: 'me' | 'bot'; text: string; suggestions?: CustomerAssistantService[]; meta?: string; bookDate?: string }
+interface Line {
+  from: 'me' | 'bot'; text: string; suggestions?: CustomerAssistantService[]; meta?: string; bookDate?: string;
+  /** Câu khách + ý định — để gửi 👍 / 👎; `understoodAs`: trợ lý đã viết lại câu khó hiểu thành câu này. */
+  q?: string; intent?: string; understoodAs?: string; rated?: 'up' | 'down';
+}
 
 const QUICK = ['Xem bảng giá', 'Dịch vụ hot', 'Đặt lịch ngay'];
 /** TASK v4 · NV4: chủ đề tư vấn nhanh như quầy lễ tân spa — bấm là hỏi ngay. */
@@ -71,7 +75,10 @@ export function CustomerAiAssistant({ onBook, liftPx = 0 }: {
     try {
       const r = await assistantApi.customerChat(q, past, dialog.current);
       dialog.current = r.state;
-      setLines((l) => [...l, { from: 'bot', text: r.answer, suggestions: r.suggestions, meta: r.source === 'llm' ? 'AI tư vấn' : undefined, bookDate: r.bookDate }]);
+      setLines((l) => [...l, {
+        from: 'bot', text: r.answer, suggestions: r.suggestions, meta: r.source === 'llm' ? 'AI tư vấn' : undefined, bookDate: r.bookDate,
+        q, intent: r.intent, understoodAs: r.understoodAs,
+      }]);
       if (r.quickReplies?.length) setQuick(r.quickReplies);
     } catch (e) {
       setLines((l) => [...l, { from: 'bot', text: getErrorMessage(e, 'Mình đang bận một chút, bạn thử lại sau ít phút nhé.') }]);
@@ -87,6 +94,13 @@ export function CustomerAiAssistant({ onBook, liftPx = 0 }: {
     setPicked([]);
     if (onBook) onBook(services, date);
     else navigate(`/dat-lich?services=${services.map((s) => encodeURIComponent(s.id)).join(',')}${date ? `&date=${date}` : ''}`);
+  };
+  /** 👍 / 👎: câu bị chê vào báo cáo "Cải tiến AI" của chủ tiệm (phân tích lỗi trên hội thoại thật). */
+  const rate = (i: number, helpful: boolean) => {
+    const l = lines[i];
+    if (!l?.q || l.rated) return;
+    setLines((all) => all.map((x, k) => (k === i ? { ...x, rated: helpful ? 'up' : 'down' } : x)));
+    void assistantApi.customerFeedback(l.q, l.intent ?? 'unknown', helpful).catch(() => undefined);
   };
   const toggle = (s: CustomerAssistantService) =>
     setPicked((p) => (p.some((x) => x.id === s.id) ? p.filter((x) => x.id !== s.id) : p.length >= 5 ? p : [...p, s]));
@@ -149,8 +163,20 @@ export function CustomerAiAssistant({ onBook, liftPx = 0 }: {
               <div key={i} ref={i === lines.length - 1 && l.from === 'bot' ? lastBotRef : undefined}
                    className={l.from === 'me' ? 'flex justify-end' : ''}>
                 <div className={`max-w-[90%] whitespace-pre-line rounded-2xl px-3 py-2 ${l.from === 'me' ? 'rounded-br-md bg-teal-600 text-white' : 'rounded-bl-md bg-white text-slate-800 shadow-sm'}`}>
+                  {l.understoodAs && <span className="mb-1 block text-[11px] italic text-slate-500">Mình hiểu là: “{l.understoodAs}”</span>}
                   {l.text}
                   {l.meta && <span className="mt-1 block text-[10px] opacity-50">{l.meta}</span>}
+                  {l.from === 'bot' && l.q && (
+                    <span className="mt-1 flex items-center gap-1 text-[10px] text-slate-400">
+                      {l.rated ? (l.rated === 'up' ? 'Cảm ơn bạn!' : 'Cảm ơn bạn — tiệm sẽ cải thiện câu này.') : (
+                        <>
+                          <span>Câu trả lời có giúp ích?</span>
+                          <button type="button" onClick={() => rate(i, true)} aria-label="Hữu ích" className="rounded p-0.5 hover:bg-slate-100 hover:text-teal-700"><ThumbsUp size={12} /></button>
+                          <button type="button" onClick={() => rate(i, false)} aria-label="Chưa đúng ý" className="rounded p-0.5 hover:bg-slate-100 hover:text-rose-600"><ThumbsDown size={12} /></button>
+                        </>
+                      )}
+                    </span>
+                  )}
                 </div>
                 {!!l.suggestions?.length && (
                   // Gợi ý GỌN: mỗi dịch vụ một dòng (ảnh nhỏ · tên · giá · Chọn / Đặt), tối đa 3 — không lấn át câu trả lời

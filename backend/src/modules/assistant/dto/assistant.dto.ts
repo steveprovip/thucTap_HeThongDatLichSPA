@@ -40,3 +40,23 @@ export class ShiftSuggestionQuery {
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(14) days?: number;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(5) minStaff?: number;
 }
+
+/** Chủ tiệm duyệt / từ chối / sửa một đề xuất học của trợ lý. */
+export class LearningUpdateDto {
+  @IsOptional() @IsIn(['approved', 'rejected', 'suggested']) status?: 'approved' | 'rejected' | 'suggested';
+  @IsOptional() @IsString() @MaxLength(1000) rewrite?: string;
+}
+
+/** Chủ tiệm tự dạy trợ lý: cụm từ ("mát xoa" → "massage") hoặc cả câu → câu rõ nghĩa. */
+export class LearningAddDto {
+  @IsIn(['question', 'alias', 'answer']) kind!: 'question' | 'alias' | 'answer';
+  @IsString() @MinLength(2) @MaxLength(200) phrase!: string;
+  @IsString() @MinLength(1) @MaxLength(1000) rewrite!: string;
+}
+
+/** Khách bấm 👍 / 👎 dưới câu trả lời. */
+export class AssistantFeedbackDto {
+  @IsString() @MinLength(1) @MaxLength(500) question!: string;
+  @IsString() @MaxLength(40) intent!: string;
+  @IsBoolean() helpful!: boolean;
+}

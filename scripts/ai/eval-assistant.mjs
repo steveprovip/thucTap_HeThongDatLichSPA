@@ -5,7 +5,10 @@
 //  - chạy mỗi kịch bản k lần → pass^k = tỉ lệ kịch bản đạt cả k lần (đo độ ỔN ĐỊNH, không chỉ "đôi khi đúng").
 // Dùng trước khi cập nhật / đổi model AI: điểm tụt dưới ngưỡng thì không triển khai (cổng hồi quy).
 //
-//   node scripts/ai/eval-assistant.mjs [--k 3] [--base http://127.0.0.1:3000/api] [--min 1] [--out logs/ai-eval.md]
+//  - --perturb: kiểm thử BẤT BIẾN kiểu CheckList (Ribeiro và cộng sự, ACL 2020): mỗi kịch bản chạy thêm bản câu khách gõ
+//    KHÔNG DẤU và bản VIẾT TẮT kiểu nhắn tin ("không" → "k", "bao nhiêu" → "bn"…) — kết quả phải y như câu gốc.
+//
+//   node scripts/ai/eval-assistant.mjs [--k 3] [--perturb] [--base http://127.0.0.1:3000/api] [--min 1] [--out logs/ai-eval.md]
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
@@ -17,6 +20,13 @@ const BASE = arg('base', process.env.EVAL_BASE ?? 'http://127.0.0.1:3000/api');
 const K = Math.max(1, Number(arg('k', 3)));
 const MIN = Number(arg('min', 1)); // ngưỡng pass^k tối thiểu (0..1)
 const OUT = arg('out', `logs/ai-eval-${new Date().toISOString().slice(0, 10)}.md`);
+const PERTURB = process.argv.includes('--perturb');
+
+/** Biến đổi giữ nguyên ý (CheckList INV): bỏ dấu; viết tắt kiểu nhắn tin. Câu có tên dịch vụ trong ngoặc kép giữ nguyên. */
+const unaccent = (q) => q.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D');
+const texting = (q) => q.replace(/\bkhông\b/gi, 'k').replace(/\bđược\b/gi, 'đc').replace(/\bbao nhiêu\b/gi, 'bn').replace(/\bgì\b/gi, 'j')
+  .replace(/\s*\?$/, ' ạ?');
+const PERTURBATIONS = [['không dấu', unaccent], ['nhắn tin', texting]];
 
 // Ngày theo giờ Việt Nam (máy chủ tra giờ theo Asia/Ho_Chi_Minh)
 const vnDate = (plus = 0) => new Date(Date.now() + 7 * 3600_000 + plus * 86_400_000).toISOString().slice(0, 10);
@@ -81,6 +91,37 @@ const SCENARIOS = [
     ['mai còn giờ không', { intent: 'availability', has: ['cho dịch vụ nào'] }],
     ['massage bấm huyệt cổ vai gáy', { intent: 'availability', bookDate: TOMORROW, card: 'Massage bấm huyệt cổ vai gáy' }],
   ]],
+  ['Log 12/10 lần 4 (đúng nguyên văn)', [
+    ['alo', { intent: 'greeting' }],
+    ['ngày kia có dịch vụ mát xoa nào trống lịch không ?', { intent: 'availability', bookDate: vnDate(2), has: ['nhóm massage'] }],
+    ['những dịch vụ nổi bật nhất là ?', { intent: 'hot' }],
+    ['"Gội đầu dưỡng sinh thảo dược" mai có lịch trống không ?', { intent: 'availability', bookDate: TOMORROW }],
+    ['có những thợ gì có thể làm ?', { intent: 'stylists', has: ['thợ làm được Gội đầu dưỡng sinh thảo dược'] }],
+    ['không nêu tên thợ à ?', { intent: 'stylists', has: ['thợ làm được', 'như mình vừa nêu'] }],
+    ['dạo gần đây có sự kiện cho mã giảm giá gì không ?', { intent: 'promotion', hasNot: ['hỏi nhanh qua'] }],
+  ]],
+  ['Tiếng lóng / viết tắt', [
+    ['bn tiền gội đầu z', { intent: 'service_price', card: 'Gội đầu' }],
+    ['sdt tiệm là gì', { intent: 'contact' }],
+    ['tiem lam toi may h vay ban', { intent: 'hours', hasNot: ['Chủ nhật:'] }],
+  ]],
+  ['Nhầm nhóm dịch vụ', [
+    ['e muốn làm đẹp da mặt thì sao ạ', { intent: 'need', hasNot: ['Cạo mặt'] }],
+    ['tóc mình xơ quá muốn mềm mượt lại thì làm j', { intent: 'need', hasNot: ['Cắt tóc'] }],
+  ]],
+  ['Giới tính + ngữ cảnh', [
+    ['có làm tóc cho nam k', { intent: 'need', card: 'Cắt tóc nam' }],
+    ['giá sao', { intent: 'service_price', price: 'Cắt tóc nam' }],
+  ]],
+  ['Hỏi giờ trống bằng câu nhắn tin', [
+    ['chị ơi mai chiều 3h có ai rảnh làm nail k', { intent: 'availability', bookDate: TOMORROW, has: ['nhóm móng'] }],
+  ]],
+  ['Va chạm khi bỏ dấu (mún ≠ mụn, thứ năm ≠ tóc nam)', [
+    ['tui mún đi spa thư dãn sau giờ làm', { intent: 'need', card: 'Massage', hasNot: ['mụn'] }],
+    ['lịch trống thứ năm cho uốn tóc hàn', { intent: 'availability', card: 'Uốn sóng lơi Hàn Quốc' }],
+    ['dịch dụ tẩy da chết bao nhiu', { intent: 'service_price' }],
+    ['toc toi dai muon tia lai chut thoi', { intent: 'need', card: 'Cắt tóc', hasNot: ['trẻ em', 'râu'] }],
+  ]],
   ['Không hiểu 2 lần → chuyển người thật', [
     ['xyz qwe', { intent: 'unknown' }],
     ['abc def ghi', { intent: 'handoff' }],
@@ -91,7 +132,7 @@ let ipSeq = 1;
 async function post(path, body) {
   const ip = `10.88.${Math.floor(ipSeq / 250) % 250}.${ipSeq++ % 250}`; // mỗi lượt một IP giả để không chạm giới hạn 429
   const t = performance.now();
-  const res = await fetch(`${BASE}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': ip }, body: JSON.stringify(body) });
+  const res = await fetch(`${BASE}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': ip, 'X-Assistant-Eval': '1' }, body: JSON.stringify(body) });
   const json = await res.json().catch(() => ({}));
   return { status: res.status, data: json.data ?? {}, ms: Math.round(performance.now() - t) };
 }
@@ -138,7 +179,12 @@ const rows = [];
 let md = `# Chấm điểm Trợ lý tư vấn — ${new Date().toISOString()}\n\nMáy chủ: \`${BASE}\` · k = ${K} lần / kịch bản · ngày mai = ${TOMORROW}\n`;
 const latencies = [];
 const models = new Set();
-for (const [name, turns] of SCENARIOS) {
+const suites = PERTURB
+  ? SCENARIOS.flatMap(([name, turns]) => [[name, turns], ...PERTURBATIONS
+    .map(([label, f]) => [`${name} [${label}]`, turns.map(([q, exp]) => [q.startsWith('"') ? q : f(q), exp])])
+    .filter(([, t], i, all) => t.some(([q], j) => q !== turns[j][0]) && all.findIndex(([, u]) => JSON.stringify(u) === JSON.stringify(t)) === i)])
+  : SCENARIOS;
+for (const [name, turns] of suites) {
   const runs = [];
   for (let i = 0; i < K; i += 1) runs.push(await runScenario(turns));
   runs.forEach((x) => x.log.forEach((l) => { latencies.push(l.r.ms); if (l.r.data.model) models.add(l.r.data.model); }));

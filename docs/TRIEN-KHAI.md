@@ -325,14 +325,38 @@ Chạy khi máy chủ đang bật (có hoặc không có AI local): `npm run eva
 - Chấm theo **kết quả** (ý định, ngày tra giờ trống, dịch vụ trong thẻ, giá đúng danh mục), không so từng chữ của câu văn.
 - Mỗi kịch bản chạy `k` lần (mặc định 3) → **pass^k** = tỉ lệ kịch bản đạt cả k lần, đo độ ổn định của mô hình (phương pháp τ-bench).
 - Báo cáo `logs/ai-eval-<ngày>.md`; mã thoát khác 0 khi pass^k dưới ngưỡng `--min` → dùng làm **cổng hồi quy** trước khi đổi model / prompt / luật.
+- `npm run eval:ai:full` (`--perturb`): kiểm thử **bất biến** kiểu CheckList — mỗi kịch bản chạy thêm bản khách gõ **không dấu** và bản
+  **viết tắt kiểu nhắn tin** ("k", "đc", "bn", "j"); kết quả phải y như câu gốc. Lượt của bộ chấm gửi `X-Assistant-Eval: 1` nên
+  không lẫn vào báo cáo "Cải tiến AI".
 
-Vòng cải tiến liên tục:
+### 6.2 Vòng tự cải tiến của Trợ lý (trang **Quản lý → Cải tiến Trợ lý AI**)
 
-1. Câu trợ lý chưa trả lời được (chưa hiểu, chuyển người thật, dịch vụ tiệm không làm) được ghi vào `logs/assistant-gaps.jsonl`
-   (đã che SĐT / email / dãy số). Chủ tiệm / lễ tân xem gom nhóm 30 ngày qua `GET /api/assistant/knowledge-gaps`.
-2. Bổ sung mô tả dịch vụ / chính sách, hoặc thêm luật cho ý định mới.
-3. Thêm câu đó thành kịch bản trong `scripts/ai/eval-assistant.mjs` (và unit test trong `customer-persona.spec.ts`).
-4. `npm run eval:ai` đạt 100% rồi mới cập nhật.
+```
+khách hỏi → luật hiểu? ──có──→ trả lời bằng dữ liệu thật
+                │không
+                ▼
+     AI local VIẾT LẠI câu cho rõ (ví dụ mẫu = câu chủ tiệm đã duyệt)
+                │ kiểm tra trung thực: không được thêm dịch vụ khách không nhắc
+                ▼
+     luật hiểu câu viết lại? ──có──→ trả lời ("Mình hiểu là: …") + ghi ĐỀ XUẤT HỌC
+                │không                                    │
+                ▼                                         ▼
+     ghi "câu chưa trả lời được"                chủ tiệm DUYỆT → lần sau hiểu ngay,
+     (2 lần liền → chuyển hotline / Zalo)        không cần AI (rẻ, nhanh, ổn định)
+```
+
+- **Đề xuất học** đến từ 2 nguồn: AI viết lại thành công, hoặc khách tự diễn đạt lại sau một câu trợ lý chưa hiểu.
+  Không có gì được dùng cho tới khi chủ tiệm duyệt; trước khi duyệt hệ thống chạy thử, câu luật vẫn không hiểu thì không cho duyệt.
+- **Dạy trực tiếp**: *Cụm từ* ("mát xoa" → "massage"), *Cả câu* ("tiệm còn nhận k" → "Bây giờ tiệm còn mở cửa không?") hoặc
+  *Câu trả lời* cho câu hỏi ngoài dữ liệu ("chỗ để xe" → câu trả lời chủ tiệm soạn; khớp khi câu khách chứa đủ các từ đó).
+- **Khách bấm 👍 / 👎** dưới mỗi câu trả lời; câu bị 👎, câu bị khách hỏi lại y hệt và câu chưa hiểu đều vào báo cáo (đã che SĐT / email).
+- **Chặn bịa số liệu**: câu trả lời tự do của AI nêu giờ trống hoặc giá không có trong danh mục bị loại, trả bằng dữ liệu thật
+  (số câu bị chặn hiện trên trang).
+- Quy trình khuyến nghị mỗi tuần: duyệt đề xuất → dạy câu trả lời cho câu hỏi hay gặp → thêm câu mới vào
+  `scripts/ai/eval-assistant.mjs` → `npm run eval:ai:full` đạt 100% rồi mới cập nhật.
+
+API: `GET /api/assistant/improvement`, `GET /api/assistant/learning?status=suggested|approved|rejected` (Chủ tiệm, Quản trị, Lễ tân);
+`PATCH /api/assistant/learning/:id`, `POST /api/assistant/learning` (Chủ tiệm, Quản trị); `POST /api/public/assistant/feedback` (công khai, 30 lần / 10 phút / IP).
 
 ---
 
@@ -343,6 +367,8 @@ Mẫu đầy đủ, có chú thích tiếng Việt, ở `backend/.env.example` (
 | Biến | Mặc định | Tác dụng |
 |---|---|---|
 | `DATABASE_URL` | trống | Chuỗi kết nối kiểu đám mây; có thì `DB_HOST`… bị bỏ qua |
+| `AI_LLM_LEAD` | tắt | `1`: câu dẫn tư vấn do AI viết (mặc định dùng câu dẫn soạn sẵn — mô hình 4B hay viết sai nghĩa) |
+| `ASSISTANT_GAP_LOG` | `logs/assistant-gaps.jsonl` | Nơi ghi câu trợ lý chưa trả lời được |
 | `DB_SSL` | `false` | `true`: mã hoá + kiểm tra chứng chỉ; `require`: mã hoá, không kiểm tra |
 | `DB_POOL_MAX` | `20` | Số kết nối tối đa của API (gói Free của CSDL nên đặt 10) |
 | `DB_STARTUP_TIMEZONE` | `true` | Đặt `false` với Neon / Supabase pooler |

@@ -28,6 +28,14 @@ Launcher (biểu tượng Hương Sen Salon / `HoYoSalon.bat`) đọc tệp này
 - Ghi "lỗ hổng kiến thức" (câu chưa trả lời được, đã che SĐT / email) — chủ tiệm / lễ tân xem qua `GET /api/assistant/knowledge-gaps`.
 - Bộ chấm điểm nhiều lượt kiểu τ-bench `npm run eval:ai` (12 kịch bản, 33 lượt, k = 3): AI local đạt pass^3 = 100%.
 
+### Trợ lý AI — tự cải tiến có người duyệt (nhập vai khách lần 4–7 trên AI local thật)
+- Log 12/10 lần 4: "ngày kia có dịch vụ mát xoa nào trống lịch" tra giờ trống **cả nhóm massage** (dịch vụ nào còn mấy giờ, sớm nhất mấy giờ, dịch vụ nào kín); "có những thợ gì có thể làm" nêu **tên thợ** làm được dịch vụ đang nói và ai còn giờ trống ngày đó; mã giảm giá đọc **ưu đãi đang chạy thật** (không lộ mã); không bao giờ lặp nguyên văn câu vừa trả lời.
+- Hiểu lỗi gõ / tiếng lóng: "mát xoa", "bn", "k", "đc", "j", "z", "mấy h", "bao nhiu", "dịch dụ", "thư dãn", "tỉa lại", "sdt"; sửa va chạm khi bỏ dấu ("mún" = muốn ≠ "mụn", "thứ năm" ≠ "tóc nam"); "làm đẹp da mặt" ra nhóm Chăm sóc da (không còn "Cạo mặt & tỉa râu"); combo / dịch vụ trẻ em chỉ gợi ý khi khách nhắc tới.
+- **Viết lại câu khó hiểu** bằng AI local rồi trả lời bằng dữ liệu thật ("Mình hiểu là: …"), có **kiểm tra trung thực** (không được thêm dịch vụ khách không nhắc — thử thật mô hình 4B từng viết "mát xoa giá" thành "Chăm sóc da Vitamin C giá").
+- Trang **Cải tiến Trợ lý AI**: đề xuất học chờ duyệt (từ AI viết lại / khách tự hỏi lại), dạy cụm từ / cả câu / **câu trả lời soạn sẵn** cho câu hỏi ngoài dữ liệu ("chỗ để xe"), câu chưa trả lời tốt, phản hồi 👍 / 👎 của khách, số câu AI bịa số liệu bị chặn.
+- Câu dẫn tư vấn soạn sẵn theo nhu cầu (AI 4B viết câu dẫn sai nghĩa 3/6 lượt); bật lại câu dẫn của AI bằng `AI_LLM_LEAD=1`.
+- Bộ chấm điểm `npm run eval:ai:full`: 45 kịch bản / 135 lượt gồm biến thể không dấu + viết tắt (kiểm thử bất biến kiểu CheckList), AI local đạt pass^3 = 100%.
+
 ### Hiệu năng & chịu tải
 - 1000 khách hỏi trợ lý cùng lúc: 100% được trả lời; khi có mô hình 1 luồng, p95 giảm từ 81 giây xuống 1,4 giây (cổng chặn đồng thời, gộp câu trùng, bộ nhớ đệm câu trả lời).
 - Danh mục công khai: truy vấn song song + bộ nhớ đệm 30 giây tự xoá khi chủ tiệm sửa (447 → 2.176 yêu cầu/giây).

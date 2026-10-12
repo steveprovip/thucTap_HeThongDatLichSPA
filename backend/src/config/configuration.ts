@@ -124,6 +124,8 @@ const configuration = () => ({
     maxQueue: Math.max(0, int(process.env.AI_MAX_QUEUE, 6)),
     queueWaitMs: Math.max(0, int(process.env.AI_QUEUE_WAIT_MS, 4000)),
     cacheMinutes: Math.max(0, int(process.env.AI_CACHE_MINUTES, 10)),
+    // Câu dẫn tư vấn do mô hình viết (1 = bật). Mặc định tắt: dùng câu dẫn soạn sẵn theo nhu cầu (mô hình nhỏ hay viết sai nghĩa).
+    llmLead: ['1', 'true', 'on', 'yes'].includes((process.env.AI_LLM_LEAD ?? '').trim().toLowerCase()),
     // QA 12/10: chế độ auto tự bật lại model_AI_local khi máy chủ AI local tắt (sau khi khởi động lại máy). 0 = tắt.
     autostart: !['0', 'false', 'off', 'no'].includes((process.env.AI_LOCAL_AUTOSTART ?? '').trim().toLowerCase())
       && process.env.NODE_ENV !== 'test',

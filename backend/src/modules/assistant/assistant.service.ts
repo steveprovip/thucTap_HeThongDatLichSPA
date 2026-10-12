@@ -18,6 +18,7 @@ import { EventsService } from '../events/events.service';
 import {
   CatalogItem, CUSTOMER_SYSTEM_PROMPT, DialogState, customerContextForLlm, CustomerReply, customerRuleReply, SalonFacts,
   DIRECT_INTENTS, availabilityAnswer, isUnaccented, leadSentence, matchServices, sanitizeLlmAnswer, stripBookingNag, ungroundedClaim,
+  buildRewriteMessages, faithfulRewrite, groupAvailabilityAnswer, LearnedPhrase, parseRewrite, repeatGuard,
 } from './customer-assistant-rules';
 import { callLlm, DEFAULT_LOCAL_AI_URL, LlmConfig, LlmMessage, pickModel, probeLocalServer } from './llm-client';
 
@@ -53,6 +54,8 @@ export interface ChatTurn { role: 'user' | 'assistant'; content: string }
 
 /** Câu trả lời coi là "chưa giải quyết được" để ghi vào lỗ hổng kiến thức. */
 const GAP_INTENTS = new Set(['unknown', 'handoff', 'not_offered']);
+/** Chủ tiệm duyệt một câu mà luật vẫn không hiểu → báo lỗi 400 có lời giải thích. */
+export class LearningRejected extends Error {}
 interface GapEntry { at: string; q: string; intent: string }
 /** Che SĐT, email, dãy số dài trước khi ghi nhật ký (bảo vệ dữ liệu cá nhân). */
 export const redactPersonal = (text: string): string => text
@@ -67,11 +70,21 @@ interface PublicData {
   facts: SalonFacts;
   /** serviceId → lượt đặt 90 ngày. */
   popularity: Record<string, number>;
+  /** Câu / cụm từ chủ tiệm đã duyệt (vòng tự cải tiến). */
+  learned: LearnedPhrase[];
+}
+
+/** Đề xuất học / câu đã học của trợ lý (bảng assistant_learned_phrases). */
+export interface LearnedPhraseRow {
+  id: string; kind: 'question' | 'alias' | 'answer'; phrase: string; rewrite: string; intent: string | null;
+  status: 'suggested' | 'approved' | 'rejected'; source: 'llm' | 'rephrase' | 'owner'; hits: number; createdAt: string; updatedAt: string;
 }
 
 export interface CustomerChatResult extends CustomerReply {
   source: 'llm' | 'rules';
   model: string | null;
+  /** Câu luật chưa hiểu được mô hình viết lại → "Mình hiểu là: …" (khách thấy trợ lý hiểu gì, sửa được nếu sai). */
+  understoodAs?: string;
   /** Ngày vừa tra giờ trống (yyyy-MM-dd) — nút "Đặt" mở phiếu đặt lịch đúng ngày này. */
   bookDate?: string;
 }
@@ -121,7 +134,7 @@ export class AssistantService implements OnApplicationBootstrap {
     this.answerCache = new TtlCache(n('cacheMinutes', 10) * 60_000, 500);
     // Dịch vụ / giá / giờ mở cửa vừa đổi → bỏ danh mục và câu trả lời AI đã nhớ (tránh báo giá cũ)
     events?.stream().subscribe((e) => {
-      if (['services', 'service-categories', 'stylists', 'working-hours', 'holidays'].includes(e.scope)) {
+      if (['services', 'service-categories', 'stylists', 'working-hours', 'holidays', 'vouchers'].includes(e.scope)) {
         this.publicCache = null;
         this.answerCache.clear();
       }
@@ -133,6 +146,9 @@ export class AssistantService implements OnApplicationBootstrap {
   private readonly answerCache: TtlCache<{ answer: string; suggestions: CatalogItem[] }>;
   private readonly llmFlight = new SingleFlight<{ answer: string; suggestions: CatalogItem[] } | 'busy' | 'ungrounded' | null>();
   private readonly publicFlight = new SingleFlight<PublicData>();
+  /** Câu viết lại của mô hình theo câu khách (bỏ dấu) — 1000 khách hỏi cùng một câu lạ chỉ tốn một lượt mô hình. */
+  private readonly rewriteCache = new TtlCache<{ v: string | null }>(30 * 60_000, 500);
+  private readonly rewriteFlight = new SingleFlight<string | null>();
   private readonly contextFlight = new SingleFlight<AssistantContext>();
 
   private probe: { at: number; cfg: LlmConfig | null } | null = null;
@@ -462,7 +478,7 @@ export class AssistantService implements OnApplicationBootstrap {
   }
 
   private async loadPublicData(): Promise<PublicData> {
-    const [groups, counts, hours, team, holidays] = await Promise.all([
+    const [groups, counts, hours, team, holidays, roster, promos, learned] = await Promise.all([
       this.availability.publicCatalog(),
       // Lượt đặt 90 ngày của MỌI dịch vụ (trước đây LIMIT 8 → nhóm combo bị báo "chưa đủ lượt đặt" dù có khách đặt)
       this.dataSource.query(
@@ -480,6 +496,20 @@ export class AssistantService implements OnApplicationBootstrap {
         `SELECT to_char(start_date, 'YYYY-MM-DD') AS "startDate", to_char(end_date, 'YYYY-MM-DD') AS "endDate", reason
            FROM salon_holidays WHERE end_date >= (now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date - 1
           ORDER BY start_date LIMIT 30`) as Promise<{ startDate: string; endDate: string; reason: string }[]>,
+      // Thợ + dịch vụ làm được (công khai ở bước "Chọn thợ") — "có những thợ nào làm được gội đầu"
+      this.dataSource.query(
+        `SELECT s.id, s.full_name AS name, s.gender, COALESCE(array_agg(ss.service_id) FILTER (WHERE ss.service_id IS NOT NULL), '{}') AS "serviceIds"
+           FROM stylists s LEFT JOIN stylist_services ss ON ss.stylist_id = s.id
+          WHERE s.is_active GROUP BY s.id ORDER BY s.full_name`) as Promise<{ id: string; name: string; gender: string | null; serviceIds: string[] }[]>,
+      // Ưu đãi ĐANG chạy (còn hạn, còn lượt) — không lấy mã
+      this.dataSource.query(
+        `SELECT description, discount_type AS type, discount_value::float AS value, min_order_value::float AS "minOrder",
+                to_char(end_date, 'YYYY-MM-DD') AS "endDate"
+           FROM vouchers
+          WHERE is_active AND start_date <= (now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date AND end_date >= (now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date
+            AND (max_usage IS NULL OR used_count < max_usage)
+          ORDER BY end_date LIMIT 5`) as Promise<{ description: string | null; type: 'percent' | 'amount'; value: number; minOrder: number | null; endDate: string }[]>,
+      this.approvedPhrases(),
     ]);
     const catalog: CatalogItem[] = groups.flatMap((g) => g.services.map((s) => ({
       id: s.id, name: s.name, categoryName: g.categoryName, durationMinutes: s.durationMinutes,
@@ -493,6 +523,8 @@ export class AssistantService implements OnApplicationBootstrap {
       maxActiveBookingsPerPhone: this.config.get<number>('business.maxActiveBookingsPerPhone') ?? 3,
       stylists: team[0] ?? { total: 0, female: 0, male: 0 },
       holidays,
+      team: roster.map((t) => ({ ...t, serviceIds: Array.isArray(t.serviceIds) ? t.serviceIds : [] })),
+      promotions: promos,
     };
     const ids = new Set(catalog.map((x) => x.id));
     const live = counts.filter((h) => ids.has(h.id));
@@ -500,6 +532,7 @@ export class AssistantService implements OnApplicationBootstrap {
       at: Date.now(), catalog, facts,
       hotIds: live.slice(0, 8).map((h) => h.id),
       popularity: Object.fromEntries(live.map((h) => [h.id, h.n])),
+      learned,
     };
     return this.publicCache;
   }
@@ -509,34 +542,98 @@ export class AssistantService implements OnApplicationBootstrap {
    * giờ trống, chính sách); mô hình ngôn ngữ (nếu bật) chỉ lo phần trò chuyện: câu dẫn cho gợi ý, giải thích theo mô tả dịch vụ,
    * chào hỏi và câu tự do. Thẻ dịch vụ luôn trùng với dịch vụ có trong câu trả lời.
    */
-  async customerChat(message: string, history: ChatTurn[] = [], state?: DialogState): Promise<CustomerChatResult> {
-    const result = await this.customerChatInner(message, history, state);
+  /** `record` = false: lượt của bộ chấm điểm (scripts/ai/eval-assistant.mjs) — không ghi vào báo cáo cải tiến / đề xuất học. */
+  async customerChat(message: string, history: ChatTurn[] = [], state?: DialogState, record = true): Promise<CustomerChatResult> {
+    const inner = await this.customerChatInner(message, history, state, record);
+    // Câu cuối cùng (kể cả câu mô hình viết / tra giờ thật) cũng không được lặp nguyên văn câu vừa trả lời
+    const lastBot = [...history].reverse().find((h) => h.role === 'assistant')?.content ?? '';
+    // (giờ trống được hỏi lại thì vẫn trả đủ giờ — số liệu thật, khách cần xem lại)
+    const result = inner.bookDate || inner.intent === 'availability' ? inner : repeatGuard(inner, lastBot, (await this.publicData()).facts);
     // Vòng cải tiến liên tục (kiểu Zendesk / HubSpot "knowledge gaps"): ghi câu trợ lý chưa trả lời được để chủ tiệm bổ sung
-    if (GAP_INTENTS.has(result.intent)) void this.recordGap(message, result.intent);
+    if (record && GAP_INTENTS.has(result.intent)) void this.recordGap(message, result.intent);
+    else if (record && result.repeated) void this.recordGap(message, `repeat:${result.intent}`.slice(0, 40));
     return result;
   }
 
-  private async customerChatInner(message: string, history: ChatTurn[], state?: DialogState): Promise<CustomerChatResult> {
-    const { catalog, hotIds, facts, popularity } = await this.publicData();
+  private async customerChatInner(message: string, history: ChatTurn[], state?: DialogState, record = true): Promise<CustomerChatResult> {
+    const { catalog, hotIds, facts, popularity, learned } = await this.publicData();
     const today = todaySalon();
-    const { pending, ...rule } = customerRuleReply(message, catalog, hotIds, facts, new Date(), {
-      history, popularity, today, state, nowTime: toSalon(new Date()).toFormat('HH:mm'),
-    });
-    const direct = (r: CustomerReply = rule): CustomerChatResult => ({ ...r, source: 'rules', model: null });
+    const ruleOpts = { history, popularity, today, state, learned, nowTime: toSalon(new Date()).toFormat('HH:mm') };
+    let { pending, ...rule } = customerRuleReply(message, catalog, hotIds, facts, new Date(), ruleOpts);
+    let understoodAs: string | undefined;
+    // Luật chưa hiểu (misses > 0) → mô hình VIẾT LẠI câu cho rõ rồi chạy lại luật: nội dung vẫn từ dữ liệu thật
+    if ((rule.state?.misses ?? 0) > 0) {
+      const fixed = await this.rewriteQuestion(message, history, catalog, learned);
+      if (fixed) {
+        const again = customerRuleReply(fixed, catalog, hotIds, facts, new Date(), ruleOpts);
+        if (!(again.state?.misses ?? 0)) {
+          ({ pending, ...rule } = again);
+          understoodAs = fixed;
+          if (record) void this.suggestPhrase('question', message, fixed, again.intent, 'llm');
+        }
+      }
+    } else if ((state?.misses ?? 0) > 0) {
+      // Lượt trước chưa hiểu, khách tự diễn đạt lại và lần này hiểu được → đề xuất học "câu cũ = câu mới"
+      const prevUser = [...history].reverse().find((h) => h.role === 'user')?.content;
+      if (record && prevUser && prevUser.length <= 200) void this.suggestPhrase('question', prevUser, message, rule.intent, 'rephrase');
+    }
+    const direct = (r: CustomerReply = rule): CustomerChatResult => ({ ...r, source: 'rules', model: null, ...(understoodAs ? { understoodAs } : {}) });
+
+    // Cả nhóm ("dịch vụ massage nào còn trống ngày kia"): tra từng dịch vụ, báo dịch vụ nào còn giờ
+    if (pending?.kind === 'availability_group') {
+      const p = pending;
+      try {
+        const rows = await Promise.all(p.serviceIds.map(async (id) => ({
+          service: catalog.find((s) => s.id === id)!,
+          data: await this.availability.getAvailability({ date: p.when.date, serviceIds: [id] }),
+        })));
+        const g = groupAvailabilityAnswer(p.label, rows.filter((r) => r.service), p.when, today);
+        return { ...direct({ ...rule, answer: g.answer, suggestions: g.open.slice(0, 3), quickReplies: g.open.slice(0, 3).map((x) => x.name) }), bookDate: p.when.date };
+      } catch (e) {
+        this.logger.warn(`Không tra được giờ trống theo nhóm cho trợ lý: ${(e as Error).message}`);
+      }
+      return direct();
+    }
+    // Thợ làm được dịch vụ + ai còn giờ trống ngày đang tra
+    if (pending?.kind === 'stylists') {
+      const p = pending;
+      try {
+        const capable = await this.availability.capableStylists([p.serviceId]);
+        const service = catalog.find((s) => s.id === p.serviceId);
+        if (service) {
+          let free = '';
+          if (p.date && capable.length) {
+            const data = await this.availability.getAvailability({ date: p.date, serviceIds: [p.serviceId] });
+            const ids = new Set(data.slots.flatMap((x) => x.stylistIds));
+            const names = capable.filter((c) => ids.has(c.id)).map((c) => c.fullName);
+            const day = toSalon(new Date(`${p.date}T00:00:00+07:00`)).toFormat('dd/MM');
+            free = names.length ? `\nNgày ${day} còn giờ trống với: ${names.join(', ')}.` : `\nNgày ${day} các thợ này đều đã kín lịch.`;
+          }
+          const answer = capable.length
+            ? `${capable.length} thợ làm được ${service.name}: ${capable.map((c) => c.fullName).join(', ')}.${free}\nKhi đặt lịch bạn chọn đích danh thợ hoặc "Thợ bất kỳ".`
+            : `Hiện chưa có thợ nào nhận ${service.name}; bạn gọi ${facts.hotline} để tiệm sắp xếp nhé.`;
+          return direct({ ...rule, answer });
+        }
+      } catch (e) {
+        this.logger.warn(`Không tra được thợ cho trợ lý: ${(e as Error).message}`);
+      }
+      return direct();
+    }
 
     // Giờ trống: tra THẬT bằng bộ tính khung giờ của trang đặt lịch (cùng luật ca làm, ngày nghỉ, giữ chỗ, 60 phút đặt trước)
     if (pending?.kind === 'availability') {
-      const service = catalog.find((s) => s.id === pending.serviceId);
+      const p = pending;
+      const service = catalog.find((s) => s.id === p.serviceId);
       try {
-        const data = await this.availability.getAvailability({ date: pending.when.date, serviceIds: [pending.serviceId] });
-        if (service) return { ...direct({ ...rule, answer: availabilityAnswer(service, pending.when, data, today) }), bookDate: pending.when.date };
+        const data = await this.availability.getAvailability({ date: p.when.date, serviceIds: [p.serviceId] });
+        if (service) return { ...direct({ ...rule, answer: availabilityAnswer(service, p.when, data, today) }), bookDate: p.when.date };
       } catch (e) {
         this.logger.warn(`Không tra được giờ trống cho trợ lý: ${(e as Error).message}`);
       }
       return direct();
     }
     // Số liệu / chính sách (đếm, rẻ nhất, hot, giá, thời lượng, ngân sách, giờ mở cửa, cọc, huỷ…) → trả thẳng, không qua mô hình
-    if (DIRECT_INTENTS.has(rule.intent)) return direct();
+    if (DIRECT_INTENTS.has(rule.intent) || understoodAs) return direct();
     const cfg = await this.resolveLlm();
     if (!cfg) return direct();
 
@@ -544,7 +641,8 @@ export class AssistantService implements OnApplicationBootstrap {
     // (thử thật: mô hình 4B đọc "toc kho xo" thành gợi ý CẮT tóc, kể dịch vụ khác với thẻ gợi ý bên dưới)
     const hybrid = rule.intent === 'need' || rule.intent === 'book';
     // Câu gõ không dấu: mô hình 4B hay đọc sai ("toc kho xo" → "làm tóc kho xo đẹp") → trả bằng dữ liệu, không câu dẫn
-    if (hybrid && isUnaccented(message)) return direct();
+    // Câu dẫn của mô hình chỉ khi bật AI_LLM_LEAD=1 (mặc định: câu dẫn soạn sẵn — mô hình 4B hay viết sai nghĩa)
+    if (hybrid && (isUnaccented(message) || !this.config.get<boolean>('ai.llmLead'))) return direct();
     const key = history.length ? null : `${cfg.model}|${rule.intent}|${fold(message)}`;
     const cached = key ? this.answerCache.get(key) : undefined;
     if (cached) return { ...rule, ...cached, source: 'llm', model: cfg.model };
@@ -570,7 +668,8 @@ export class AssistantService implements OnApplicationBootstrap {
       let out: { answer: string; suggestions: CatalogItem[] };
       if (hybrid) {
         const intro = leadSentence(text);
-        out = { answer: intro ? `${intro}\n${rule.answer.replace(/^Với nhu cầu của bạn, mình gợi ý:/, 'Mình gợi ý:')}` : rule.answer, suggestions: rule.suggestions };
+        const body = rule.answer.replace(/^(?:[^\n]*\n)?Mình gợi ý:|^Với nhu cầu của bạn, mình gợi ý:/, 'Mình gợi ý:');
+        out = { answer: intro ? `${intro}\n${body}` : rule.answer, suggestions: rule.suggestions };
       } else {
         // Thẻ = đúng các dịch vụ mô hình nêu tên trong câu trả lời (theo thứ tự xuất hiện) — chỉ cho câu tự do
         // Câu tự do khẳng định giờ trống / giá không có trong dữ liệu → bỏ, trả lời bằng luật (không bao giờ đưa số bịa cho khách)
@@ -594,6 +693,140 @@ export class AssistantService implements OnApplicationBootstrap {
       return direct();
     }
     return { ...rule, ...res, source: 'llm', model: cfg.model };
+  }
+
+  // ------------------------------------------------------------- vòng tự cải tiến (viết lại câu + học có người duyệt)
+  /** Mô hình viết lại câu khách cho rõ (null nếu không có mô hình / quá tải / mô hình bảo không rõ). */
+  private async rewriteQuestion(message: string, history: ChatTurn[], catalog: CatalogItem[], learned: LearnedPhrase[]): Promise<string | null> {
+    const cfg = await this.resolveLlm();
+    if (!cfg) return null;
+    const key = history.length ? null : `${cfg.model}|${fold(message)}`;
+    const hit = key ? this.rewriteCache.get(key) : undefined;
+    if (hit) return hit.v;
+    const run = async (): Promise<string | null> => {
+      const examples = learned.filter((x) => x.kind === 'question');
+      const call = await this.gate.run(() => callLlm({ ...cfg, timeoutMs: Math.min(cfg.timeoutMs, 12000) },
+        buildRewriteMessages(message, history, catalog, examples)).then((text) => ({ text })));
+      if (!call) return null; // quá tải: trả lời bằng luật ngay
+      const parsed = parseRewrite(call.text, message);
+      // Câu viết lại thêm dịch vụ khách không hề nhắc → bỏ (mô hình nhỏ hay "đoán" sai dịch vụ)
+      const fixed = parsed && faithfulRewrite(message, parsed, catalog, history) ? parsed : null;
+      if (key) this.rewriteCache.set(key, { v: fixed });
+      return fixed;
+    };
+    return key ? this.rewriteFlight.do(key, run) : run();
+  }
+
+  private learnedCache: { at: number; rows: LearnedPhrase[] } | null = null;
+
+  /** Câu / cụm từ đã duyệt (bảng chưa có — CSDL cũ chưa migration — thì coi như chưa học gì). */
+  private async approvedPhrases(): Promise<LearnedPhrase[]> {
+    if (this.learnedCache && Date.now() - this.learnedCache.at < 30_000) return this.learnedCache.rows;
+    try {
+      const rows = await this.dataSource.query(
+        `SELECT kind, phrase, rewrite FROM assistant_learned_phrases WHERE status = 'approved' ORDER BY hits DESC LIMIT 500`) as LearnedPhrase[];
+      this.learnedCache = { at: Date.now(), rows };
+      return rows;
+    } catch {
+      return [];
+    }
+  }
+
+  /** Ghi / cộng dồn một ĐỀ XUẤT học (chưa dùng cho tới khi chủ tiệm duyệt). Đã duyệt / từ chối thì chỉ tăng lượt gặp. */
+  private async suggestPhrase(kind: 'question' | 'alias', phrase: string, rewrite: string, intent: string, source: 'llm' | 'rephrase'): Promise<void> {
+    const key = fold(redactPersonal(phrase)).replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200);
+    const to = redactPersonal(rewrite).trim().slice(0, 300);
+    if (key.length < 3 || !to || fold(to) === key || ['unknown', 'handoff'].includes(intent)) return;
+    try {
+      await this.dataSource.query(
+        `INSERT INTO assistant_learned_phrases (kind, phrase, rewrite, intent, source) VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (kind, phrase) DO UPDATE SET hits = assistant_learned_phrases.hits + 1, updated_at = now(),
+           rewrite = CASE WHEN assistant_learned_phrases.status = 'suggested' THEN EXCLUDED.rewrite ELSE assistant_learned_phrases.rewrite END,
+           intent = CASE WHEN assistant_learned_phrases.status = 'suggested' THEN EXCLUDED.intent ELSE assistant_learned_phrases.intent END`,
+        [kind, key, to, intent, source]);
+    } catch (e) {
+      this.logger.warn(`Không ghi được đề xuất học của trợ lý: ${(e as Error).message}`);
+    }
+  }
+
+  /** Danh sách đề xuất / câu đã học (mặc định: chờ duyệt, nhiều lượt gặp trước). */
+  async learningList(status: 'suggested' | 'approved' | 'rejected' = 'suggested'): Promise<LearnedPhraseRow[]> {
+    return this.dataSource.query(
+      `SELECT id, kind, phrase, rewrite, intent, status, source, hits, created_at AS "createdAt", updated_at AS "updatedAt"
+         FROM assistant_learned_phrases WHERE status = $1 ORDER BY hits DESC, updated_at DESC LIMIT 200`, [status]);
+  }
+
+  /**
+   * Chủ tiệm duyệt / từ chối / sửa câu viết lại. Trước khi DUYỆT, chạy thử câu viết lại qua luật: luật vẫn chưa hiểu thì
+   * không cho duyệt (tránh học một câu vô dụng) — giống cổng chấm điểm trước khi triển khai.
+   */
+  async learningUpdate(id: string, patch: { status?: 'approved' | 'rejected' | 'suggested'; rewrite?: string }): Promise<LearnedPhraseRow | null> {
+    const [row] = await this.dataSource.query(`SELECT kind, phrase, rewrite FROM assistant_learned_phrases WHERE id = $1`, [id]) as LearnedPhrase[];
+    if (!row) return null;
+    const rewrite = patch.rewrite?.trim() || row.rewrite;
+    if (patch.status === 'approved') await this.assertUseful(row.kind, row.phrase, rewrite);
+    const intent = row.kind === 'question' ? await this.intentOf(rewrite) : null;
+    await this.dataSource.query(
+      `UPDATE assistant_learned_phrases SET rewrite = $2, status = COALESCE($3, status), intent = COALESCE($4, intent), updated_at = now() WHERE id = $1`,
+      [id, rewrite.slice(0, row.kind === 'answer' ? 1000 : 300), patch.status ?? null, intent]);
+    this.learnedCache = null;
+    this.publicCache = null;
+    this.rewriteCache.clear();
+    const [out] = await this.dataSource.query(
+      `SELECT id, kind, phrase, rewrite, intent, status, source, hits, created_at AS "createdAt", updated_at AS "updatedAt"
+         FROM assistant_learned_phrases WHERE id = $1`, [id]) as LearnedPhraseRow[];
+    return out ?? null;
+  }
+
+  /** Chủ tiệm tự thêm cụm từ / câu (vd. "mát xoa" → "massage") — được duyệt ngay. */
+  async learningAdd(kind: 'question' | 'alias' | 'answer', phrase: string, rewrite: string): Promise<LearnedPhraseRow> {
+    const key = fold(phrase).replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200);
+    const to = kind === 'alias' ? fold(rewrite).trim().slice(0, 300) : rewrite.trim().slice(0, kind === 'answer' ? 1000 : 300);
+    await this.assertUseful(kind, key, to);
+    const intent = kind === 'question' ? await this.intentOf(to) : null;
+    const [row] = await this.dataSource.query(
+      `INSERT INTO assistant_learned_phrases (kind, phrase, rewrite, intent, status, source) VALUES ($1, $2, $3, $4, 'approved', 'owner')
+       ON CONFLICT (kind, phrase) DO UPDATE SET rewrite = EXCLUDED.rewrite, intent = EXCLUDED.intent, status = 'approved', updated_at = now()
+       RETURNING id, kind, phrase, rewrite, intent, status, source, hits, created_at AS "createdAt", updated_at AS "updatedAt"`,
+      [kind, key, to, intent]) as LearnedPhraseRow[];
+    this.learnedCache = null;
+    this.publicCache = null;
+    this.rewriteCache.clear();
+    return row;
+  }
+
+  private async intentOf(text: string): Promise<string> {
+    const { catalog, hotIds, facts } = await this.publicData();
+    return customerRuleReply(text, catalog, hotIds, facts, new Date(), { today: todaySalon() }).intent;
+  }
+
+  private async assertUseful(kind: 'question' | 'alias' | 'answer', phrase: string, rewrite: string): Promise<void> {
+    if (phrase.length < 2 || !rewrite.trim()) throw new LearningRejected('Cụm từ và câu viết lại không được để trống.');
+    if (kind === 'question' && ['unknown', 'handoff'].includes(await this.intentOf(rewrite))) {
+      throw new LearningRejected('Câu viết lại này trợ lý vẫn chưa hiểu — hãy viết rõ hơn (vd. "Ngày mai massage còn giờ trống không?").');
+    }
+  }
+
+  /** Khách bấm 👍 / 👎 dưới câu trả lời (phân tích lỗi trên dữ liệu thật — Hamel Husain "look at your data"). */
+  async customerFeedback(question: string, intent: string, helpful: boolean): Promise<void> {
+    this.feedback[helpful ? 'up' : 'down'] += 1;
+    if (!helpful) await this.recordGap(question, `dislike:${intent}`.slice(0, 40));
+  }
+
+  private readonly feedback = { up: 0, down: 0 };
+
+  /** Báo cáo cải tiến cho chủ tiệm: câu chưa trả lời được + đề xuất học chờ duyệt + phản hồi của khách. */
+  async improvementReport(days = 30): Promise<{
+    gaps: Awaited<ReturnType<AssistantService['knowledgeGaps']>>; suggestions: LearnedPhraseRow[]; approved: number;
+    feedback: { up: number; down: number }; ungroundedBlocked: number;
+  }> {
+    const [gaps, suggestions, approved] = await Promise.all([
+      this.knowledgeGaps(days),
+      this.learningList('suggested').catch(() => []),
+      this.dataSource.query(`SELECT count(*)::int AS n FROM assistant_learned_phrases WHERE status = 'approved'`)
+        .then((r: { n: number }[]) => r[0]?.n ?? 0).catch(() => 0),
+    ]);
+    return { gaps, suggestions, approved, feedback: { ...this.feedback }, ungroundedBlocked: this.ungroundedBlocked };
   }
 
   // ------------------------------------------------------------- lỗ hổng kiến thức (câu chưa trả lời được)

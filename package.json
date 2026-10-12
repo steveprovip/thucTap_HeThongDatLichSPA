@@ -30,6 +30,7 @@
     "test:e2e": "npm run test:e2e --prefix backend",
     "test:launcher": "node --test scripts/lib/test/*.test.mjs",
     "eval:ai": "node scripts/ai/eval-assistant.mjs --k 3",
+    "eval:ai:full": "node scripts/ai/eval-assistant.mjs --k 3 --perturb",
     "lint": "npm run lint --prefix backend && npm run lint --prefix frontend",
     "start:server": "node scripts/launcher.mjs serve",
     "stop:server": "node scripts/launcher.mjs stop",

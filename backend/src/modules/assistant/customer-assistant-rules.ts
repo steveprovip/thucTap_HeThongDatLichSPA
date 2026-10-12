@@ -34,6 +34,58 @@ export interface SalonFacts {
   stylists?: { total: number; female: number; male: number };
   /** Ngày nghỉ toàn tiệm sắp tới (yyyy-MM-dd) — "bây giờ còn mở cửa không", giờ mở cửa theo ngày. */
   holidays?: { startDate: string; endDate: string; reason: string }[];
+  /** Danh sách thợ đang làm việc (tên / giới tính / dịch vụ làm được — vốn công khai ở bước "Chọn thợ"). */
+  team?: { id: string; name: string; gender: string | null; serviceIds: string[] }[];
+  /** Chương trình giảm giá ĐANG chạy (không gồm mã: mã do lễ tân áp khi thanh toán, không phát công khai qua chat). */
+  promotions?: { description: string | null; type: 'percent' | 'amount'; value: number; minOrder: number | null; endDate: string }[];
+}
+
+/**
+ * Câu / cụm từ trợ lý ĐÃ HỌC (chủ tiệm duyệt từ đề xuất tự động): `question` = cả câu khách gõ → câu viết lại rõ nghĩa;
+ * `alias` = cụm từ khách hay gõ (sai chính tả, tiếng lóng) → cụm chuẩn. Đều ở dạng bỏ dấu, chữ thường.
+ */
+export interface LearnedPhrase { kind: 'question' | 'alias' | 'answer'; phrase: string; rewrite: string }
+
+/**
+ * Câu trả lời CHỦ TIỆM SOẠN cho câu hỏi ngoài dữ liệu ("chỗ để xe", "có wifi không") — kiểu "snippets" của Intercom Fin.
+ * Khớp khi MỌI từ có nghĩa của câu mẫu đều có trong câu khách (bỏ dấu); nhiều mẫu khớp thì lấy mẫu nhiều từ nhất.
+ */
+export function ownerAnswer(message: string, learned: LearnedPhrase[] = []): string | null {
+  const words = new Set(fold(message).split(/[^a-z0-9]+/).filter(Boolean));
+  let best: { n: number; text: string } | null = null;
+  for (const a of learned) {
+    if (a.kind !== 'answer') continue;
+    const need = a.phrase.split(/[^a-z0-9]+/).filter((t) => t.length >= 2 && !STOP.has(t));
+    if (need.length && need.every((t) => words.has(t)) && (!best || need.length > best.n)) best = { n: need.length, text: a.rewrite };
+  }
+  return best?.text ?? null;
+}
+
+/** Lỗi gõ / cách viết hay gặp (dạng bỏ dấu) → từ chuẩn. Thử thật 12/10: "mát xoa" không được hiểu. */
+const TYPOS: [RegExp, string][] = [
+  [/\b(mat|mac|mas) ?-? ?(xoa|xa|xage|sage)\b|\bmas+a?ge?\b|\bmassa\b|\bmatxa\b|\bmatxoa\b/g, 'massage'],
+  [/\b(make ?up|makeup|trang diem)\b/g, 'trang diem'],
+  [/\b(nai|neo|nal)\b(?= (tay|chan|gel|mong))/g, 'nail'],
+  [/\bca(c)? tho\b/g, 'cac tho'],
+  // Tiếng lóng / viết tắt khi nhắn tin (thử thật 12/10: "bn tiền gội đầu z", "có ai rảnh làm nail k")
+  [/\bbn\b/g, 'bao nhieu'], [/(?<!\d ?)\b(k|ko|kh|khg|hok|hem|hk)\b/g, 'khong'], [/\b(dc|dk|đc)\b/g, 'duoc'],
+  [/\bj\b/g, 'gi'], [/\bmay ?h\b/g, 'may gio'], [/\bbao (nhiu|nheu|nhieuu)\b/g, 'bao nhieu'], [/\b(dich du|dic vu|dv)\b/g, 'dich vu'],
+  // Gõ không dấu "mun" = muốn hay mụn? Theo từ đứng cạnh: "tui mun đi spa" (muốn) ≠ "bị mụn", "da mụn", "trị mụn"
+  [/\b(tui|toi|minh|em|e|anh|chi|ban|t|m) mun\b/g, '$1 muon'], [/\bmun (di|lam|dat|hoi|cat|goi|nhuom|uon|duoi|xem|biet|tim|book|thu)\b/g, 'muon $1'],
+  [/\bthu (dan|zan|giang)\b/g, 'thu gian'], [/\btia (lai|toc|ngon|bot|gon)\b/g, 'cat toc'], [/\bntn\b/g, 'nhu the nao'], [/\b(z|zay|dzay)\s*([?!.]*)$/g, 'vay$2'], [/\bsdt\b/g, 'so dien thoai'],
+];
+
+/** Câu khách → dạng bỏ dấu đã sửa lỗi gõ + áp cụm đã học. Câu đã học nguyên văn → thay bằng câu viết lại. */
+export function correctMessage(message: string, learned: LearnedPhrase[] = []): string {
+  const key = fold(message).replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+  const whole = learned.find((x) => x.kind === 'question' && x.phrase === key);
+  const raw = whole ? whole.rewrite : message.replace(/\bmún\b/gi, 'muốn').replace(/\bhok\b/gi, 'không');
+  let m = fold(raw);
+  for (const a of learned) {
+    if (a.kind !== 'alias' || !a.phrase.trim()) continue;
+    m = m.replace(new RegExp(`\\b${a.phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g'), a.rewrite);
+  }
+  return TYPOS.reduce((acc, [re, to]) => acc.replace(re, to), m);
 }
 
 /**
@@ -60,7 +112,7 @@ export const DEPOSIT_PERCENT = 30;
 export type CustomerIntent =
   | 'greeting' | 'identity' | 'help' | 'thanks' | 'bye' | 'price_list' | 'hot' | 'book' | 'hours' | 'contact' | 'need' | 'unknown'
   | 'combo_info' | 'explain' | 'service_price' | 'availability' | 'service_duration' | 'service_detail' | 'budget' | 'deposit'
-  | 'not_offered' | 'group_booking' | 'stylists' | 'open_now' | 'handoff' | 'cancel_policy' | 'payment' | 'promotion'
+  | 'not_offered' | 'group_booking' | 'stylists' | 'open_now' | 'handoff' | 'cancel_policy' | 'payment' | 'promotion' | 'faq'
   | CatalogFactIntent;
 
 /**
@@ -86,7 +138,7 @@ export const CATALOG_FACT_INTENTS: ReadonlySet<CustomerIntent> = new Set<Custome
 export const DIRECT_INTENTS: ReadonlySet<CustomerIntent> = new Set<CustomerIntent>([
   ...CATALOG_FACT_INTENTS, 'hot', 'price_list', 'service_price', 'availability', 'service_duration', 'service_detail', 'budget', 'hours',
   // Giới thiệu bản thân / hướng dẫn trả thẳng: mô hình từng nói "Mình không phải bot" — sai sự thật
-  'identity', 'help', 'not_offered', 'group_booking', 'stylists', 'open_now', 'handoff', 'contact', 'deposit', 'cancel_policy', 'payment', 'promotion',
+  'identity', 'help', 'not_offered', 'group_booking', 'stylists', 'open_now', 'handoff', 'contact', 'deposit', 'cancel_policy', 'payment', 'promotion', 'faq',
 ]);
 
 export const CARD_INTENTS: ReadonlySet<CustomerIntent> = new Set<CustomerIntent>([
@@ -99,24 +151,31 @@ export interface CustomerReply {
   suggestions: CatalogItem[];
   quickReplies: string[];
   /** Việc máy chủ phải làm tiếp để có câu trả lời thật (tra giờ trống) — không gửi ra giao diện. */
-  pending?: { kind: 'availability'; serviceId: string; when: WhenQuery };
+  pending?:
+    | { kind: 'availability'; serviceId: string; when: WhenQuery }
+    /** "ngày kia có dịch vụ massage nào trống lịch" → tra cả nhóm, báo dịch vụ nào còn giờ */
+    | { kind: 'availability_group'; serviceIds: string[]; label: string; when: WhenQuery }
+    /** "có những thợ nào làm được" → thợ làm được dịch vụ đang nói tới (+ ai còn giờ trống ngày đang tra) */
+    | { kind: 'stylists'; serviceId: string; date?: string };
   /** Trạng thái hội thoại cho lượt sau (widget gửi lại nguyên văn). */
   state?: DialogState;
+  /** Câu trả lời trùng câu vừa trả lời (khách hỏi lại) — ghi vào báo cáo cải tiến. */
+  repeated?: boolean;
 }
 
 /** Nhu cầu → từ khoá (không dấu). Khớp với tên / nhóm / mô tả dịch vụ trong danh mục THẬT của tiệm. */
-const NEEDS: { label: string; ask: RegExp; words: string[] }[] = [
+const NEEDS: { label: string; ask: RegExp; words: string[]; cat?: RegExp }[] = [
   { label: 'tóc', ask: /\b(toc|cat|goi dau|nhuom|uon|duoi|phuc hoi|hu ton|xoan|tay toc|highlight|balayage|ombre|phu bac|toc bac|keratin|olaplex|rung toc|barber|rau)\b/, words: ['toc', 'cat', 'goi', 'nhuom', 'uon', 'duoi', 'phuc hoi', 'hap', 'barber', 'rau'] },
-  { label: 'da', ask: /\b(da(?! nong)|da mat|mat na|mun|tham mun|lam sang|duong da|facial|cham soc da|lo chan long|kho da|da dau|cap am|dien di|peel|tre hoa|vitamin c)\b/, words: ['da', 'mat', 'facial', 'mun', 'duong', 'sang', 'cap am', 'peel', 'collagen'] },
-  { label: 'massage', ask: /\b(massage|mat xa|matxa|thu gian|dau lung|moi vai|co vai gay|vai gay|body|xong hoi|da nong|bam huyet|tam trang|phi thuyen|ngam chan)\b/, words: ['massage', 'mat xa', 'thu gian', 'body', 'vai gay', 'xong', 'da nong', 'bam huyet', 'tam trang'] },
-  { label: 'móng', ask: /\b(nail|mong|son gel|son mong|ve mong|mong tay|mong chan|dap bot|up mong|manicure|pedicure)\b/, words: ['nail', 'mong', 'son', 'manicure', 'pedicure'] },
+  { label: 'da', ask: /\b(da(?! nong)|da mat|mat na|mun|tham mun|lam sang|duong da|facial|cham soc da|lo chan long|kho da|da dau|cap am|dien di|peel|tre hoa|vitamin c)\b/, words: ['da', 'mat', 'facial', 'mun', 'duong', 'sang', 'cap am', 'peel', 'collagen'], cat: /\bcham soc da\b|\bskin\b/ },
+  { label: 'massage', ask: /\b(massage|mat xa|matxa|thu gian|dau lung|moi vai|co vai gay|vai gay|body|xong hoi|da nong|bam huyet|tam trang|phi thuyen|ngam chan)\b/, words: ['massage', 'mat xa', 'thu gian', 'body', 'vai gay', 'xong', 'da nong', 'bam huyet', 'tam trang'], cat: /\b(massage|body)\b/ },
+  { label: 'móng', ask: /\b(nail|mong|son gel|son mong|ve mong|mong tay|mong chan|dap bot|up mong|manicure|pedicure)\b/, words: ['nail', 'mong', 'son', 'manicure', 'pedicure'], cat: /\b(nail|mong)\b/ },
   { label: 'gội dưỡng', ask: /\b(goi duong|goi thao duoc|u toc|hap dau|duong toc|gau|da dau)\b/, words: ['goi', 'duong', 'u toc', 'hap', 'da dau'] },
   { label: 'trang điểm', ask: /\b(trang diem|make ?up|co dau|ky yeu|noi mi|long mi)\b/, words: ['trang diem', 'co dau', 'ky yeu', 'mi'] },
 ];
 
 /** Triệu chứng cụ thể → dịch vụ chuyên trị (trọng số cao hơn nhu cầu chung "tóc" / "da"). */
 const SYMPTOMS: { ask: RegExp; words: string[] }[] = [
-  { ask: /\b(kho xo|xo roi|hu ton|che ngon|gay rung|toc yeu|toc kho|phuc hoi|nhuom nhieu|tay nhieu)\b/, words: ['phuc hoi', 'hap', 'u', 'duong'] },
+  { ask: /\b(kho xo|xo roi|hu ton|che ngon|gay rung|toc yeu|toc kho|phuc hoi|nhuom nhieu|tay nhieu|toc xo|xo qua|bi xo|mem muot|suon muot|bong muot|muot ma|xo cung)\b/, words: ['phuc hoi', 'hap', 'u', 'duong'] },
   { ask: /\b(mun|tham mun|da dau|lo chan long)\b/, words: ['mun', 'tri mun', 'lam sach'] }, // không dùng "tri" trơn: khớp nhầm "trị gàu"
   { ask: /\b(moi|dau lung|co vai gay|vai gay|met moi|cang thang|stress|mat ngu|thu gian)\b/, words: ['massage', 'vai gay', 'bam huyet', 'body'] }, // không dùng 'dưỡng sinh': kéo 'Gội đầu dưỡng sinh' vào câu đau lưng
   { ask: /\b(du tiec|di tiec|dam cuoi|chup anh|su kien)\b/, words: ['trang diem', 'tiec'] },
@@ -138,8 +197,27 @@ const textOf = (s: CatalogItem): string => fold(`${s.name} ${s.categoryName} ${s
  * `strict`: chỉ lấy dịch vụ khớp THEO TÊN (đúng tên / cụm từ / từ trong tên) — dùng cho câu giải thích, không kéo theo
  * cả nhóm "tóc" chỉ vì câu có nhắc tới tóc.
  */
+/**
+ * Câu dẫn đồng cảm SOẠN SẴN theo nhu cầu / triệu chứng. Thử thật 12/10: câu dẫn do mô hình 4B viết sai nghĩa 3/6 lượt
+ * ("tái trang tức năng", "mình hiểu rõ nhu cầu tẩy da chết là gì nhé") — câu soạn sẵn luôn đúng, không tốn lượt mô hình.
+ */
+export function needLead(m: string): string | null {
+  if (/\b(co dau|cuoi|dam hoi)\b/.test(m)) return 'Chúc mừng bạn sắp đến ngày trọng đại 💐';
+  if (/\b(du tiec|di tiec|chup anh|su kien|ky yeu)\b/.test(m)) return 'Để bạn thật rạng rỡ trong buổi tiệc ✨';
+  if (/\b(kho xo|xo|hu ton|che ngon|gay rung|toc yeu|toc kho|mem muot|suon muot)\b/.test(m)) return 'Tóc khô xơ, hư tổn cần được phục hồi và dưỡng ẩm từ bên trong.';
+  if (/\b(mun|tham|lo chan long|da dau)\b/.test(m)) return 'Da mụn cần được làm sạch sâu và chăm đúng cách.';
+  if (/\b(met|moi|dau lung|vai gay|cang thang|stress|mat ngu|thu gian)\b/.test(m)) return 'Sau những giờ làm việc căng thẳng, được thư giãn một chút là điều rất nên 🌿';
+  if (/\b(da|da mat|lam dep da|duong da|cap am)\b/.test(m)) return 'Làn da cần được chăm sóc đúng cách để luôn tươi sáng.';
+  if (/\b(nail|mong)\b/.test(m)) return 'Một bộ móng xinh sẽ giúp bạn tự tin hơn 💅';
+  if (/\b(toc|cat|nhuom|uon|duoi)\b/.test(m)) return 'Mái tóc hợp với bạn sẽ giúp bạn tự tin hơn mỗi ngày.';
+  return null;
+}
+
+/** Bỏ cụm ngày trong tuần trước khi khớp tên dịch vụ: "thứ năm" (thu nam) từng khớp "Cắt tóc NAM", "thứ tư" khớp "tư vấn". */
+const stripDays = (m: string): string => m.replace(/\bthu (2|3|4|5|6|7|hai|ba|tu|nam|sau|bay)\b|\bchu nhat\b/g, ' ');
+
 export function matchServices(message: string, catalog: CatalogItem[], limit = 4, strict = false, ratio = 0.6): CatalogItem[] {
-  const m = normalize(message);
+  const m = stripDays(normalize(message));
   const needs = NEEDS.filter((n) => n.ask.test(m));
   const symptoms = SYMPTOMS.filter((x) => x.ask.test(m));
   const all = m.split(/[^a-z0-9]+/).filter(Boolean);
@@ -159,10 +237,20 @@ export function matchServices(message: string, catalog: CatalogItem[], limit = 4
       else if (tok.length >= 5 && [...words].some((w) => w.length > tok.length && w.startsWith(tok))) byName += 3;
     }
     for (const bg of bigrams) if (new RegExp(`\\b${bg}\\b`).test(name)) byName += 4;
+    // Combo chỉ đứng đầu khi khách hỏi combo / gói / cưới ("làm tóc cho nam" từng ra "Combo Cô dâu ... làm tóc")
+    // "Cắt tóc trẻ em" từng đứng trong mọi câu "cắt tóc" chung (rẻ nhất) — chỉ gợi ý khi khách nhắc tới trẻ em
+    if (byName > 0 && /\btre em\b/.test(name) && !/\btre em\b/.test(m)) byName -= 6;
+    if (byName > 0 && COMBO_RE.test(name) && !/\b(combo|goi|tron goi|co dau|cuoi|tiet kiem|vip)\b/.test(m)) byName -= 5;
+    // Giới tính khách nêu trùng tên dịch vụ: "tóc cho nam" → "Cắt tóc NAM"
+    for (const g of ['nam', 'nu']) if (byName > 0 && new RegExp(`\\b${g}\\b`).test(m) && words.has(g)) byName += 4;
     if (strict) return { s, score: byName };
     let score = byName;
     const has = (w: string) => new RegExp(`\\b${w}\\b`).test(t);
     for (const n of needs) if (n.words.some(has)) score += 3;
+    // Dịch vụ THUỘC nhóm đúng nhu cầu ("làm đẹp da mặt" → nhóm Chăm sóc da, không phải "Cạo MẶT & tỉa râu")
+    for (const n of needs) if (n.cat?.test(fold(s.categoryName))) score += 4;
+    if (byName <= 0 && COMBO_RE.test(name) && !/\b(combo|goi|tron goi|co dau|cuoi|tiet kiem|vip)\b/.test(m)) score -= 5;
+    if (byName <= 0 && /\btre em\b/.test(name) && !/\btre em\b/.test(m)) score -= 3;
     const inName = (w: string) => new RegExp(`\\b${w}\\b`).test(name);
     for (const sy of symptoms) if (sy.words.some(inName)) score += 10; else if (sy.words.some(has)) score += 4;
     return { s, score };
@@ -223,7 +311,7 @@ const EXPLAIN_RE = /\b(khac (gi|nhau|biet|cho nao)|khac so voi|so voi|giong (nha
 const DURATION_RE = /\b(bao lau|may tieng|thoi gian lam|het bao lau|mat may (tieng|phut)|bao nhieu phut|bao nhieu tieng|lau khong)\b/;
 const DETAIL_RE = /\b(gom (nhung )?gi|bao gom|gom nhung gi|co nhung buoc|lam nhung gi|quy trinh|chi tiet|cu the (la )?gi|mo ta)\b/;
 const BOOK_RE = /\b(dat lich|dat cho|dat hen|book|giu cho|hen gio|muon den|dat ngay|dat giup)\b/;
-const HOURS_RE = /\b(gio mo cua|mo cua|dong cua|lam viec den|gio lam viec|may gio (mo|dong|nghi)|co lam (khong|ko)|nghi (khong|ko)|lam den may gio)\b/;
+const HOURS_RE = /\b(gio mo cua|mo cua|dong cua|lam viec den|gio lam viec|may gio (mo|dong|nghi)|co lam (khong|ko)|nghi (khong|ko)|(lam|mo|mo cua|nhan khach) (den|toi) may gio)\b/;
 const CONTACT_RE = /\b(dia chi|o dau|cho nao|duong nao|hotline|so dien thoai|sdt|lien he|ban do|zalo|fanpage|facebook)\b/;
 const POLICY_RE: { intent: 'deposit' | 'cancel_policy' | 'payment' | 'promotion'; re: RegExp }[] = [
   { intent: 'deposit', re: /\b(coc|dat coc|tien coc|giu cho bang tien|tra truoc)\b/ },
@@ -237,7 +325,9 @@ export function groupScope(message: string, catalog: CatalogItem[]): { label: st
   const m = fold(message);
   for (const g of GROUPS) {
     if (!g.ask.test(m)) continue;
-    const items = catalog.filter((s) => g.cat.test(fold(s.categoryName)) || (g.label === 'combo' && g.cat.test(fold(s.name))));
+    let items = catalog.filter((s) => g.cat.test(fold(s.categoryName)) || (g.label === 'combo' && g.cat.test(fold(s.name))));
+    // Tiệm không có danh mục riêng (massage nằm rải ở "Gội đầu", "Chăm sóc da") → gom theo TÊN dịch vụ
+    if (!items.length) items = catalog.filter((s) => g.cat.test(fold(s.name)));
     if (items.length) return { label: g.label, items };
   }
   return null;
@@ -269,6 +359,8 @@ export interface ReplyOptions {
   state?: DialogState;
   /** Giờ hiện tại theo giờ tiệm "HH:mm" (mặc định tính từ `now`). */
   nowTime?: string;
+  /** Câu / cụm từ đã học (chủ tiệm duyệt). */
+  learned?: LearnedPhrase[];
 }
 
 /**
@@ -319,7 +411,8 @@ const NOT_OFFERED: [RegExp, string][] = [
 const GENERIC_WORDS = new Set(['toc', 'cat', 'mong', 'nail', 'massage', 'da', 'combo', 'goi', 'dau', 'lam', 'body', 'mat', 'cham', 'soc', 'thu', 'gian', 'tri', 'lieu']);
 
 /** Câu nêu chữ ĐẶC TRƯNG của dịch vụ (ngoài các từ chỉ nhóm): "cắt tóc NAM", "phục hồi KERATIN". */
-function isSpecific(m: string, s: CatalogItem): boolean {
+function isSpecific(input: string, s: CatalogItem): boolean {
+  const m = stripDays(input);
   const folded = fold(s.name);
   const name = new Set(folded.split(/[^a-z0-9]+/));
   const toks = m.split(/[^a-z0-9]+/).filter(Boolean);
@@ -340,6 +433,8 @@ export interface Detection {
   label?: string;
   /** Tra giờ mà dịch vụ chỉ suy ra từ ngữ cảnh và có ≥ 2 khả năng → hỏi lại khách, không tự chọn bừa. */
   ambiguous?: boolean;
+  /** Tra giờ cho CẢ NHÓM ("dịch vụ massage nào còn trống") — khách chưa nêu dịch vụ cụ thể. */
+  groupWide?: boolean;
 }
 
 export function detectCustomerIntent(message: string, catalog: CatalogItem[], opts: ReplyOptions = {}): Detection {
@@ -351,6 +446,8 @@ export function detectCustomerIntent(message: string, catalog: CatalogItem[], op
   const ctx = own.length || ownGroup ? { services: [] as CatalogItem[], group: null } : focusFromHistory(opts.history, catalog);
   const focus = own.length ? own : ctx.services;
   const scope = ownGroup ?? (own.length ? null : ctx.group);
+  // Chỉ nêu NHÓM ("massage nào", "làm nail") chứ không nêu dịch vụ cụ thể → tra giờ cả nhóm thay vì tự chọn một dịch vụ
+  const groupOnly = !!ownGroup && ownGroup.items.length >= 2 && !own.some((s) => isSpecific(m, s));
 
   // Trạng thái hội thoại: việc "tra giờ trống" đang dở → câu sau chỉ cần nêu dịch vụ / đổi ngày giờ
   const st = opts.state?.task === 'availability' && opts.state.date && opts.state.date >= today ? opts.state : null;
@@ -368,6 +465,7 @@ export function detectCustomerIntent(message: string, catalog: CatalogItem[], op
     const refinesTime = (parsed.explicitDate || parsed.part || parsed.time) && !otherTopic
       && (words <= 6 || /\b(thi sao|the con|con|duoc khong|khong|ko|nhe|di|sao|vay)\b/.test(m));
     if (answersService || refinesTime || (AVAILABILITY_RE.test(m) && !otherTopic)) {
+      if (groupOnly) return { intent: 'availability', matches: ownGroup!.items, scope: ownGroup, when, groupWide: true };
       const svc = own.length ? own : stateService ? [stateService] : focus;
       return { intent: 'availability', matches: svc, scope, when, ambiguous: !own.length && !stateService && focus.length >= 2 };
     }
@@ -377,6 +475,8 @@ export function detectCustomerIntent(message: string, catalog: CatalogItem[], op
     && /\b(mo|dong|lam|nhan)\b/.test(m) && !AVAILABILITY_RE.test(m)) {
     return { intent: 'open_now', matches: [] };
   }
+  // "sđt tiệm là gì", "địa chỉ ở đâu" — trước câu giải thích ("là gì") và trước dịch vụ
+  if (CONTACT_RE.test(m) && !own.length && !AVAILABILITY_RE.test(m)) return { intent: 'contact', matches: [] };
   // 0. Dịch vụ tiệm KHÔNG làm ("có nối tóc không") — nói thật, không gợi ý dịch vụ "na ná" như thể tiệm có làm
   const notOffered = NOT_OFFERED.find(([re]) => re.test(m) && !catalog.some((s) => re.test(fold(`${s.name} ${s.description ?? ''}`))));
   if (notOffered) return { intent: 'not_offered', matches: [], label: notOffered[1] };
@@ -384,6 +484,7 @@ export function detectCustomerIntent(message: string, catalog: CatalogItem[], op
   if (AVAILABILITY_RE.test(m) || (BOOK_RE.test(m) && (parsed.time || parsed.explicitDate || parsed.part))
     // "chủ nhật này 10h sáng cắt tóc nữ được không"
     || ((parsed.time || parsed.part) && parsed.explicitDate && focus.length && /\b(duoc|khong|ko|chua|nhe|a)\b/.test(m))) {
+    if (groupOnly) return { intent: 'availability', matches: ownGroup!.items, scope: ownGroup, when, groupWide: true };
     return { intent: 'availability', matches: own.length ? own : stateService ? [stateService] : focus, scope, when,
       ambiguous: !own.length && !stateService && focus.length >= 2 };
   }
@@ -410,7 +511,8 @@ export function detectCustomerIntent(message: string, catalog: CatalogItem[], op
     if (focus.length) return { intent: 'service_detail', matches: focus, scope };
   }
   const fact = catalogFactIntent(message, catalog);
-  if (fact) {
+  // "dịch vụ tẩy da chết bao nhiêu" nêu tên dịch vụ cụ thể → hỏi GIÁ, không phải "có bao nhiêu dịch vụ"
+  if (fact && !(fact === 'count_services' && own.some((s) => isSpecific(m, s)))) {
     // "cái nào rẻ nhất" ngay sau danh sách gợi ý → so trong danh sách đó; "dịch vụ rẻ nhất" (nói chung) → cả tiệm
     // chỉ khi khách dùng từ CHỈ ĐỊNH ("cái nào", "loại nào", "trong đó") hoặc so sánh hơn ("rẻ hơn") — "làm cái gì nhanh nhất" là hỏi chung
     const referential = /\b(cai nao|loai nao|goi nao|trong (do|so do|nay)|cai do|hai cai|2 cai|hon)\b/.test(m);
@@ -585,7 +687,122 @@ export function customerRuleReply(
   message: string, catalog: CatalogItem[], hotIds: string[], facts: SalonFacts, now?: Date, opts: ReplyOptions = {},
 ): CustomerReply {
   const today = opts.today ?? new Date((now?.getTime() ?? Date.now()) + 7 * 3600_000).toISOString().slice(0, 10);
+  const original = message;
+  message = correctMessage(message, opts.learned);
   const det = detectCustomerIntent(message, catalog, { ...opts, today });
+  const lastBot = [...(opts.history ?? [])].reverse().find((h) => h.role === 'assistant')?.content.trim() ?? '';
+  const faq = det.intent === 'unknown' ? ownerAnswer(message, opts.learned) : null;
+  if (faq) {
+    return { intent: 'faq', answer: faq, suggestions: [], quickReplies: ['Xem bảng giá', 'Đặt lịch ngay'], state: { ...(opts.state ?? {}), misses: 0 } };
+  }
+  const out = customerRuleReplyInner(det, message, original, catalog, hotIds, facts, now, opts, today);
+  return out.pending ? out : repeatGuard(out, lastBot, facts);
+}
+
+/**
+ * Không bao giờ lặp NGUYÊN VĂN câu vừa trả lời: khách hỏi lại tức là câu trước chưa đủ ("không nêu tên thợ à?" — log 12/10
+ * trợ lý lặp y hệt). Thay bằng lời thừa nhận + chuyển người thật; câu này cũng được ghi vào "lỗ hổng kiến thức".
+ */
+export function repeatGuard<T extends { intent: string; answer: string; quickReplies: string[]; repeated?: boolean }>(out: T, lastBot: string, facts: SalonFacts): T {
+  if (!lastBot || out.answer.trim() !== lastBot.trim()) return out;
+  return { ...out, repeated: true, quickReplies: ['Xem bảng giá', 'Đặt lịch ngay'],
+    answer: `Dạ, như mình vừa nêu ở trên:\n${out.answer.trim()}\nNếu vẫn chưa đúng ý bạn, bạn gọi / nhắn Zalo ${facts.hotline || 'hotline của tiệm'} `
+      + 'để nhân viên tiệm trả lời trực tiếp nhé 🙏' };
+}
+
+/** Giờ trống của MỘT dịch vụ sau khi lọc buổi / giờ khách hỏi. */
+function openSlots(data: AvailabilityData, when: WhenQuery): string[] {
+  let slots = data.slots.filter((s) => s.stylistIds.length > 0).map((s) => s.time);
+  if (when.part) {
+    const [from, to] = PART_RANGE[when.part];
+    slots = slots.filter((t) => hhmm(t) >= from && hhmm(t) < to);
+  }
+  if (when.time) slots = slots.filter((t) => t === when.time);
+  return slots;
+}
+
+/**
+ * "Ngày kia có dịch vụ massage nào trống lịch không" — tra THẬT từng dịch vụ trong nhóm, báo dịch vụ nào còn giờ
+ * (nhiều giờ trước) và dịch vụ nào đã kín. Trả cả danh sách dịch vụ còn giờ để làm thẻ "Đặt".
+ */
+export function groupAvailabilityAnswer(
+  label: string, rows: { service: CatalogItem; data: AvailabilityData }[], when: WhenQuery, today: string,
+): { answer: string; open: CatalogItem[] } {
+  const day = dayText(when.date, today);
+  const Day = `${day.charAt(0).toUpperCase()}${day.slice(1)}`;
+  const partNote = when.time ? ` lúc ${when.time}` : when.part ? ` ${PART_LABEL[when.part]}` : '';
+  const closed = rows.find((r) => r.data.salonClosed);
+  if (closed) return { answer: `${Day} tiệm nghỉ${closed.data.closedReason ? ` (${closed.data.closedReason})` : ''}.`, open: [] };
+  const withSlots = rows.map((r) => ({ ...r, slots: openSlots(r.data, when) })).filter((r) => r.slots.length)
+    .sort((a, b) => b.slots.length - a.slots.length);
+  const full = rows.filter((r) => !withSlots.some((w) => w.service.id === r.service.id)).map((r) => r.service.name);
+  if (!withSlots.length) return { answer: `${Day}${partNote} các dịch vụ nhóm ${label} đều đã kín lịch. Bạn thử ngày khác giúp mình nhé.`, open: [] };
+  const lines = withSlots.slice(0, 6).map((r) => `• ${r.service.name} (${r.service.durationMinutes} phút · ${r.service.priceText}) — `
+    + `${when.time ? 'còn trống' : `${r.slots.length} khung giờ, sớm nhất ${r.slots[0]}`}`);
+  return {
+    answer: `${Day}${partNote} nhóm ${label} còn trống:\n${lines.join('\n')}${full.length ? `\nĐã kín: ${full.slice(0, 4).join(', ')}${full.length > 4 ? '…' : ''}.` : ''}\n`
+      + 'Bạn chọn dịch vụ để mình liệt kê giờ cụ thể, hoặc bấm "Đặt".',
+    open: withSlots.map((r) => r.service),
+  };
+}
+
+/**
+ * Viết lại câu hỏi (query rewriting — "Rewrite-Retrieve-Read", EMNLP 2023): khi luật chưa hiểu, mô hình CHỈ chuẩn hoá câu
+ * khách (sửa chính tả, tiếng lóng, viết tắt, nối ngữ cảnh) thành một câu rõ nghĩa; câu trả lời vẫn do luật + dữ liệu thật lo.
+ * Ví dụ mẫu = câu chủ tiệm đã duyệt (giống "bootstrap few-shot" của DSPy): càng duyệt nhiều, mô hình viết lại càng chuẩn.
+ */
+export const REWRITE_SYSTEM_PROMPT = 'Bạn chuẩn hoá câu khách nhắn cho trợ lý của một salon tóc / spa. Viết lại thành MỘT câu hỏi tiếng Việt có dấu, '
+  + 'ngắn, rõ nghĩa: sửa lỗi chính tả, tiếng lóng, viết tắt (k = không, đc = được, bn = bao nhiêu, mai = ngày mai); thay "cái đó / dịch vụ đó" '
+  + 'bằng tên dịch vụ trong hội thoại; GIỮ NGUYÊN ngày, giờ, buổi, tên dịch vụ, số tiền. KHÔNG trả lời câu hỏi, KHÔNG thêm thông tin. '
+  + 'Câu không liên quan tới salon / dịch vụ / đặt lịch / giá / giờ / thợ / chính sách thì trả đúng một chữ: KHONG_RO.';
+
+const REWRITE_EXAMPLES: [string, string][] = [
+  ['ngay kia co dv mat xoa nao trong lich k', 'Ngày kia dịch vụ massage nào còn giờ trống?'],
+  ['bn tiền cắt tóc nữ z', 'Cắt tóc nữ giá bao nhiêu?'],
+  ['tiệm mấy h đóng', 'Mấy giờ tiệm đóng cửa?'],
+  ['có ai làm móng cho e đc ko', 'Có thợ nào làm nail không?'],
+  ['thời tiết mai sao', 'KHONG_RO'],
+];
+
+export function buildRewriteMessages(
+  message: string, history: ChatLine[], catalog: CatalogItem[], approved: { phrase: string; rewrite: string }[] = [],
+): { role: 'system' | 'user' | 'assistant'; content: string }[] {
+  const examples = [...approved.slice(0, 8).map((x): [string, string] => [x.phrase, x.rewrite]), ...REWRITE_EXAMPLES];
+  const ctx = history.slice(-4).map((h) => `${h.role === 'user' ? 'Khách' : 'Trợ lý'}: ${h.content.replace(/\s+/g, ' ').slice(0, 160)}`).join('\n');
+  return [
+    { role: 'system', content: `${REWRITE_SYSTEM_PROMPT}\nDịch vụ của tiệm: ${catalog.map((x) => x.name).join('; ').slice(0, 1500)}` },
+    ...examples.flatMap(([q, a]) => [{ role: 'user' as const, content: q }, { role: 'assistant' as const, content: a }]),
+    { role: 'user', content: ctx ? `Hội thoại trước:\n${ctx}\n\nCâu cần viết lại: ${message.trim()}` : message.trim() },
+  ];
+}
+
+/**
+ * Kiểm tra TRUNG THỰC của câu viết lại (faithfulness check): mọi từ đặc trưng của tên dịch vụ xuất hiện trong câu viết lại
+ * phải có trong câu khách (đã sửa chính tả + từ đồng nghĩa) hoặc trong hội thoại gần nhất. Thử thật 12/10: mô hình 4B viết
+ * "mát xoa giá bao nhiêu" thành "Chăm sóc da chuyên sâu Vitamin C giá bao nhiêu?" → bị loại.
+ */
+export function faithfulRewrite(original: string, rewrite: string, catalog: CatalogItem[], history: ChatLine[] = []): boolean {
+  const vocab = new Set(catalog.flatMap((x) => fold(x.name).split(/[^a-z0-9]+/)).filter((t) => t.length >= 3 && !STOP.has(t)));
+  const source = new Set([normalize(correctMessage(original)), ...history.slice(-4).map((h) => normalize(h.content))]
+    .join(' ').split(/[^a-z0-9]+/).filter(Boolean));
+  return normalize(rewrite).split(/[^a-z0-9]+/).filter((t) => vocab.has(t)).every((t) => source.has(t));
+}
+
+/** Lấy câu viết lại hợp lệ (một dòng, 4–200 ký tự) từ đầu ra mô hình; null nếu mô hình bảo không rõ hoặc trả lời lạc đề. */
+export function parseRewrite(text: string | null, original: string): string | null {
+  if (!text) return null;
+  const line = text.replace(/<\/?think>[\s\S]*?(<\/think>|$)/g, '').split('\n').map((x) => x.trim()).find(Boolean) ?? '';
+  const q = line.replace(/^(câu viết lại|viết lại|trả lời)\s*:\s*/i, '').replace(/^["'“”«»]+|["'“”«»]+$/g, '').trim();
+  if (!q || /KHONG_RO|không rõ/i.test(q) || q.length < 4 || q.length > 200) return null;
+  if (fold(q) === fold(original)) return null; // không đổi gì → luật vẫn chưa hiểu
+  return q;
+}
+
+function customerRuleReplyInner(
+  det: Detection, message: string, original: string, catalog: CatalogItem[], hotIds: string[], facts: SalonFacts, now: Date | undefined,
+  opts: ReplyOptions, today: string,
+): CustomerReply {
+  void original;
   const { intent, matches } = det;
   const m = fold(message);
   // Lượt đặt thật (máy chủ truyền vào); không có thì suy thứ hạng từ hotIds — khi đó KHÔNG in số lượt (không bịa con số)
@@ -614,6 +831,12 @@ export function customerRuleReply(
       const service = matches[0] ?? null;
       const w = det.when!;
       const next: DialogState = { task: 'availability', date: w.date, part: w.part ?? undefined, time: w.time ?? undefined };
+      if (det.groupWide && det.scope) {
+        const items = [...det.scope.items].sort((a, b) => (pop[b.id] ?? 0) - (pop[a.id] ?? 0)).slice(0, 8);
+        return reply(`Nhóm ${det.scope.label} có ${det.scope.items.length} dịch vụ — bạn chọn một dịch vụ bên dưới để mình xem giờ trống `
+          + `${dayText(w.date, today)} nhé.`, items.slice(0, 3), items.slice(0, 3).map((x) => x.name),
+        { pending: { kind: 'availability_group', serviceIds: items.map((x) => x.id), label: det.scope.label, when: w }, state: { ...next, awaitingService: true } });
+      }
       if (!service) {
         const options = det.scope ? catalogStats(det.scope.items).byPrice.slice(0, 3) : popular.slice(0, 3);
         return reply(`Bạn muốn xem giờ trống ${dayText(w.date, today)}${w.part ? ` ${PART_LABEL[w.part]}` : ''}${w.time ? ` lúc ${w.time}` : ''} cho dịch vụ nào? `
@@ -700,6 +923,25 @@ export function customerRuleReply(
     case 'stylists': {
       const st = facts.stylists;
       const count = st && st.total ? `Tiệm hiện có ${st.total} thợ${st.female || st.male ? ` (${st.female} nữ, ${st.male} nam)` : ''}. ` : '';
+      // Dịch vụ đang nói tới (câu này / trạng thái tra giờ / ngữ cảnh) → thợ làm được dịch vụ đó; máy chủ tra thêm ai còn giờ trống
+      const stateSvc = opts.state?.serviceId ? catalog.find((x) => x.id === opts.state!.serviceId) : undefined;
+      const svc = matches[0] ?? stateSvc;
+      const team = facts.team ?? [];
+      const wantsGender = /\btho (nu|nam)\b/.exec(m)?.[1];
+      if (svc && team.length) {
+        const can = team.filter((t) => t.serviceIds.includes(svc.id));
+        const date = opts.state?.task === 'availability' && opts.state.serviceId === svc.id ? opts.state.date : undefined;
+        return reply(can.length
+          ? `${can.length} thợ làm được ${svc.name}: ${can.map((t) => t.name).join(', ')}. Khi đặt lịch bạn chọn đích danh thợ hoặc "Thợ bất kỳ".`
+          : `Hiện chưa có thợ nào nhận ${svc.name}; bạn gọi ${facts.hotline} để tiệm sắp xếp nhé.`, [svc], ['Đặt lịch ngay', 'Có thợ nữ không?'],
+        { pending: { kind: 'stylists', serviceId: svc.id, date } });
+      }
+      if (team.length && (wantsGender || /\b(ten|nhung tho|tho nao|cac tho|tho gi|danh sach)\b/.test(m))) {
+        const list = wantsGender ? team.filter((t) => t.gender === (wantsGender === 'nu' ? 'female' : 'male')) : team;
+        return reply(`${wantsGender ? `Tiệm có ${list.length} thợ ${wantsGender === 'nu' ? 'nữ' : 'nam'}` : `Tiệm có ${list.length} thợ`}: `
+          + `${list.map((t) => t.name).join(', ')}. Bạn nói mình dịch vụ muốn làm, mình báo thợ nào làm được và ai còn giờ trống nhé.`,
+        [], ['Cắt tóc nữ có thợ nào?', 'Massage có thợ nào?']);
+      }
       return reply(`${count}Ở bước "Chọn thợ" khi đặt lịch, bạn thấy đúng những thợ làm được dịch vụ đã chọn (kèm ảnh và giới thiệu) `
         + 'để chọn đích danh thợ quen, hoặc chọn "Thợ bất kỳ" để tiệm xếp thợ rảnh. Tay nghề từng thợ do tiệm đào tạo, mình không xếp hạng thợ.',
       [], ['Đặt lịch ngay', 'Hôm nay còn giờ nào?']);
@@ -788,9 +1030,23 @@ export function customerRuleReply(
     case 'payment':
       return reply('Tiệm nhận tiền mặt hoặc chuyển khoản (quét mã VietQR tại quầy); hiện chưa nhận quẹt thẻ. Bạn thanh toán sau khi làm xong dịch vụ; '
         + `riêng lịch trên ${formatVnd(DEPOSIT_THRESHOLD)} cần cọc trước ${DEPOSIT_PERCENT}% và tiền cọc được trừ vào hoá đơn.`);
-    case 'promotion':
+    case 'promotion': {
+      const promos = facts.promotions ?? [];
+      if (facts.promotions && !promos.length) {
+        return reply(`Hiện ${shop} chưa có chương trình giảm giá nào đang chạy. Khi có ưu đãi mới, lễ tân sẽ áp dụng ngay lúc thanh toán; `
+          + `bạn có mã riêng thì đưa lễ tân là được nhé.`, [], ['Xem bảng giá', 'Dịch vụ hot']);
+      }
+      if (promos.length) {
+        const dd = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
+        const off = (p: (typeof promos)[number]) => `giảm ${p.type === 'percent' ? `${p.value}%` : formatVnd(p.value)}`;
+        const rows = promos.slice(0, 5).map((p) => `• ${p.description?.trim() ? `${p.description.trim()}${/\bgiam\b/.test(fold(p.description)) ? '' : ` (${off(p)})`}` : `Ưu đãi ${off(p)}`}`
+          + `${p.minOrder ? ` cho hoá đơn từ ${formatVnd(p.minOrder)}` : ''}, đến hết ${dd(p.endDate)}`);
+        return reply(`Ưu đãi đang chạy tại ${shop}:\n${rows.join('\n')}\nBạn báo lễ tân chương trình khi thanh toán (mỗi hoá đơn áp dụng một ưu đãi).`,
+          [], ['Xem bảng giá', 'Đặt lịch ngay']);
+      }
       return reply('Nếu có mã giảm giá, bạn đưa mã cho lễ tân khi thanh toán — mỗi hoá đơn áp dụng một mã, có mã yêu cầu giá trị '
         + `đơn tối thiểu. Ưu đãi đang áp dụng bạn hỏi nhanh qua ${facts.hotline || 'hotline của tiệm'} nhé.`);
+    }
     case 'book':
       return matches.length
         ? reply(`Mình tìm thấy dịch vụ phù hợp:\n${matches.slice(0, 3).map(line).join('\n')}\nBấm "Đặt" — mình điền sẵn vào phiếu, bạn chỉ cần chọn giờ.`, matches.slice(0, 3),
@@ -817,7 +1073,8 @@ export function customerRuleReply(
     case 'need': {
       const list = matches.slice(0, 3);
       const totalMin = list[0]?.durationMinutes ?? 0;
-      return reply(`Với nhu cầu của bạn, mình gợi ý:\n${list.map(line).join('\n')}\n`
+      const lead = needLead(m);
+      return reply(`${lead ? `${lead}\nMình gợi ý:` : 'Với nhu cầu của bạn, mình gợi ý:'}\n${list.map(line).join('\n')}\n`
         + `${totalMin >= 90 ? 'Dịch vụ khá lâu, bạn nên đặt buổi sáng hoặc đầu giờ chiều. ' : ''}Bấm "Đặt" ở dịch vụ ưng ý nhé.`, list,
       ['Hôm nay còn giờ nào?', 'Xem bảng giá']);
     }
@@ -875,9 +1132,10 @@ export function leadSentence(text: string): string {
     .filter((x) => x && !/\d[\d.]*\s*(đ|₫|vnd|k\b|nghìn|phút|tiếng)/i.test(x) && !/:\s*$/.test(x) && !/đặt lịch/i.test(x));
   // Một câu, không lặp "Chào bạn" ở mọi lượt (lời chào đã có ở ý định chào hỏi)
   let out = (sentences[0] ?? '').replace(/^(chào bạn|chào chị|chào anh|dạ|vâng)[,!.\s]*/i, '').trim();
-  if (out.length > 170) {
-    const cut = out.lastIndexOf(',', 165);
-    out = `${out.slice(0, cut > 60 ? cut : 165).trimEnd()}.`;
+  // Câu dẫn dài hay lan man (mô hình 4B: "...khỏe đẹp, sạch bong bóng mỗi ngày đúng không?") → cắt ở dấu phẩy, không được thì bỏ
+  if (out.length > 120) {
+    const cut = out.lastIndexOf(',', 115);
+    out = cut > 40 ? `${out.slice(0, cut).trimEnd()}.` : '';
   }
   return out ? out.charAt(0).toUpperCase() + out.slice(1) : '';
 }

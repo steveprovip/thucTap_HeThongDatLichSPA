@@ -200,6 +200,67 @@ describe('QA 12/10 — voucher PATCH, AI thợ đang trực, duyệt nghỉ, ema
       }
     });
 
+    it('log 12/10 lần 4: "dịch vụ mát xoa nào trống lịch" tra CẢ NHÓM; "có những thợ gì có thể làm" nêu tên thợ thật', async () => {
+      const date = isoIn(4);
+      const ddmm = `${date.slice(8, 10)}/${date.slice(5, 7)}`;
+      const g = await request(server).post('/api/public/assistant/chat').send({ message: `ngày ${ddmm} có dịch vụ mát xoa nào trống lịch không ?` }).expect(200);
+      expect(g.body.data.intent).toBe('availability');
+      expect(g.body.data.answer).toMatch(/nhóm massage (còn trống|đều đã kín)|tiệm nghỉ/);
+      expect(g.body.data.state).toMatchObject({ date, awaitingService: true });
+
+      const groups = (await request(server).get('/api/public/catalog').expect(200)).body.data as { services: { id: string; name: string }[] }[];
+      const svc = groups.flatMap((x) => x.services)[0];
+      const capable = (await request(server).get('/api/public/stylists').query({ serviceIds: svc.id }).expect(200)).body.data as { fullName: string }[];
+      const first = await request(server).post('/api/public/assistant/chat').send({ message: `"${svc.name}" ngày ${ddmm} có lịch trống không ?` }).expect(200);
+      const who = await request(server).post('/api/public/assistant/chat').send({
+        message: 'có những thợ gì có thể làm ?', state: first.body.data.state,
+        history: [{ role: 'user', content: `"${svc.name}" ngày ${ddmm} có lịch trống không ?` }, { role: 'assistant', content: first.body.data.answer }],
+      }).expect(200);
+      expect(who.body.data.intent).toBe('stylists');
+      for (const c of capable.slice(0, 3)) expect(who.body.data.answer).toContain(c.fullName);
+    });
+
+    it('vòng tự cải tiến: chủ tiệm dạy cụm từ → trợ lý hiểu ngay; lễ tân không duyệt được; câu vô nghĩa không được học', async () => {
+      const groups = (await request(server).get('/api/public/catalog').expect(200)).body.data as { services: { id: string; name: string }[] }[];
+      const svc = groups.flatMap((x) => x.services)[0];
+      const before = await request(server).post('/api/public/assistant/chat').send({ message: 'zxqdv giá bao nhiêu' }).expect(200);
+      expect(before.body.data.suggestions.map((x: { id: string }) => x.id)).not.toContain(svc.id);
+
+      await request(server).post('/api/assistant/learning').set(as('receptionist')).send({ kind: 'alias', phrase: 'zxqdv', rewrite: svc.name }).expect(403);
+      await request(server).post('/api/assistant/learning').set(as('owner')).send({ kind: 'question', phrase: 'qwz qwz', rewrite: 'abc xyz' }).expect(400);
+      const added = await request(server).post('/api/assistant/learning').set(as('owner')).send({ kind: 'alias', phrase: 'zxqdv', rewrite: svc.name }).expect(201);
+      expect(added.body.data).toMatchObject({ kind: 'alias', phrase: 'zxqdv', status: 'approved', source: 'owner' });
+
+      const after = await request(server).post('/api/public/assistant/chat').send({ message: 'zxqdv giá bao nhiêu' }).expect(200);
+      expect(after.body.data.intent).toBe('service_price');
+      expect(after.body.data.suggestions.map((x: { id: string }) => x.id)).toContain(svc.id);
+
+      const listed = (await request(server).get('/api/assistant/learning').query({ status: 'approved' }).set(as('receptionist')).expect(200)).body.data;
+      expect(listed.some((x: { phrase: string }) => x.phrase === 'zxqdv')).toBe(true);
+      await request(server).patch(`/api/assistant/learning/${added.body.data.id}`).set(as('owner')).send({ status: 'rejected' }).expect(200);
+      const reverted = await request(server).post('/api/public/assistant/chat').send({ message: 'zxqdv giá bao nhiêu' }).expect(200);
+      expect(reverted.body.data.suggestions.map((x: { id: string }) => x.id)).not.toContain(svc.id);
+
+      // Câu ngoài dữ liệu: chủ tiệm soạn câu trả lời ("snippet") → trợ lý trả đúng câu đó
+      const parking = 'Tiệm có chỗ giữ xe máy miễn phí trước cửa; ô tô gửi ở bãi cách 50 m.';
+      const unknown = await request(server).post('/api/public/assistant/chat').send({ message: 'tiệm có chỗ để xe hơi ko' }).expect(200);
+      expect(unknown.body.data.intent).toBe('unknown');
+      const faq = await request(server).post('/api/assistant/learning').set(as('owner')).send({ kind: 'answer', phrase: 'chỗ để xe', rewrite: parking }).expect(201);
+      const answered = await request(server).post('/api/public/assistant/chat').send({ message: 'tiệm có chỗ để xe hơi ko' }).expect(200);
+      expect(answered.body.data).toMatchObject({ intent: 'faq', answer: parking });
+      await request(server).patch(`/api/assistant/learning/${faq.body.data.id}`).set(as('owner')).send({ status: 'rejected' }).expect(200);
+    });
+
+    it('khách bấm 👎 → câu đó vào báo cáo cải tiến của chủ tiệm', async () => {
+      await request(server).post('/api/public/assistant/feedback').send({ question: 'tiệm có gửi xe máy không ạ', intent: 'unknown', helpful: false }).expect(200);
+      await request(server).post('/api/public/assistant/feedback').send({ question: 'x', intent: 'unknown' }).expect(400);
+      const rep = (await request(server).get('/api/assistant/improvement').set(as('owner')).expect(200)).body.data;
+      expect(rep.feedback.down).toBeGreaterThanOrEqual(1);
+      expect(rep.gaps.items.find((g: { question: string }) => g.question.includes('gửi xe máy'))).toMatchObject({ intent: 'dislike:unknown' });
+      expect(Array.isArray(rep.suggestions)).toBe(true);
+      await request(server).get('/api/assistant/improvement').expect(401);
+    });
+
     it('câu chưa trả lời được ghi vào "lỗ hổng kiến thức" (đã che SĐT) — chỉ nhân viên xem được', async () => {
       await request(server).post('/api/public/assistant/chat').send({ message: 'tiệm có bán vé số 0912345678 không qwz' }).expect(200);
       await request(server).get('/api/assistant/knowledge-gaps').expect(401);
