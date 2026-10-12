@@ -118,6 +118,12 @@ const configuration = () => ({
     model: (process.env.AI_MODEL ?? '').trim(),
     apiKey: process.env.AI_API_KEY ?? '',
     timeoutMs: int(process.env.AI_TIMEOUT_MS, 25000),
+    // QA 12/10 — chịu tải: số câu gọi mô hình cùng lúc (llama-server -np 1 → 1–2), hàng chờ tối đa và thời gian chờ chỗ;
+    // vượt ngưỡng thì trả lời ngay theo số liệu thật. Câu mở đầu giống nhau dùng lại câu trả lời AI trong AI_CACHE_MINUTES.
+    maxConcurrency: Math.max(1, int(process.env.AI_MAX_CONCURRENCY, 2)),
+    maxQueue: Math.max(0, int(process.env.AI_MAX_QUEUE, 6)),
+    queueWaitMs: Math.max(0, int(process.env.AI_QUEUE_WAIT_MS, 4000)),
+    cacheMinutes: Math.max(0, int(process.env.AI_CACHE_MINUTES, 10)),
     // QA 12/10: chế độ auto tự bật lại model_AI_local khi máy chủ AI local tắt (sau khi khởi động lại máy). 0 = tắt.
     autostart: !['0', 'false', 'off', 'no'].includes((process.env.AI_LOCAL_AUTOSTART ?? '').trim().toLowerCase())
       && process.env.NODE_ENV !== 'test',

@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
@@ -14,6 +14,8 @@ import {
   addDays, dayOfWeek, endOfDay, isValidDateString, startOfDay, todaySalon, toSalon, trimSeconds,
 } from '../../common/utils/time.util';
 import { normalizeSearch } from '../../common/utils/text.util';
+import { SingleFlight } from '../../common/utils/concurrency';
+import { EventsService } from '../events/events.service';
 import { WorkingHoursService } from '../working-hours/working-hours.service';
 import { StylistsService } from '../stylists/stylists.service';
 import {
@@ -80,6 +82,10 @@ interface DayFrame { salonOpen: string; salonClose: string; salonClosed: boolean
 interface StylistDay { shifts: ShiftInput[]; timeOff: TimeOffInput[]; apptBusy: Interval[]; holdBusy: Interval[] }
 type CalcInput = SlotCalcInput & { apptBusy: Interval[] };
 
+/** Nhóm dữ liệu mà thao tác ghi làm đổi danh mục công khai (khớp LIVE_PATH của RealtimeInterceptor). */
+const CATALOG_SCOPES = new Set(['services', 'service-categories', 'stylists']);
+const CATALOG_TTL_MS = 30_000;
+
 @Injectable()
 export class AvailabilityService {
   constructor(
@@ -92,32 +98,55 @@ export class AvailabilityService {
     @InjectRepository(Stylist) private readonly stylistRepo: Repository<Stylist>,
     @InjectRepository(Appointment) private readonly apptRepo: Repository<Appointment>,
     @InjectRepository(SlotHold) private readonly holdRepo: Repository<SlotHold>,
-  ) {}
+    @Optional() events?: EventsService,
+  ) {
+    // Admin vừa sửa dịch vụ / danh mục / thợ (thao tác ghi thành công) → bỏ bộ nhớ đệm danh mục ngay, khách thấy liền
+    events?.stream().subscribe((e) => { if (CATALOG_SCOPES.has(e.scope)) this.catalogCache = null; });
+  }
+
+  /** QA 12/10 — danh mục công khai là trang được tải nhiều nhất: giữ 30 giây, hết hạn thì MỘT lần đọc CSDL cho mọi request. */
+  private catalogCache: { at: number; groups: PublicCatalogGroup[] } | null = null;
+  private readonly catalogFlight = new SingleFlight<PublicCatalogGroup[]>();
+
+  private async baseCatalog(): Promise<PublicCatalogGroup[]> {
+    if (this.catalogCache && Date.now() - this.catalogCache.at < CATALOG_TTL_MS) return this.catalogCache.groups;
+    return this.catalogFlight.do('catalog', async () => {
+      const groups = await this.loadCatalog();
+      this.catalogCache = { at: Date.now(), groups };
+      return groups;
+    });
+  }
 
   /**
    * S2-03: danh mục công khai — chỉ hiện dịch vụ đang bán VÀ có ít nhất một thợ
    * đang làm việc đảm nhận. Có tìm kiếm không dấu.
    */
   async publicCatalog(search?: string): Promise<PublicCatalogGroup[]> {
-    const categories = await this.categoryRepo.find({ order: { displayOrder: 'ASC', name: 'ASC' } });
-    const services = await this.serviceRepo.find({ where: { isActive: true }, order: { name: 'ASC' } });
-    const activeStylists = await this.stylistRepo.find({ where: { isActive: true } });
-    const activeIds = new Set(activeStylists.map((s) => s.id));
-    const links = await this.linkRepo.find();
-
-    const servedBy = new Map<string, number>();
-    for (const l of links) {
-      if (activeIds.has(l.stylistId)) servedBy.set(l.serviceId, (servedBy.get(l.serviceId) ?? 0) + 1);
-    }
-
+    const base = await this.baseCatalog();
     const term = search ? normalizeSearch(search) : '';
+    if (!term) return base;
+    // QA-12: chỉ so khớp TÊN dịch vụ (không dấu); mô tả dài làm kết quả nhiễu nên bỏ qua
+    return base
+      .map((g) => ({ ...g, services: g.services.filter((s) => normalizeSearch(s.name).includes(term)) }))
+      .filter((g) => g.services.length);
+  }
+
+  private async loadCatalog(): Promise<PublicCatalogGroup[]> {
+    // 4 truy vấn độc lập chạy SONG SONG (trước đây tuần tự); liên kết thợ–dịch vụ chỉ lấy của thợ đang làm
+    const [categories, services, links] = await Promise.all([
+      this.categoryRepo.find({ order: { displayOrder: 'ASC', name: 'ASC' } }),
+      this.serviceRepo.find({ where: { isActive: true }, order: { name: 'ASC' } }),
+      this.linkRepo.createQueryBuilder('l')
+        .innerJoin(Stylist, 's', 's.id = l.stylistId AND s.isActive = true')
+        .select('l.serviceId', 'serviceId').getRawMany<{ serviceId: string }>(),
+    ]);
+
+    const servedBy = new Set(links.map((l) => l.serviceId));
     const groups: PublicCatalogGroup[] = [];
     for (const cat of categories) {
       const items = services
         .filter((s) => s.categoryId === cat.id)
-        .filter((s) => (servedBy.get(s.id) ?? 0) > 0)
-        // QA-12: chỉ so khớp TÊN dịch vụ (không dấu); mô tả dài làm kết quả nhiễu nên bỏ qua
-        .filter((s) => !term || normalizeSearch(s.name).includes(term))
+        .filter((s) => servedBy.has(s.id))
         .map<PublicServiceView>((s) => ({
           id: s.id,
           name: s.name,

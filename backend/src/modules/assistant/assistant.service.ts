@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationBootstrap, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import { formatVnd } from '../../common/utils/currency.util';
@@ -11,8 +11,10 @@ import {
   HolidayLite, quickReplies, ruleAnswer, ShiftGapSuggestion, SYSTEM_PROMPT, TodaySnapshot, WorkingStylist,
 } from './assistant-rules';
 import { findLocalAiDir, isLoopbackUrl, launchLocalAi } from './local-ai-launcher';
+import { LlmGate, SingleFlight, TtlCache } from './llm-gate';
+import { EventsService } from '../events/events.service';
 import {
-  CATALOG_FACT_INTENTS, CatalogItem, CUSTOMER_SYSTEM_PROMPT, customerContextForLlm, CustomerReply, customerRuleReply, SalonFacts,
+  CARD_INTENTS, CATALOG_FACT_INTENTS, CatalogItem, CUSTOMER_SYSTEM_PROMPT, customerContextForLlm, CustomerReply, customerRuleReply, SalonFacts,
   sanitizeLlmAnswer,
 } from './customer-assistant-rules';
 import { callLlm, DEFAULT_LOCAL_AI_URL, LlmConfig, LlmMessage, pickModel, probeLocalServer } from './llm-client';
@@ -90,7 +92,26 @@ export class AssistantService implements OnApplicationBootstrap {
     private readonly stylists: StylistsService,
     private readonly workingHours: WorkingHoursService,
     private readonly availability: AvailabilityService,
-  ) {}
+    @Optional() events?: EventsService,
+  ) {
+    const n = (k: string, d: number): number => this.config.get<number>(`ai.${k}`) ?? d;
+    this.gate = new LlmGate(n('maxConcurrency', 2), n('maxQueue', 6), n('queueWaitMs', 4000));
+    this.answerCache = new TtlCache(n('cacheMinutes', 10) * 60_000, 500);
+    // Dịch vụ / giá / giờ mở cửa vừa đổi → bỏ danh mục và câu trả lời AI đã nhớ (tránh báo giá cũ)
+    events?.stream().subscribe((e) => {
+      if (['services', 'service-categories', 'stylists', 'working-hours', 'holidays'].includes(e.scope)) {
+        this.publicCache = null;
+        this.answerCache.clear();
+      }
+    });
+  }
+
+  /** Chịu tải: số câu gọi mô hình cùng lúc / hàng chờ / bộ nhớ đệm câu trả lời (xem llm-gate.ts). */
+  private readonly gate: LlmGate;
+  private readonly answerCache: TtlCache<{ answer: string; suggestions: CatalogItem[] }>;
+  private readonly llmFlight = new SingleFlight<{ answer: string; suggestions: CatalogItem[] } | 'busy' | null>();
+  private readonly publicFlight = new SingleFlight<{ at: number; catalog: CatalogItem[]; hotIds: string[]; facts: SalonFacts }>();
+  private readonly contextFlight = new SingleFlight<AssistantContext>();
 
   private probe: { at: number; cfg: LlmConfig | null } | null = null;
 
@@ -293,12 +314,14 @@ export class AssistantService implements OnApplicationBootstrap {
 
   private async context(refresh = false): Promise<AssistantContext> {
     if (!refresh && this.cache && Date.now() - this.cache.at < CACHE_MS) return this.cache.ctx;
-    const [ins, shifts, holidays] = await Promise.all([
-      this.insights(), this.shiftSuggestions(7, 1), this.holidaysLite(),
-    ]);
-    const ctx: AssistantContext = { ...ins, gaps: shifts.gaps, holidays };
-    this.cache = { at: Date.now(), ctx };
-    return ctx;
+    return this.contextFlight.do('ctx', async () => {
+      const [ins, shifts, holidays] = await Promise.all([
+        this.insights(), this.shiftSuggestions(7, 1), this.holidaysLite(),
+      ]);
+      const ctx: AssistantContext = { ...ins, gaps: shifts.gaps, holidays };
+      this.cache = { at: Date.now(), ctx };
+      return ctx;
+    });
   }
 
   /** TASK v4 · NV1 — số liệu tổng hợp hôm nay cho câu "tình hình hôm nay?" (tươi mỗi câu hỏi, không cache 5 phút). */
@@ -391,12 +414,14 @@ export class AssistantService implements OnApplicationBootstrap {
     const cfg = await this.resolveLlm();
     if (!cfg) return { ...base, answer: fallback, source: 'rules', model: null };
 
-    const raw = await callLlm(cfg, [
+    const call = await this.gate.run(async () => ({ text: await callLlm(cfg, [
       { role: 'system', content: `${SYSTEM_PROMPT}\nNgười đang trò chuyện: ${opts.userName ?? 'nhân viên tiệm'}.\nDỮ LIỆU:\n${contextForLlm(ctx)}` },
       ...this.history(opts.history),
       { role: 'user', content: `${message.trim()}\n\n(Gợi ý theo luật, dùng nếu phù hợp: ${fallback})` },
-    ]);
-    const answer = raw ? sanitizeLlmAnswer(raw) : '';
+    ]) }));
+    // Mô hình đang bận phục vụ người khác → trả lời ngay bằng số liệu thật, KHÔNG coi là mô hình hỏng
+    if (!call) return { ...base, answer: fallback, source: 'rules', model: null };
+    const answer = call.text ? sanitizeLlmAnswer(call.text) : '';
     if (!answer) {
       this.logger.warn(`Mô hình ${cfg.provider}/${cfg.model} không phản hồi kịp — dùng câu trả lời theo luật`);
       this.markLlmDown();
@@ -410,6 +435,11 @@ export class AssistantService implements OnApplicationBootstrap {
 
   private async publicData(): Promise<{ catalog: CatalogItem[]; hotIds: string[]; facts: SalonFacts }> {
     if (this.publicCache && Date.now() - this.publicCache.at < 60_000) return this.publicCache;
+    // Hết hạn bộ nhớ đệm lúc đang đông khách: MỘT lần đọc CSDL cho mọi request đang chờ (không 1000 lần)
+    return this.publicFlight.do('public', () => this.loadPublicData());
+  }
+
+  private async loadPublicData(): Promise<{ at: number; catalog: CatalogItem[]; hotIds: string[]; facts: SalonFacts }> {
     const [groups, hot, hours] = await Promise.all([
       this.availability.publicCatalog(),
       this.dataSource.query(
@@ -427,6 +457,7 @@ export class AssistantService implements OnApplicationBootstrap {
     const facts: SalonFacts = {
       name: c('salonName'), hotline: c('salonHotline'), address: c('salonAddress'),
       openingHours: hours.map((h) => ({ dayLabel: h.dayLabel, isClosed: h.isClosed, openTime: h.openTime, closeTime: h.closeTime })),
+      cancelCutoffMinutes: this.config.get<number>('business.cancelCutoffMinutes') ?? 120,
     };
     const ids = new Set(catalog.map((x) => x.id));
     this.publicCache = { at: Date.now(), catalog, hotIds: hot.map((h) => h.id).filter((id) => ids.has(id)), facts };
@@ -446,19 +477,42 @@ export class AssistantService implements OnApplicationBootstrap {
     const cfg = await this.resolveLlm();
     if (!cfg) return { ...rule, source: 'rules', model: null };
 
-    const raw = await callLlm(cfg, [
-      { role: 'system', content: `${CUSTOMER_SYSTEM_PROMPT}\n${customerContextForLlm(catalog, hotIds, facts)}` },
-      ...this.history(history),
-      { role: 'user', content: `${message.trim()}\n\n(Gợi ý theo luật, dùng nếu phù hợp: ${rule.answer})` },
-    ]);
-    const answer = raw ? sanitizeLlmAnswer(raw) : '';
-    if (!answer) {
+    // Câu mở đầu (không có lịch sử) giống nhau → dùng lại câu trả lời; đang có người hỏi y hệt → chờ chung một lời gọi
+    const key = history.length ? null : `${cfg.model}|${rule.intent}|${fold(message)}`;
+    const cached = key ? this.answerCache.get(key) : undefined;
+    if (cached) return { ...rule, ...cached, source: 'llm', model: cfg.model };
+
+    const ask = async (): Promise<{ answer: string; suggestions: CatalogItem[] } | 'busy' | null> => {
+      const call = await this.gate.run(() => callLlm(cfg, [
+        { role: 'system', content: `${CUSTOMER_SYSTEM_PROMPT}\n${customerContextForLlm(catalog, hotIds, facts)}` },
+        ...this.history(history),
+        { role: 'user', content: `${message.trim()}\n\n(Gợi ý theo luật, dùng nếu phù hợp: ${rule.answer})` },
+      ]).then((text) => ({ text })));
+      if (!call) return 'busy';
+      const answer = call.text ? sanitizeLlmAnswer(call.text) : '';
+      if (!answer) return null;
+      const folded = fold(answer);
+      const mentioned = catalog.filter((s) => fold(s.name).length >= 4 && folded.includes(fold(s.name)));
+      // Thẻ dịch vụ chỉ khi khách đang chọn dịch vụ (hoặc câu tự do mà mô hình nêu đích danh dịch vụ) — tối đa 3 thẻ
+      const suggestions = CARD_INTENTS.has(rule.intent) || rule.intent === 'unknown'
+        ? [...rule.suggestions, ...mentioned.filter((m) => !rule.suggestions.some((r) => r.id === m.id))].slice(0, 3)
+        : [];
+      const out = { answer, suggestions };
+      if (key) this.answerCache.set(key, out);
+      return out;
+    };
+    const res = key ? await this.llmFlight.do(key, ask) : await ask();
+    if (res === 'busy') return { ...rule, source: 'rules', model: null }; // quá tải: trả lời ngay bằng số liệu thật
+    if (!res) {
       this.markLlmDown();
       return { ...rule, source: 'rules', model: null };
     }
-    const folded = fold(answer);
-    const mentioned = catalog.filter((s) => fold(s.name).length >= 4 && folded.includes(fold(s.name)));
-    const suggestions = [...rule.suggestions, ...mentioned.filter((m) => !rule.suggestions.some((r) => r.id === m.id))].slice(0, 4);
-    return { ...rule, answer, suggestions, source: 'llm', model: cfg.model };
+    return { ...rule, ...res, source: 'llm', model: cfg.model };
+  }
+
+  /** Số liệu chịu tải của trợ lý (cho /health chi tiết và kiểm thử tải). */
+  loadStats(): { llmActive: number; llmQueued: number; cachedAnswers: number } {
+    const g = this.gate.stats;
+    return { llmActive: g.active, llmQueued: g.queued, cachedAnswers: this.answerCache.size };
   }
 }

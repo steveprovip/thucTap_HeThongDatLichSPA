@@ -102,6 +102,35 @@ describe('AI tư vấn khách — luật dựa trên danh mục thật (TASK v3 
       expect(nails.suggestions.map((s) => s.id)).toEqual(['nail', 'nail2']);
     });
 
+    it('QA ảnh chụp 12/10: "combo có gì hot ?" là hỏi phổ biến TRONG nhóm combo, "combo có gì khác so với bình thường ?" là giải thích', () => {
+      const real2 = [...real, svc('combo2', 'Combo Cắt + Gội dưỡng sinh + Sấy tạo kiểu', 'Gói combo tiết kiệm', 90, 350000)];
+      const hot = customerRuleReply('combo có gì hot ?', real2, ['cut', 'combo2', 'vip'], facts);
+      expect(hot.intent).toBe('hot');
+      expect(hot.answer).toContain('Nhóm combo được đặt nhiều nhất');
+      expect(hot.suggestions.map((s) => s.id)).toEqual(['combo2', 'vip']); // không lẫn "Cắt tóc nữ" ngoài nhóm
+      const info = customerRuleReply('combo có gì khác so với bình thường ?', real2, [], facts);
+      expect(info.intent).toBe('combo_info');
+      expect(info.answer).toContain('Combo là gói nhiều dịch vụ làm liền trong MỘT lượt hẹn');
+      expect(info.suggestions).toHaveLength(0); // trả lời bình thường, không chèn thẻ dịch vụ
+      expect(detectCustomerIntent('combo lợi gì hơn đặt lẻ', real2).intent).toBe('combo_info');
+      expect(detectCustomerIntent('có những combo nào', real2).intent).toBe('filter_by_group');
+    });
+
+    it('câu hỏi chính sách trả lời thẳng, không kèm thẻ dịch vụ', () => {
+      const cases: [string, string, string][] = [
+        ['đặt lịch có cần cọc không', 'deposit', 'cọc 30%'], ['tôi muốn hủy lịch thì sao', 'cancel_policy', '2 giờ'],
+        ['thanh toán bằng chuyển khoản được không', 'payment', 'VietQR'], ['có mã giảm giá không shop', 'promotion', 'một mã'],
+      ];
+      for (const [q, intent, text] of cases) {
+        const r = customerRuleReply(q, real, ['cut'], facts);
+        expect(r.intent).toBe(intent);
+        expect(r.answer).toContain(text);
+        expect(r.suggestions).toHaveLength(0);
+      }
+      expect(customerRuleReply('Xem bảng giá', real, ['cut'], facts).suggestions).toHaveLength(0);
+      expect(customerRuleReply('asdfgh', real, ['cut'], facts).suggestions).toHaveLength(0);
+    });
+
     it('ngữ cảnh mô hình có sẵn tổng số, giá thấp nhất / cao nhất', () => {
       const text = customerContextForLlm(real, [], facts);
       expect(text).toContain(`Tổng số dịch vụ: ${real.length} dịch vụ, 6 danh mục`);
@@ -118,9 +147,10 @@ describe('AI tư vấn khách — luật dựa trên danh mục thật (TASK v3 
     expect(sanitizeLlmAnswer('<think></think>Chào bạn')).toBe('Chào bạn');
   });
 
-  it('câu không hiểu: hỏi lại nhu cầu, vẫn gợi ý dịch vụ để bấm', () => {
+  it('câu không hiểu: hỏi lại nhu cầu bằng câu hỏi nhanh, KHÔNG chèn thẻ dịch vụ "ăn theo" (QA 12/10)', () => {
     const r = customerRuleReply('asdfgh', catalog, ['cut'], facts);
     expect(r.intent).toBe('unknown');
-    expect(r.suggestions[0].id).toBe('cut');
+    expect(r.suggestions).toHaveLength(0);
+    expect(r.quickReplies.length).toBeGreaterThan(0);
   });
 });

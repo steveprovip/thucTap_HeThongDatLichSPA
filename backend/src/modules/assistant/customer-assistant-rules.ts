@@ -4,6 +4,7 @@
  * cá nhân nào. Câu trả lời luôn kèm dịch vụ gợi ý để khách bấm một chạm điền vào wizard đặt lịch.
  */
 import { fold, partOfDay, smallTalkIntent } from './assistant-rules';
+import { formatVnd } from '../../common/utils/currency.util';
 
 export interface CatalogItem {
   id: string;
@@ -22,10 +23,17 @@ export interface SalonFacts {
   hotline: string;
   address: string;
   openingHours: { dayLabel: string; isClosed: boolean; openTime: string; closeTime: string }[];
+  /** Khách tự huỷ trên trang tra cứu khi còn ít nhất ngần này phút trước giờ hẹn (CANCEL_CUTOFF_MINUTES). */
+  cancelCutoffMinutes?: number;
 }
+
+/** Chính sách cọc chống bùng lịch — khớp frontend/src/utils/opsHelpers.ts (DEPOSIT_THRESHOLD, depositAmount). */
+export const DEPOSIT_THRESHOLD = 500_000;
+export const DEPOSIT_PERCENT = 30;
 
 export type CustomerIntent =
   | 'greeting' | 'identity' | 'help' | 'thanks' | 'bye' | 'price_list' | 'hot' | 'book' | 'hours' | 'contact' | 'need' | 'unknown'
+  | 'combo_info' | 'deposit' | 'cancel_policy' | 'payment' | 'promotion'
   | CatalogFactIntent;
 
 /**
@@ -37,6 +45,14 @@ export type CatalogFactIntent =
 
 export const CATALOG_FACT_INTENTS: ReadonlySet<CustomerIntent> = new Set<CustomerIntent>([
   'count_services', 'cheapest_service', 'priciest_service', 'fastest_service', 'longest_service', 'filter_by_group',
+]);
+
+/**
+ * QA 12/10 — CHỈ những câu khách đang CHỌN dịch vụ mới kèm thẻ dịch vụ. Câu hỏi thông tin ("combo khác gì đặt lẻ",
+ * cọc, huỷ lịch, giờ mở cửa, bảng giá, câu chưa hiểu…) được trả lời bình thường, không chèn thẻ gợi ý "ăn theo".
+ */
+export const CARD_INTENTS: ReadonlySet<CustomerIntent> = new Set<CustomerIntent>([
+  'need', 'book', 'hot', 'cheapest_service', 'priciest_service', 'fastest_service', 'longest_service', 'filter_by_group',
 ]);
 
 export interface CustomerReply {
@@ -109,11 +125,21 @@ const FACT_RE: { intent: Exclude<CatalogFactIntent, 'filter_by_group'>; re: RegE
   { intent: 'count_services', re: /(bao nhieu|may|tong (cong|so)|so luong)( loai| cai| goi)? (dich vu|danh muc|nhom)|(dich vu|danh muc)( \w+){0,3} (co )?(bao nhieu|may)\b|co (tat ca|tong cong) bao nhieu/ },
   { intent: 'cheapest_service', re: /(re nhat|gia (thap|mem|re) nhat|thap nhat|it tien nhat|binh dan nhat|tiet kiem nhat)/ },
   // "được đặt nhất" (= nhiều người đặt) cũng gập thành "dat nhat" → không phải hỏi giá đắt nhất
-  { intent: 'priciest_service', re: /((?<!(duoc|hay|khach|nguoi) )dat nhat|gia cao nhat|mac nhat|dat tien nhat|cao cap nhat|vip nhat|xin nhat|sang nhat)/ },
+  { intent: 'priciest_service', re: /((?<!(duoc|hay|khach|nguoi|chon) )dat nhat|gia cao nhat|mac nhat|dat tien nhat|cao cap nhat|vip nhat|xin nhat|sang nhat)/ },
   { intent: 'fastest_service', re: /(nhanh nhat|it thoi gian nhat|ngan nhat|lam nhanh nhat|mat it thoi gian)/ },
   { intent: 'longest_service', re: /(lau nhat|dai nhat|ton (nhieu )?thoi gian nhat|nhieu thoi gian nhat|mat nhieu thoi gian nhat)/ },
 ];
-const LIST_RE = /(co (nhung )?(dich vu|gi)|nhung dich vu|cac dich vu|liet ke|danh sach|gom (nhung )?gi|bao gom|co nhung gi|xem (cac )?dich vu)/;
+const LIST_RE = /(co (nhung |cac )?(dich vu|gi|combo|goi)|(nhung|cac) (combo|goi)( \w+)? nao|nhung dich vu|cac dich vu|liet ke|danh sach|gom (nhung )?gi|bao gom|co nhung gi|xem (cac )?dich vu)/;
+const HOT_RE = /(\bhot\b|noi bat|pho bien|ban chay|nhieu nguoi|dat nhieu|duoc (yeu thich|chuong|dat nhieu|dat nhat)|best ?seller|nen thu|hay dat|dat nhieu nhat)/;
+const COMBO_RE = /\b(combo|goi combo|goi tiet kiem|lieu trinh)\b/;
+/** "combo có gì khác so với bình thường", "combo lợi gì hơn đặt lẻ", "combo là gì"… → giải thích, không liệt kê thẻ. */
+const COMBO_INFO_RE = /(khac (gi|nhau|biet)|khac so voi|so voi|loi (ich|gi|hon)|co loi|tiet kiem (hon|duoc|bao nhieu)|\bla gi\b|nghia la|nen chon|hon (gi|khong)|dat le|lam le|binh thuong|co gi (hay|dac biet|khac))/;
+const POLICY_RE: { intent: 'deposit' | 'cancel_policy' | 'payment' | 'promotion'; re: RegExp }[] = [
+  { intent: 'deposit', re: /\b(coc|dat coc|tien coc|giu cho bang tien|tra truoc)\b/ },
+  { intent: 'cancel_policy', re: /\b(huy (lich|hen|dat)|muon huy|doi (lich|gio|ngay|hen)|doi sang|hoan lich|tra cuu|xem lai lich|kiem tra lich)\b/ },
+  { intent: 'payment', re: /\b(thanh toan|chuyen khoan|tien mat|quet ma|qr|the (ngan hang|tin dung)|momo|vnpay|tra tien)\b/ },
+  { intent: 'promotion', re: /\b(khuyen mai|giam gia|voucher|ma giam|uu dai|sale|coupon)\b/ },
+];
 
 /** Nhóm dịch vụ khách nhắc tới trong câu hỏi (vd. "dịch vụ móng rẻ nhất") — null nếu không nhắc / nhóm không có dịch vụ. */
 export function groupScope(message: string, catalog: CatalogItem[]): { label: string; items: CatalogItem[] } | null {
@@ -130,7 +156,10 @@ export function catalogFactIntent(message: string, catalog: CatalogItem[]): Cata
   const m = fold(message);
   const fact = FACT_RE.find((f) => f.re.test(m));
   if (fact) return fact.intent;
-  if (LIST_RE.test(m) && groupScope(message, catalog)) return 'filter_by_group';
+  // "combo có gì HOT" là hỏi phổ biến, "combo có gì KHÁC đặt lẻ" là hỏi giải thích — không phải lệnh liệt kê
+  if (LIST_RE.test(m) && !HOT_RE.test(m) && !(COMBO_RE.test(m) && COMBO_INFO_RE.test(m)) && groupScope(message, catalog)) {
+    return 'filter_by_group';
+  }
   return null;
 }
 
@@ -138,9 +167,12 @@ export function detectCustomerIntent(message: string, catalog: CatalogItem[]): {
   const m = fold(message);
   const fact = catalogFactIntent(message, catalog);
   if (fact) return { intent: fact, matches: [] };
+  if (COMBO_RE.test(m) && COMBO_INFO_RE.test(m)) return { intent: 'combo_info', matches: [] };
+  const policy = POLICY_RE.find((x) => x.re.test(m));
+  if (policy) return { intent: policy.intent, matches: [] };
   const matches = matchServices(message, catalog);
   if (/(bang gia|xem gia|gia ca|price|menu|danh sach dich vu|co nhung dich vu|tat ca dich vu)/.test(m)) return { intent: 'price_list', matches };
-  if (/(hot|noi bat|pho bien|ban chay|nhieu nguoi|dat nhieu|duoc yeu thich|best ?seller|nen thu)/.test(m)) return { intent: 'hot', matches };
+  if (HOT_RE.test(m)) return { intent: 'hot', matches };
   if (/(dat lich|dat cho|dat hen|book|giu cho|hen gio|muon den|dat ngay)/.test(m)) return { intent: 'book', matches };
   if (/(may gio|gio mo cua|mo cua|dong cua|lam viec den|gio lam|chu nhat|thu bay|cuoi tuan co lam)/.test(m) && !matches.length) return { intent: 'hours', matches };
   if (/(dia chi|o dau|cho nao|duong nao|hotline|so dien thoai|lien he|ban do|zalo)/.test(m)) return { intent: 'contact', matches };
@@ -253,11 +285,48 @@ export function customerRuleReply(
       const parts = Array.from(byCat.entries()).slice(0, 6).map(([cat, list]) =>
         `${cat}:\n${list.slice(0, 3).map(line).join('\n')}${list.length > 3 ? `\n  …và ${list.length - 3} dịch vụ khác` : ''}`);
       return reply(parts.length ? `Bảng giá ${shop} (giá tạm tính, tiệm chốt khi thanh toán):\n${parts.join('\n')}`
-        : 'Hiện tiệm chưa mở dịch vụ nào để đặt online, bạn gọi hotline giúp mình nhé.', popular, ['Dịch vụ hot', 'Tư vấn chăm sóc da', 'Đặt lịch ngay']);
+        : 'Hiện tiệm chưa mở dịch vụ nào để đặt online, bạn gọi hotline giúp mình nhé.', [], ['Dịch vụ hot', 'Combo có gì hot?', 'Đặt lịch ngay']);
     }
-    case 'hot':
-      return reply(popular.length ? `Dịch vụ được đặt nhiều nhất gần đây:\n${popular.map(line).join('\n')}\nBấm "Chọn" ở dịch vụ bạn thích rồi "Đặt lịch" nhé.`
-        : 'Tiệm chưa có dịch vụ nào đang mở đặt online.', popular, ['Xem bảng giá', 'Đặt lịch ngay']);
+    case 'hot': {
+      // "combo có gì hot?" → dịch vụ hot TRONG nhóm combo (theo lượt đặt 90 ngày), không phải toàn bộ danh mục
+      const scope = groupScope(message, catalog);
+      if (scope) {
+        const inScope = new Set(scope.items.map((s) => s.id));
+        const hotIn = hot.filter((s) => inScope.has(s.id)).slice(0, 3);
+        const list = hotIn.length ? hotIn : catalogStats(scope.items).byPrice.slice(0, 3);
+        return reply(hotIn.length
+          ? `Nhóm ${scope.label} được đặt nhiều nhất gần đây:\n${list.map(line).join('\n')}`
+          : `Nhóm ${scope.label} chưa có đủ lượt đặt để xếp hạng, các lựa chọn hiện có:\n${list.map(line).join('\n')}`,
+        list, ['Xem bảng giá', 'Đặt lịch ngay']);
+      }
+      return reply(popular.length ? `Dịch vụ được đặt nhiều nhất gần đây:\n${popular.slice(0, 3).map(line).join('\n')}`
+        : 'Tiệm chưa có dịch vụ nào đang mở đặt online.', popular.slice(0, 3), ['Xem bảng giá', 'Combo có gì hot?', 'Đặt lịch ngay']);
+    }
+    case 'combo_info': {
+      const combos = catalog.filter((s) => COMBO_RE.test(fold(s.categoryName)) || COMBO_RE.test(fold(s.name)));
+      const list = combos.length ? `\nCombo hiện có:\n${catalogStats(combos).byPrice.map(line).join('\n')}` : '';
+      return reply('Combo là gói nhiều dịch vụ làm liền trong MỘT lượt hẹn, giá tính trọn gói:\n'
+        + '• Đặt một lần, tiệm xếp thợ và thời gian liền mạch — không phải chờ giữa các dịch vụ hay đặt nhiều lịch\n'
+        + '• Giá trọn gói ưu đãi hơn so với đặt lẻ từng dịch vụ (nhóm "Gói combo tiết kiệm")\n'
+        + '• Đặt lẻ phù hợp khi bạn chỉ cần một dịch vụ hoặc muốn tự chọn từng bước'
+        + list, [], ['Combo có gì hot?', 'Xem bảng giá', 'Đặt lịch ngay']);
+    }
+    case 'deposit':
+      return reply(`Lịch có tổng tạm tính trên ${formatVnd(DEPOSIT_THRESHOLD)} cần đặt cọc ${DEPOSIT_PERCENT}% (làm tròn lên 10.000 ₫) `
+        + 'để tiệm giữ thợ và khung giờ. Sau khi đặt, bạn quét mã VietQR và chuyển khoản trong 2 giờ với nội dung "COC <SĐT> <MÃ LỊCH>". '
+        + `Tiền cọc được trừ thẳng vào hoá đơn; huỷ trước giờ hẹn 24 giờ được hoàn cọc. Lịch từ ${formatVnd(DEPOSIT_THRESHOLD)} trở xuống không cần cọc.`);
+    case 'cancel_policy': {
+      const hours = Math.round(((facts.cancelCutoffMinutes ?? 120) / 60) * 10) / 10;
+      return reply('Bạn xem lại lịch ở mục "Tra cứu lịch" bằng mã lịch 8 ký tự hoặc số điện thoại đã đặt. '
+        + `Khi còn ít nhất ${hours} giờ trước giờ hẹn, bạn tự huỷ được ngay tại đó; sát giờ hơn hoặc muốn đổi giờ / đổi thợ, `
+        + `bạn gọi ${facts.hotline || 'hotline của tiệm'} để lễ tân hỗ trợ nhé.`, [], ['Đặt lịch ngay', 'Giờ mở cửa']);
+    }
+    case 'payment':
+      return reply('Tiệm nhận tiền mặt hoặc chuyển khoản (quét mã VietQR tại quầy). Bạn thanh toán sau khi làm xong dịch vụ; '
+        + `riêng lịch trên ${formatVnd(DEPOSIT_THRESHOLD)} cần cọc trước ${DEPOSIT_PERCENT}% và tiền cọc được trừ vào hoá đơn.`);
+    case 'promotion':
+      return reply('Nếu có mã giảm giá, bạn đưa mã cho lễ tân khi thanh toán — mỗi hoá đơn áp dụng một mã, có mã yêu cầu giá trị '
+        + `đơn tối thiểu. Ưu đãi đang áp dụng bạn hỏi nhanh qua ${facts.hotline || 'hotline của tiệm'} nhé.`);
     case 'book':
       return matches.length
         ? reply(`Mình tìm thấy dịch vụ phù hợp:\n${matches.map(line).join('\n')}\nChọn dịch vụ rồi bấm "Đặt lịch" — mình điền sẵn vào phiếu, bạn chỉ cần chọn giờ.`, matches)
@@ -275,7 +344,7 @@ export function customerRuleReply(
     }
     default:
       return reply('Mình chưa rõ bạn cần gì 😊 Bạn mô tả giúp mình nhu cầu (vd. "tóc hư tổn", "da mụn", "mỏi vai gáy") '
-        + 'hoặc chọn nhanh bên dưới nhé.', popular.slice(0, 3), ['Xem bảng giá', 'Dịch vụ hot', 'Tư vấn chăm sóc tóc']);
+        + 'hoặc chọn nhanh bên dưới nhé.', [], ['Xem bảng giá', 'Dịch vụ hot', 'Tư vấn chăm sóc tóc']);
   }
 }
 
@@ -292,6 +361,8 @@ export function customerContextForLlm(catalog: CatalogItem[], hotIds: string[], 
       `Dịch vụ giá cao nhất: ${st.priciest!.name} (${st.priciest!.priceText})`,
       `Dịch vụ nhanh nhất: ${st.fastest!.name} (${st.fastest!.durationMinutes} phút); lâu nhất: ${st.longest!.name} (${st.longest!.durationMinutes} phút)`,
     ] : []),
+    `Chính sách: lịch trên ${formatVnd(DEPOSIT_THRESHOLD)} cọc ${DEPOSIT_PERCENT}% qua VietQR (trừ vào hoá đơn, huỷ trước 24 giờ được hoàn); `
+      + `tự huỷ trên trang Tra cứu khi còn ít nhất ${Math.round(((facts.cancelCutoffMinutes ?? 120) / 60) * 10) / 10} giờ; thanh toán tiền mặt hoặc chuyển khoản`,
     `Giờ mở cửa: ${facts.openingHours.map((h) => `${h.dayLabel} ${h.isClosed ? 'nghỉ' : `${h.openTime.slice(0, 5)}-${h.closeTime.slice(0, 5)}`}`).join('; ')}`,
     'Danh mục (tên | nhóm | phút | giá):',
     ...catalog.slice(0, 80).map((s) => `- ${s.name} | ${s.categoryName} | ${s.durationMinutes} | ${s.priceText}${hot.has(s.id) ? ' | HOT' : ''}`),
@@ -302,7 +373,7 @@ export const CUSTOMER_SYSTEM_PROMPT = 'Bạn là nhân viên tư vấn thân thi
   + 'Xưng "mình", gọi khách là "bạn". Chào hỏi tự nhiên, hỏi nhu cầu (tóc, da, massage, móng), gợi ý 1–3 dịch vụ CÓ TRONG DANH MỤC '
   + 'kèm thời lượng và giá đúng như danh mục. Không bịa dịch vụ, giá, khuyến mãi hay khung giờ trống. Không hỏi số điện thoại — '
   + 'khách tự nhập ở bước đặt lịch. Hỏi số lượng / rẻ nhất / đắt nhất thì CHỈ dùng các dòng "Tổng số dịch vụ", "giá thấp nhất", '
-  + '"giá cao nhất" trong DỮ LIỆU, không tự đếm. Trả lời ngắn (tối đa 5 dòng), văn bản thuần: KHÔNG dùng markdown (**, #, bảng), '
+  + '"giá cao nhất" trong DỮ LIỆU, không tự đếm. Câu hỏi thông tin (giải thích, so sánh, chính sách) thì trả lời thẳng vào câu hỏi, KHÔNG liệt kê dịch vụ nếu khách không hỏi. Trả lời ngắn (tối đa 5 dòng), văn bản thuần: KHÔNG dùng markdown (**, #, bảng), '
   + 'KHÔNG tự tạo nút hay liên kết kiểu [Đặt lịch], [Book now] — giao diện đã có sẵn nút; cuối câu chỉ cần mời khách bấm nút Đặt lịch.';
 
 /**
