@@ -69,7 +69,8 @@ export function parseWhen(m: string, today: string): WhenQuery {
 
   // Bỏ dấu dễ nhầm: "tôi" = "toi" (tối), "chuyển sang" = "sang" (sáng) → chỉ nhận buổi khi đi kèm ngữ cảnh thời gian
   const H = String.raw`\d{1,2}\s*(?:h|g|gio)(?:\s*\d{2})?`;
-  const at = (w: string) => new RegExp(String.raw`\b(buoi ${w}|${w} (nay|mai|som|thu \w+|chu nhat|ngay)|${H} ${w}|vao ${w}|${w}$)`).test(m);
+  // "thế sáng thì sao", "vậy tối được không": câu đổi buổi khi đang tra giờ
+  const at = (w: string) => new RegExp(String.raw`\b(buoi ${w}|${w} (nay|mai|som|thu \w+|chu nhat|ngay)|${H} ${w}|vao ${w}|${w}$|(the|vay) ${w}\b|${w} thi (sao|the nao|duoc|co|con))`).test(m);
   let part: DayPart | null = null;
   if (at('sang')) part = 'sang';
   else if (/\btrua\b/.test(m)) part = 'trua';

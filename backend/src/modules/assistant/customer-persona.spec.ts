@@ -1,5 +1,5 @@
 import { CATEGORIES, SERVICES } from '../../database/realistic/catalog';
-import { CatalogItem, ChatLine, customerRuleReply, detectCustomerIntent, SalonFacts } from './customer-assistant-rules';
+import { CatalogItem, ChatLine, customerRuleReply, detectCustomerIntent, SalonFacts, ungroundedClaim } from './customer-assistant-rules';
 
 /**
  * QA nhập vai khách 12/10 — các cuộc hội thoại THẬT đã chạy trên AI local và từng trả lời sai, khoá lại trên danh mục thật
@@ -126,5 +126,103 @@ describe('Nhập vai khách — câu đơn từng trả lời sai', () => {
     expect(nail.answer).toContain('Giá nhóm móng');
     expect(ask('có nối tóc không').suggestions).toHaveLength(0);
     expect(ask('có thợ nữ không').answer).toContain('14 thợ (9 nữ, 5 nam)');
+  });
+});
+
+/**
+ * Hội thoại có TRẠNG THÁI như widget thật: mỗi lượt gửi lại `state` server vừa trả (dialogue state tracking) — câu cụt
+ * "cắt tóc nữ ?" / "thế giờ trống là ?" phải nối đúng nhiệm vụ đang dở (tra giờ sáng mai), không rơi về tư vấn chung.
+ */
+function chat(nowTime: string, ...questions: string[]) {
+  const history: ChatLine[] = [];
+  let state: CustomerReplyState | undefined;
+  return questions.map((q) => {
+    const r = customerRuleReply(q, catalog, [], facts, new Date('2026-10-12T05:00:00Z'), { history: [...history], today: TODAY, state, nowTime });
+    history.push({ role: 'user', content: q }, { role: 'assistant', content: r.answer });
+    state = r.state;
+    return r;
+  });
+}
+type CustomerReplyState = ReturnType<typeof customerRuleReply>['state'];
+
+describe('Nhập vai khách — log 12/10 tối (giữ ngữ cảnh tra giờ, "bây giờ còn mở cửa")', () => {
+  it('đúng log: alo → còn mở cửa? → sáng mai có giờ trống? → cắt tóc nữ ? → thế giờ trống là ?', () => {
+    const [hi, open, ask, svc, again] = chat('21:21', 'alo', 'bây giờ còn mở cửa không ?', 'sáng mai có giờ nào trống ?', 'cắt tóc nữ ?', 'thế giờ trống là ?');
+    expect(hi.intent).toBe('greeting');
+    expect(open.intent).toBe('open_now');
+    expect(open.answer).toContain('đã đóng cửa');
+    expect(open.answer).not.toContain('Chủ nhật'); // không in cả bảng giờ 7 ngày
+    expect(ask.intent).toBe('availability');
+    expect(ask.state).toMatchObject({ task: 'availability', date: '2026-10-13', part: 'sang', awaitingService: true });
+    expect(svc.intent).toBe('availability');
+    expect(svc.pending).toMatchObject({ serviceId: byName('Cắt tóc nữ').id, when: { date: '2026-10-13', part: 'sang' } });
+    expect(again.intent).toBe('availability');
+    expect(again.pending).toMatchObject({ serviceId: byName('Cắt tóc nữ').id, when: { date: '2026-10-13', part: 'sang' } });
+  });
+
+  it('đổi buổi / đổi ngày giữ dịch vụ: "thế chiều thì sao" → chiều mai; "còn thứ 7 thì sao" → thứ 7 cùng dịch vụ', () => {
+    const [, , afternoon, sat] = chat('10:00', 'sáng mai có giờ nào trống', 'gội đầu dưỡng sinh', 'thế chiều thì sao', 'còn thứ 7 thì sao');
+    const id = byName('Gội đầu dưỡng sinh thảo dược').id;
+    expect(afternoon.pending).toMatchObject({ serviceId: id, when: { date: '2026-10-13', part: 'chieu' } });
+    expect(sat.pending).toMatchObject({ serviceId: id, when: { date: '2026-10-17' } });
+  });
+
+  it('đổi chủ đề giữa chừng thì thoát nhiệm vụ tra giờ: hỏi giá vẫn ra giá, không bị kéo về giờ trống', () => {
+    const [, price] = chat('10:00', 'sáng mai có giờ nào trống', 'cắt tóc nam giá bao nhiêu');
+    expect(price.intent).toBe('service_price');
+    expect(names(price)).toEqual(['Cắt tóc nam tạo kiểu Barber']);
+  });
+
+  it('"bây giờ còn mở cửa không" theo giờ thật: trước giờ mở / đang mở / nghỉ lễ', () => {
+    expect(chat('07:15', 'giờ này tiệm mở cửa chưa')[0].answer).toContain('chưa mở cửa');
+    const [mid] = chat('14:00', 'tiệm còn mở không');
+    expect(mid).toMatchObject({ intent: 'open_now' });
+    expect(mid.answer).toContain('đang mở cửa đến 21:00 (còn khoảng 7 giờ 0 phút)');
+    const holiday = customerRuleReply('bây giờ còn mở cửa không', catalog, [], { ...facts, holidays: [{ startDate: TODAY, endDate: TODAY, reason: 'Sửa chữa' }] },
+      new Date('2026-10-12T05:00:00Z'), { today: TODAY, nowTime: '10:00' });
+    expect(holiday.answer).toContain('Hôm nay tiệm nghỉ (Sửa chữa)');
+    expect(holiday.answer).toContain('Ngày mai (Thứ ba 13/10) tiệm mở từ 08:00');
+  });
+
+  it('chưa hiểu 2 lần liên tiếp → chuyển người thật (hotline), không lặp lại câu hỏi lại vô tận', () => {
+    const [a, b] = chat('10:00', 'xyz qwe', 'abc def ghi');
+    expect(a.intent).toBe('unknown');
+    expect(b.intent).toBe('handoff');
+    expect(b.answer).toContain(facts.hotline);
+  });
+});
+
+describe('Kiểm tra bám dữ liệu câu trả lời tự do của mô hình (grounding check)', () => {
+  it('loại câu bịa giờ trống / giá lạ; giữ câu có giá đúng danh mục', () => {
+    expect(ungroundedClaim('Sáng mai gội đầu còn 12 khung giờ trống: 09:00, 09:15, 09:30', catalog)).toBe('availability');
+    expect(ungroundedClaim('Tiệm còn chỗ lúc 9h nhé', catalog)).toBe('availability');
+    expect(ungroundedClaim('Cắt tóc nữ chỉ 99.000đ thôi ạ', catalog)).toBe('price');
+    expect(ungroundedClaim(`Cắt tóc nữ layer tạo kiểu giá ${byName('Cắt tóc nữ').price.toLocaleString('vi-VN')} đ ạ`, catalog)).toBeNull();
+    expect(ungroundedClaim('Dạ tiệm rất vui được phục vụ bạn, bạn cần tư vấn gì thêm không ạ?', catalog)).toBeNull();
+  });
+
+  it('"thế sáng thì sao" / "vậy tối được không" khi đang tra giờ = đổi buổi, không rơi vào câu tự do', () => {
+    const [, morning, evening] = chat('10:00', 'chiều mai còn giờ gội đầu dưỡng sinh không', 'thế sáng thì sao', 'vậy tối được không');
+    const id = byName('Gội đầu dưỡng sinh thảo dược').id;
+    expect(morning.pending).toMatchObject({ serviceId: id, when: { date: '2026-10-13', part: 'sang' } });
+    expect(evening.pending).toMatchObject({ serviceId: id, when: { date: '2026-10-13', part: 'toi' } });
+  });
+});
+
+describe('Nhập vai khách — vòng chấm điểm 12/10 (eval-assistant)', () => {
+  it('"mấy giờ đóng cửa" → giờ hôm nay + ngày mai, không in cả bảng 7 ngày', () => {
+    const [r] = chat('10:00', 'mấy giờ đóng cửa');
+    expect(r.answer).toBe('Hôm nay (Thứ hai 12/10): tiệm mở cửa 08:00–21:00.\nNgày mai (Thứ ba 13/10): tiệm mở cửa 08:00–21:00.');
+    expect(chat('10:00', 'giờ mở cửa cả tuần')[0].answer).toContain('Chủ nhật: 08:00–21:00');
+  });
+
+  it('ngữ cảnh có 2 dịch vụ → "mai còn giờ không" hỏi lại dịch vụ nào; khách chọn thì tra đúng dịch vụ đó', () => {
+    const [price, ask, pick] = chat('10:00', 'massage cổ vai gáy giá bao nhiêu', 'mai còn giờ không', 'massage bấm huyệt cổ vai gáy');
+    expect(price.suggestions.length).toBeGreaterThanOrEqual(2);
+    expect(ask.intent).toBe('availability');
+    expect(ask.pending).toBeUndefined();
+    expect(ask.answer).toContain('cho dịch vụ nào');
+    expect(ask.state).toMatchObject({ date: '2026-10-13', awaitingService: true });
+    expect(pick.pending).toMatchObject({ serviceId: byName('Massage bấm huyệt cổ vai gáy').id, when: { date: '2026-10-13' } });
   });
 });

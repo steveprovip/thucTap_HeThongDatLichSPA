@@ -36,6 +36,16 @@ export class AssistantController {
     return this.service.workingToday();
   }
 
+  /**
+   * Câu khách hỏi mà trợ lý tư vấn chưa trả lời được (30 ngày, đã che dữ liệu cá nhân) — chủ tiệm xem để bổ sung mô tả
+   * dịch vụ / chính sách: vòng cải tiến liên tục kiểu "knowledge gaps" của các trợ lý CSKH hàng đầu.
+   */
+  @Get('knowledge-gaps')
+  @Roles(Role.OWNER, Role.RECEPTIONIST)
+  knowledgeGaps() {
+    return this.service.knowledgeGaps(30);
+  }
+
   /** TASK v4 · NV1 — số liệu hôm nay cho chế độ "Phân tích & số liệu" của widget. */
   @Get('today')
   @Roles(Role.OWNER, Role.RECEPTIONIST)
@@ -92,6 +102,6 @@ export class PublicAssistantController {
         details: { retryAfterSeconds: 600 },
       }, HttpStatus.TOO_MANY_REQUESTS);
     }
-    return this.service.customerChat(dto.message, dto.history);
+    return this.service.customerChat(dto.message, dto.history, dto.state);
   }
 }

@@ -1,6 +1,8 @@
 import { Injectable, Logger, OnApplicationBootstrap, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
+import { appendFile, mkdir, readFile } from 'fs/promises';
+import { join } from 'path';
 import { formatVnd } from '../../common/utils/currency.util';
 import { addDays, dayOfWeek, endOfDay, startOfDay, todaySalon, toSalon } from '../../common/utils/time.util';
 import { StylistsService } from '../stylists/stylists.service';
@@ -14,8 +16,8 @@ import { findLocalAiDir, isLoopbackUrl, launchLocalAi } from './local-ai-launche
 import { LlmGate, SingleFlight, TtlCache } from './llm-gate';
 import { EventsService } from '../events/events.service';
 import {
-  CatalogItem, CUSTOMER_SYSTEM_PROMPT, customerContextForLlm, CustomerReply, customerRuleReply, SalonFacts,
-  DIRECT_INTENTS, availabilityAnswer, isUnaccented, leadSentence, matchServices, sanitizeLlmAnswer, stripBookingNag,
+  CatalogItem, CUSTOMER_SYSTEM_PROMPT, DialogState, customerContextForLlm, CustomerReply, customerRuleReply, SalonFacts,
+  DIRECT_INTENTS, availabilityAnswer, isUnaccented, leadSentence, matchServices, sanitizeLlmAnswer, stripBookingNag, ungroundedClaim,
 } from './customer-assistant-rules';
 import { callLlm, DEFAULT_LOCAL_AI_URL, LlmConfig, LlmMessage, pickModel, probeLocalServer } from './llm-client';
 
@@ -48,6 +50,15 @@ export interface AssistantInsights {
 }
 
 export interface ChatTurn { role: 'user' | 'assistant'; content: string }
+
+/** Câu trả lời coi là "chưa giải quyết được" để ghi vào lỗ hổng kiến thức. */
+const GAP_INTENTS = new Set(['unknown', 'handoff', 'not_offered']);
+interface GapEntry { at: string; q: string; intent: string }
+/** Che SĐT, email, dãy số dài trước khi ghi nhật ký (bảo vệ dữ liệu cá nhân). */
+export const redactPersonal = (text: string): string => text
+  .replace(/[\w.+-]+@[\w-]+\.[\w.]+/g, '[email]')
+  .replace(/(\+?84|0)[\s.-]?\d(?:[\s.-]?\d){7,9}/g, '[sđt]')
+  .replace(/\d{6,}/g, '[số]');
 
 interface PublicData {
   at: number;
@@ -120,7 +131,7 @@ export class AssistantService implements OnApplicationBootstrap {
   /** Chịu tải: số câu gọi mô hình cùng lúc / hàng chờ / bộ nhớ đệm câu trả lời (xem llm-gate.ts). */
   private readonly gate: LlmGate;
   private readonly answerCache: TtlCache<{ answer: string; suggestions: CatalogItem[] }>;
-  private readonly llmFlight = new SingleFlight<{ answer: string; suggestions: CatalogItem[] } | 'busy' | null>();
+  private readonly llmFlight = new SingleFlight<{ answer: string; suggestions: CatalogItem[] } | 'busy' | 'ungrounded' | null>();
   private readonly publicFlight = new SingleFlight<PublicData>();
   private readonly contextFlight = new SingleFlight<AssistantContext>();
 
@@ -451,7 +462,7 @@ export class AssistantService implements OnApplicationBootstrap {
   }
 
   private async loadPublicData(): Promise<PublicData> {
-    const [groups, counts, hours, team] = await Promise.all([
+    const [groups, counts, hours, team, holidays] = await Promise.all([
       this.availability.publicCatalog(),
       // Lượt đặt 90 ngày của MỌI dịch vụ (trước đây LIMIT 8 → nhóm combo bị báo "chưa đủ lượt đặt" dù có khách đặt)
       this.dataSource.query(
@@ -464,6 +475,11 @@ export class AssistantService implements OnApplicationBootstrap {
       this.dataSource.query(
         `SELECT count(*)::int AS total, count(*) FILTER (WHERE gender = 'female')::int AS female,
                 count(*) FILTER (WHERE gender = 'male')::int AS male FROM stylists WHERE is_active`) as Promise<{ total: number; female: number; male: number }[]>,
+      // Ngày nghỉ toàn tiệm sắp tới — "bây giờ còn mở cửa không" phải biết hôm nay tiệm nghỉ lễ
+      this.dataSource.query(
+        `SELECT to_char(start_date, 'YYYY-MM-DD') AS "startDate", to_char(end_date, 'YYYY-MM-DD') AS "endDate", reason
+           FROM salon_holidays WHERE end_date >= (now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date - 1
+          ORDER BY start_date LIMIT 30`) as Promise<{ startDate: string; endDate: string; reason: string }[]>,
     ]);
     const catalog: CatalogItem[] = groups.flatMap((g) => g.services.map((s) => ({
       id: s.id, name: s.name, categoryName: g.categoryName, durationMinutes: s.durationMinutes,
@@ -476,6 +492,7 @@ export class AssistantService implements OnApplicationBootstrap {
       cancelCutoffMinutes: this.config.get<number>('business.cancelCutoffMinutes') ?? 120,
       maxActiveBookingsPerPhone: this.config.get<number>('business.maxActiveBookingsPerPhone') ?? 3,
       stylists: team[0] ?? { total: 0, female: 0, male: 0 },
+      holidays,
     };
     const ids = new Set(catalog.map((x) => x.id));
     const live = counts.filter((h) => ids.has(h.id));
@@ -492,10 +509,19 @@ export class AssistantService implements OnApplicationBootstrap {
    * giờ trống, chính sách); mô hình ngôn ngữ (nếu bật) chỉ lo phần trò chuyện: câu dẫn cho gợi ý, giải thích theo mô tả dịch vụ,
    * chào hỏi và câu tự do. Thẻ dịch vụ luôn trùng với dịch vụ có trong câu trả lời.
    */
-  async customerChat(message: string, history: ChatTurn[] = []): Promise<CustomerChatResult> {
+  async customerChat(message: string, history: ChatTurn[] = [], state?: DialogState): Promise<CustomerChatResult> {
+    const result = await this.customerChatInner(message, history, state);
+    // Vòng cải tiến liên tục (kiểu Zendesk / HubSpot "knowledge gaps"): ghi câu trợ lý chưa trả lời được để chủ tiệm bổ sung
+    if (GAP_INTENTS.has(result.intent)) void this.recordGap(message, result.intent);
+    return result;
+  }
+
+  private async customerChatInner(message: string, history: ChatTurn[], state?: DialogState): Promise<CustomerChatResult> {
     const { catalog, hotIds, facts, popularity } = await this.publicData();
     const today = todaySalon();
-    const { pending, ...rule } = customerRuleReply(message, catalog, hotIds, facts, new Date(), { history, popularity, today });
+    const { pending, ...rule } = customerRuleReply(message, catalog, hotIds, facts, new Date(), {
+      history, popularity, today, state, nowTime: toSalon(new Date()).toFormat('HH:mm'),
+    });
     const direct = (r: CustomerReply = rule): CustomerChatResult => ({ ...r, source: 'rules', model: null });
 
     // Giờ trống: tra THẬT bằng bộ tính khung giờ của trang đặt lịch (cùng luật ca làm, ngày nghỉ, giữ chỗ, 60 phút đặt trước)
@@ -532,7 +558,7 @@ export class AssistantService implements OnApplicationBootstrap {
           + `tư vấn tại tiệm. Mô tả: ${(rule.suggestions.length ? rule.suggestions : matchServices(message, catalog, 3, true))
             .map((s) => `${s.name} (${s.durationMinutes} phút, ${s.priceText}): ${s.description ?? 'chưa có mô tả'}`).join(' | ') || 'không có'})`
         : `(Gợi ý theo luật, dùng nếu phù hợp: ${rule.answer})`;
-    const ask = async (): Promise<{ answer: string; suggestions: CatalogItem[] } | 'busy' | null> => {
+    const ask = async (): Promise<{ answer: string; suggestions: CatalogItem[] } | 'busy' | 'ungrounded' | null> => {
       const call = await this.gate.run(() => callLlm(cfg, [
         { role: 'system', content: `${CUSTOMER_SYSTEM_PROMPT}\n${customerContextForLlm(catalog, hotIds, facts)}` },
         ...this.history(history),
@@ -547,6 +573,8 @@ export class AssistantService implements OnApplicationBootstrap {
         out = { answer: intro ? `${intro}\n${rule.answer.replace(/^Với nhu cầu của bạn, mình gợi ý:/, 'Mình gợi ý:')}` : rule.answer, suggestions: rule.suggestions };
       } else {
         // Thẻ = đúng các dịch vụ mô hình nêu tên trong câu trả lời (theo thứ tự xuất hiện) — chỉ cho câu tự do
+        // Câu tự do khẳng định giờ trống / giá không có trong dữ liệu → bỏ, trả lời bằng luật (không bao giờ đưa số bịa cho khách)
+        if (ungroundedClaim(text, catalog)) return 'ungrounded';
         const folded = fold(text);
         const mentioned = catalog.map((s) => ({ s, at: folded.indexOf(fold(s.name)) })).filter((x) => x.at >= 0 && fold(x.s.name).length >= 4)
           .sort((a, b) => a.at - b.at).map((x) => x.s);
@@ -557,6 +585,10 @@ export class AssistantService implements OnApplicationBootstrap {
     };
     const res = key ? await this.llmFlight.do(key, ask) : await ask();
     if (res === 'busy') return direct(); // quá tải: trả lời ngay bằng số liệu thật
+    if (res === 'ungrounded') {
+      this.ungroundedBlocked += 1;
+      return direct();
+    }
     if (!res) {
       this.markLlmDown();
       return direct();
@@ -564,9 +596,57 @@ export class AssistantService implements OnApplicationBootstrap {
     return { ...rule, ...res, source: 'llm', model: cfg.model };
   }
 
+  // ------------------------------------------------------------- lỗ hổng kiến thức (câu chưa trả lời được)
+  private readonly gaps: GapEntry[] = [];
+  /** Số câu trả lời tự do của mô hình bị loại vì khẳng định giờ trống / giá không có trong dữ liệu. */
+  private ungroundedBlocked = 0;
+  private gapsLoaded = false;
+
+  private get gapFile(): string {
+    return process.env.ASSISTANT_GAP_LOG || join(process.cwd(), 'logs', 'assistant-gaps.jsonl');
+  }
+
+  /** Ghi câu khách hỏi mà trợ lý chưa trả lời được — đã che SĐT / email / dãy số dài (không lưu dữ liệu cá nhân). */
+  private async recordGap(message: string, intent: string): Promise<void> {
+    const q = redactPersonal(message).slice(0, 200);
+    if (!q.trim()) return;
+    const entry: GapEntry = { at: new Date().toISOString(), q, intent };
+    this.gaps.push(entry);
+    if (this.gaps.length > 2000) this.gaps.splice(0, this.gaps.length - 2000);
+    if (process.env.NODE_ENV === 'test') return;
+    try {
+      await mkdir(join(this.gapFile, '..'), { recursive: true });
+      await appendFile(this.gapFile, `${JSON.stringify(entry)}\n`);
+    } catch { /* nhật ký không được làm hỏng câu trả lời */ }
+  }
+
+  /**
+   * Câu trợ lý chưa trả lời được trong `days` ngày, gom theo nội dung (bỏ dấu) — chủ tiệm xem để bổ sung mô tả dịch vụ,
+   * chính sách hoặc báo đội kỹ thuật thêm ý định mới (vòng: ghi nhận → bổ sung → kiểm thử lại → triển khai).
+   */
+  async knowledgeGaps(days = 30): Promise<{ days: number; total: number; items: { question: string; intent: string; count: number; lastAt: string }[] }> {
+    if (!this.gapsLoaded && process.env.NODE_ENV !== 'test') {
+      this.gapsLoaded = true;
+      try {
+        const old = (await readFile(this.gapFile, 'utf8')).split('\n').filter(Boolean)
+          .map((l) => { try { return JSON.parse(l) as GapEntry; } catch { return null; } }).filter((x): x is GapEntry => !!x);
+        this.gaps.unshift(...old.slice(-2000).filter((o) => !this.gaps.some((g) => g.at === o.at && g.q === o.q)));
+      } catch { /* chưa có tệp */ }
+    }
+    const since = new Date(Date.now() - days * 86_400_000).toISOString();
+    const groups = new Map<string, { question: string; intent: string; count: number; lastAt: string }>();
+    for (const g of this.gaps.filter((x) => x.at >= since)) {
+      const key = fold(g.q).replace(/[^a-z0-9 ]/g, '').trim();
+      const cur = groups.get(key);
+      if (cur) { cur.count += 1; if (g.at > cur.lastAt) cur.lastAt = g.at; } else groups.set(key, { question: g.q, intent: g.intent, count: 1, lastAt: g.at });
+    }
+    const items = Array.from(groups.values()).sort((a, b) => b.count - a.count || b.lastAt.localeCompare(a.lastAt)).slice(0, 30);
+    return { days, total: this.gaps.filter((x) => x.at >= since).length, items };
+  }
+
   /** Số liệu chịu tải của trợ lý (cho /health chi tiết và kiểm thử tải). */
-  loadStats(): { llmActive: number; llmQueued: number; cachedAnswers: number } {
+  loadStats(): { llmActive: number; llmQueued: number; cachedAnswers: number; ungroundedBlocked: number } {
     const g = this.gate.stats;
-    return { llmActive: g.active, llmQueued: g.queued, cachedAnswers: this.answerCache.size };
+    return { llmActive: g.active, llmQueued: g.queued, cachedAnswers: this.answerCache.size, ungroundedBlocked: this.ungroundedBlocked };
   }
 }

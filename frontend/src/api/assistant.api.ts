@@ -1,6 +1,6 @@
 import { api, unwrap } from './client';
 import type {
-  AssistantChatReply, AssistantInsights, AssistantShiftGap, AssistantStatus, AssistantToday, ChatTurn, CustomerAssistantReply,
+  AssistantChatReply, AssistantInsights, AssistantShiftGap, AssistantStatus, AssistantToday, ChatTurn, CustomerAssistantReply, CustomerDialogState,
 } from '@/types';
 
 /** Part 5 — API nội bộ của Trợ lý AI (Chủ tiệm, Lễ tân). */
@@ -27,7 +27,7 @@ export const assistantApi = {
     return unwrap<AssistantChatReply>(await api.post('/assistant/chat', { message, history: history.slice(-6) }));
   },
   /** TASK v3 · NV1: AI tư vấn khách trên trang công khai (không cần đăng nhập). */
-  async customerChat(message: string, history: ChatTurn[] = []): Promise<CustomerAssistantReply> {
-    return unwrap<CustomerAssistantReply>(await api.post('/public/assistant/chat', { message, history: history.slice(-6) }));
+  async customerChat(message: string, history: ChatTurn[] = [], state?: CustomerDialogState): Promise<CustomerAssistantReply> {
+    return unwrap<CustomerAssistantReply>(await api.post('/public/assistant/chat', { message, history: history.slice(-6), ...(state ? { state } : {}) }));
   },
 };

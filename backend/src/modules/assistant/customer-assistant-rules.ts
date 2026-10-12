@@ -32,6 +32,25 @@ export interface SalonFacts {
   maxActiveBookingsPerPhone?: number;
   /** Thợ đang làm việc (tên / giới tính vốn công khai ở bước chọn thợ). */
   stylists?: { total: number; female: number; male: number };
+  /** Ngày nghỉ toàn tiệm sắp tới (yyyy-MM-dd) — "bây giờ còn mở cửa không", giờ mở cửa theo ngày. */
+  holidays?: { startDate: string; endDate: string; reason: string }[];
+}
+
+/**
+ * Trạng thái hội thoại (dialogue state tracking) — việc trợ lý đang làm dở, TÁCH khỏi lịch sử chat (cách các trợ lý CSKH
+ * hàng đầu làm "procedure" nhiều bước): khách hỏi "sáng mai còn giờ nào?" → trợ lý hỏi dịch vụ → khách đáp "cắt tóc nữ"
+ * thì vẫn tra SÁNG MAI; "thế chiều thì sao" chỉ đổi buổi, giữ ngày và dịch vụ.
+ */
+export interface DialogState {
+  task?: 'availability';
+  date?: string;
+  part?: DayPart;
+  time?: string;
+  serviceId?: string;
+  /** Trợ lý vừa hỏi "dịch vụ nào?" — câu tiếp theo nêu tên dịch vụ là câu trả lời cho câu hỏi đó. */
+  awaitingService?: boolean;
+  /** Số lượt liên tiếp chưa hiểu; lượt thứ hai chuyển khách sang nhân viên (human handoff). */
+  misses?: number;
 }
 
 /** Chính sách cọc chống bùng lịch — khớp frontend/src/utils/opsHelpers.ts (DEPOSIT_THRESHOLD, depositAmount). */
@@ -41,7 +60,7 @@ export const DEPOSIT_PERCENT = 30;
 export type CustomerIntent =
   | 'greeting' | 'identity' | 'help' | 'thanks' | 'bye' | 'price_list' | 'hot' | 'book' | 'hours' | 'contact' | 'need' | 'unknown'
   | 'combo_info' | 'explain' | 'service_price' | 'availability' | 'service_duration' | 'service_detail' | 'budget' | 'deposit'
-  | 'not_offered' | 'group_booking' | 'stylists' | 'cancel_policy' | 'payment' | 'promotion'
+  | 'not_offered' | 'group_booking' | 'stylists' | 'open_now' | 'handoff' | 'cancel_policy' | 'payment' | 'promotion'
   | CatalogFactIntent;
 
 /**
@@ -67,7 +86,7 @@ export const CATALOG_FACT_INTENTS: ReadonlySet<CustomerIntent> = new Set<Custome
 export const DIRECT_INTENTS: ReadonlySet<CustomerIntent> = new Set<CustomerIntent>([
   ...CATALOG_FACT_INTENTS, 'hot', 'price_list', 'service_price', 'availability', 'service_duration', 'service_detail', 'budget', 'hours',
   // Giới thiệu bản thân / hướng dẫn trả thẳng: mô hình từng nói "Mình không phải bot" — sai sự thật
-  'identity', 'help', 'not_offered', 'group_booking', 'stylists', 'contact', 'deposit', 'cancel_policy', 'payment', 'promotion',
+  'identity', 'help', 'not_offered', 'group_booking', 'stylists', 'open_now', 'handoff', 'contact', 'deposit', 'cancel_policy', 'payment', 'promotion',
 ]);
 
 export const CARD_INTENTS: ReadonlySet<CustomerIntent> = new Set<CustomerIntent>([
@@ -81,6 +100,8 @@ export interface CustomerReply {
   quickReplies: string[];
   /** Việc máy chủ phải làm tiếp để có câu trả lời thật (tra giờ trống) — không gửi ra giao diện. */
   pending?: { kind: 'availability'; serviceId: string; when: WhenQuery };
+  /** Trạng thái hội thoại cho lượt sau (widget gửi lại nguyên văn). */
+  state?: DialogState;
 }
 
 /** Nhu cầu → từ khoá (không dấu). Khớp với tên / nhóm / mô tả dịch vụ trong danh mục THẬT của tiệm. */
@@ -244,6 +265,10 @@ export interface ReplyOptions {
   popularity?: Record<string, number>;
   /** yyyy-MM-dd theo giờ tiệm (mặc định ngày của `now`). */
   today?: string;
+  /** Trạng thái hội thoại của lượt trước. */
+  state?: DialogState;
+  /** Giờ hiện tại theo giờ tiệm "HH:mm" (mặc định tính từ `now`). */
+  nowTime?: string;
 }
 
 /**
@@ -313,6 +338,8 @@ export interface Detection {
   budget?: BudgetQuery;
   /** Tên dịch vụ tiệm không làm (not_offered). */
   label?: string;
+  /** Tra giờ mà dịch vụ chỉ suy ra từ ngữ cảnh và có ≥ 2 khả năng → hỏi lại khách, không tự chọn bừa. */
+  ambiguous?: boolean;
 }
 
 export function detectCustomerIntent(message: string, catalog: CatalogItem[], opts: ReplyOptions = {}): Detection {
@@ -325,15 +352,40 @@ export function detectCustomerIntent(message: string, catalog: CatalogItem[], op
   const focus = own.length ? own : ctx.services;
   const scope = ownGroup ?? (own.length ? null : ctx.group);
 
+  // Trạng thái hội thoại: việc "tra giờ trống" đang dở → câu sau chỉ cần nêu dịch vụ / đổi ngày giờ
+  const st = opts.state?.task === 'availability' && opts.state.date && opts.state.date >= today ? opts.state : null;
+  const stateService = st?.serviceId ? catalog.find((x) => x.id === st.serviceId) ?? null : null;
+  const parsed = parseWhen(m, today);
+  // Gộp: phần khách vừa nói (ngày / buổi / giờ) ghi đè, phần không nhắc giữ nguyên ("thế chiều thì sao" → giữ ngày)
+  const when: WhenQuery = st && !parsed.explicitDate
+    ? { date: st.date!, explicitDate: true, part: parsed.part ?? (parsed.time ? null : st.part ?? null), time: parsed.time ?? (parsed.part ? null : st.time ?? null) }
+    : parsed;
+  if (st) {
+    const words = m.split(' ').filter(Boolean).length;
+    const otherTopic = PRICE_RE.test(m) || DURATION_RE.test(m) || EXPLAIN_RE.test(m) || DETAIL_RE.test(m) || POLICY_RE.some((x) => x.re.test(m))
+      || parseBudget(m) !== null || CONTACT_RE.test(m);
+    const answersService = st.awaitingService && own.length > 0 && words <= 8 && !otherTopic;
+    const refinesTime = (parsed.explicitDate || parsed.part || parsed.time) && !otherTopic
+      && (words <= 6 || /\b(thi sao|the con|con|duoc khong|khong|ko|nhe|di|sao|vay)\b/.test(m));
+    if (answersService || refinesTime || (AVAILABILITY_RE.test(m) && !otherTopic)) {
+      const svc = own.length ? own : stateService ? [stateService] : focus;
+      return { intent: 'availability', matches: svc, scope, when, ambiguous: !own.length && !stateService && focus.length >= 2 };
+    }
+  }
+  // "bây giờ còn mở cửa không", "giờ này tiệm mở chưa", "đã đóng cửa chưa"
+  if (/\b(bay gio|hien tai|luc nay|gio nay|con mo|dang mo|da dong|dong cua chua|mo cua chua|con lam (khong|ko)|con nhan khach)\b/.test(m)
+    && /\b(mo|dong|lam|nhan)\b/.test(m) && !AVAILABILITY_RE.test(m)) {
+    return { intent: 'open_now', matches: [] };
+  }
   // 0. Dịch vụ tiệm KHÔNG làm ("có nối tóc không") — nói thật, không gợi ý dịch vụ "na ná" như thể tiệm có làm
   const notOffered = NOT_OFFERED.find(([re]) => re.test(m) && !catalog.some((s) => re.test(fold(`${s.name} ${s.description ?? ''}`))));
   if (notOffered) return { intent: 'not_offered', matches: [], label: notOffered[1] };
   // 1. Giờ trống (tra thật ở máy chủ) — trước mọi thứ khác: "massage chân hôm nay còn những giờ nào" không phải liệt kê nhóm
-  const when = parseWhen(m, today);
-  if (AVAILABILITY_RE.test(m) || (BOOK_RE.test(m) && (when.time || when.explicitDate || when.part))
+  if (AVAILABILITY_RE.test(m) || (BOOK_RE.test(m) && (parsed.time || parsed.explicitDate || parsed.part))
     // "chủ nhật này 10h sáng cắt tóc nữ được không"
-    || ((when.time || when.part) && when.explicitDate && focus.length && /\b(duoc|khong|ko|chua|nhe|a)\b/.test(m))) {
-    return { intent: 'availability', matches: focus, scope, when };
+    || ((parsed.time || parsed.part) && parsed.explicitDate && focus.length && /\b(duoc|khong|ko|chua|nhe|a)\b/.test(m))) {
+    return { intent: 'availability', matches: own.length ? own : stateService ? [stateService] : focus, scope, when,
+      ambiguous: !own.length && !stateService && focus.length >= 2 };
   }
   // Đi nhóm / nhiều người
   // (không gồm "nhiều người": "dịch vụ nhiều người đặt" là hỏi dịch vụ hot)
@@ -542,8 +594,14 @@ export function customerRuleReply(
   const hot = hotIds.map((id) => catalog.find((c) => c.id === id)).filter((c): c is CatalogItem => !!c);
   const popular = (hot.length ? hot : catalog).slice(0, 4);
   const shop = facts.name || 'tiệm';
+  // Trạng thái cho lượt sau: giữ việc "tra giờ trống" đang dở; đếm số lượt chưa hiểu liên tiếp
+  const prev = opts.state ?? {};
+  const misses = intent === 'unknown' ? (prev.misses ?? 0) + 1 : 0;
+  const carry: DialogState = prev.task === 'availability' && prev.date && prev.date >= today
+    ? { task: 'availability', date: prev.date, part: prev.part, time: prev.time, serviceId: prev.serviceId, misses }
+    : { misses };
   const reply = (answer: string, suggestions: CatalogItem[] = [], quickReplies = QUICK, extra: Partial<CustomerReply> = {}): CustomerReply =>
-    ({ intent, answer, suggestions, quickReplies, ...extra });
+    ({ intent, answer, suggestions, quickReplies, state: carry, ...extra });
 
   if (CATALOG_FACT_INTENTS.has(intent)) {
     const fact = catalogFactReply(intent as CatalogFactIntent, message, catalog, shop, det.scope ?? null);
@@ -554,13 +612,24 @@ export function customerRuleReply(
     case 'availability': {
       // Câu trả lời thật do máy chủ điền sau khi tra giờ trống (pending); đây là câu dự phòng khi không tra được
       const service = matches[0] ?? null;
+      const w = det.when!;
+      const next: DialogState = { task: 'availability', date: w.date, part: w.part ?? undefined, time: w.time ?? undefined };
       if (!service) {
         const options = det.scope ? catalogStats(det.scope.items).byPrice.slice(0, 3) : popular.slice(0, 3);
-        return reply(`Bạn muốn xem giờ trống ${dayText(det.when!.date, today)} cho dịch vụ nào? `
-          + `Chọn một dịch vụ${det.scope ? ` trong nhóm ${det.scope.label}` : ''} bên dưới hoặc gõ tên dịch vụ nhé.`, options, ['Xem bảng giá', 'Dịch vụ hot']);
+        return reply(`Bạn muốn xem giờ trống ${dayText(w.date, today)}${w.part ? ` ${PART_LABEL[w.part]}` : ''}${w.time ? ` lúc ${w.time}` : ''} cho dịch vụ nào? `
+          + `Chọn một dịch vụ${det.scope ? ` trong nhóm ${det.scope.label}` : ''} bên dưới hoặc gõ tên dịch vụ nhé.`, options, ['Cắt tóc nữ', 'Gội đầu dưỡng sinh', 'Xem bảng giá'],
+        { state: { ...next, awaitingService: true } });
       }
-      return reply(`Bạn bấm "Đặt" ở ${service.name} rồi chọn ngày ${dayText(det.when!.date)} để xem giờ trống nhé.`, [service],
-        ['Ngày mai còn giờ nào?', 'Xem bảng giá'], { pending: { kind: 'availability', serviceId: service.id, when: det.when! } });
+      // "massage cổ vai gáy giá bao nhiêu" (2 dịch vụ) → "mai còn giờ không": hỏi lại dịch vụ nào thay vì tự chọn cái đầu
+      if (det.ambiguous) {
+        const options = matches.slice(0, 3);
+        return reply(`Bạn muốn xem giờ trống ${dayText(w.date, today)}${w.part ? ` ${PART_LABEL[w.part]}` : ''}${w.time ? ` lúc ${w.time}` : ''} cho dịch vụ nào: `
+          + `${options.map((x) => x.name).join(' hay ')}? Bấm chọn bên dưới hoặc gõ tên nhé.`, options, options.map((x) => x.name),
+        { state: { ...next, awaitingService: true } });
+      }
+      const later = w.part === 'sang' ? 'Buổi chiều thì sao?' : w.date === today ? 'Ngày mai thì sao?' : 'Buổi tối thì sao?';
+      return reply(`Bạn bấm "Đặt" ở ${service.name} rồi chọn ngày ${dayText(w.date)} để xem giờ trống nhé.`, [service],
+        [later, 'Giá bao nhiêu?'], { pending: { kind: 'availability', serviceId: service.id, when: w }, state: { ...next, serviceId: service.id } });
     }
     case 'service_duration': {
       const list = matches.length ? matches.slice(0, 4) : catalogStats(det.scope!.items).byTime.slice(0, 4);
@@ -593,6 +662,28 @@ export function customerRuleReply(
       }
       return reply(`Dịch vụ ${b.label}${det.scope ? ` trong nhóm ${det.scope.label}` : ''} (${items.length} dịch vụ):\n`
         + `${sorted.slice(0, 6).map(line).join('\n')}${items.length > 6 ? `\n…và ${items.length - 6} dịch vụ khác` : ''}`, sorted.slice(0, 3), ['Dịch vụ hot', 'Xem bảng giá']);
+    }
+    case 'open_now': {
+      const clock = opts.nowTime ?? new Date((now?.getTime() ?? Date.now()) + 7 * 3600_000).toISOString().slice(11, 16);
+      const holiday = (d: string) => facts.holidays?.find((h) => h.startDate <= d && d <= h.endDate) ?? null;
+      const hoursOf = (d: string) => facts.openingHours.find((x) => fold(x.dayLabel) === fold(DOW_LABEL[new Date(`${d}T00:00:00Z`).getUTCDay()]));
+      const nextOpen = (): string => {
+        for (let i = 1; i <= 14; i += 1) {
+          const d = plusDays(today, i);
+          const h = hoursOf(d);
+          if (h && !h.isClosed && !holiday(d)) return `${dayText(d, today).replace(/^./, (c) => c.toUpperCase())} tiệm mở từ ${h.openTime.slice(0, 5)}.`;
+        }
+        return '';
+      };
+      const h = hoursOf(today);
+      const off = holiday(today);
+      if (off || !h || h.isClosed) return reply(`Hôm nay tiệm nghỉ${off ? ` (${off.reason})` : ''}. ${nextOpen()}`, [], ['Ngày mai còn giờ nào?', 'Giờ mở cửa']);
+      const [o, c] = [h.openTime.slice(0, 5), h.closeTime.slice(0, 5)];
+      if (clock < o) return reply(`Bây giờ là ${clock}, tiệm chưa mở cửa — hôm nay mở từ ${o} đến ${c}.`, [], ['Hôm nay còn giờ nào?', 'Giờ mở cửa']);
+      if (clock >= c) return reply(`Bây giờ là ${clock}, tiệm đã đóng cửa (hôm nay mở ${o}–${c}). ${nextOpen()}`, [], ['Ngày mai còn giờ nào?', 'Giờ mở cửa']);
+      const left = hhmm(c) - hhmm(clock);
+      return reply(`Tiệm đang mở cửa đến ${c} (còn khoảng ${left >= 60 ? `${Math.floor(left / 60)} giờ ${left % 60} phút` : `${left} phút`}). `
+        + 'Đặt online cần trước giờ hẹn ít nhất 60 phút; đến thẳng tiệm thì lễ tân xếp khách vãng lai nếu còn thợ rảnh.', [], ['Hôm nay còn giờ nào?', 'Giờ mở cửa']);
     }
     case 'not_offered': {
       const near = det.scope ? ` Các dịch vụ nhóm ${det.scope.label} đang có: ${catalogStats(det.scope.items).byPrice.slice(0, 3).map((x) => x.name).join(', ')}.` : '';
@@ -709,6 +800,15 @@ export function customerRuleReply(
     case 'hours': {
       const asked = det.when?.explicitDate ? dayHours(facts, det.when.date) : null;
       if (asked) return reply(`${asked} Muốn biết ngày đó còn giờ trống không, bạn hỏi mình kèm tên dịch vụ (vd. "cắt tóc nữ ngày đó còn giờ nào") nhé.`);
+      if (/\b(may gio|den may gio|dong cua|mo cua (den|toi) may|hom nay)\b/.test(m)) {
+        const line = (d: string): string => {
+          const off = facts.holidays?.find((h) => h.startDate <= d && d <= h.endDate);
+          const h = dayHours(facts, d);
+          return off ? `${dayText(d, today)} tiệm nghỉ (${off.reason}).` : h ? `${dayText(d, today)}: ${h.replace(/^[^ ]+ [^ ]+ /, '')}` : '';
+        };
+        const both = [line(today), line(plusDays(today, 1))].filter(Boolean).map((x) => x.replace(/^./, (c) => c.toUpperCase()));
+        if (both.length) return reply(both.join('\n'), [], ['Bây giờ còn mở cửa không?', 'Ngày mai còn giờ nào?', 'Giờ mở cửa cả tuần']);
+      }
       const hours = facts.openingHours.map((h) => `${h.dayLabel}: ${h.isClosed ? 'nghỉ' : `${h.openTime.slice(0, 5)}–${h.closeTime.slice(0, 5)}`}`);
       return reply(hours.length ? `Giờ mở cửa của ${shop}:\n${hours.join('\n')}` : `Bạn gọi ${facts.hotline} để hỏi giờ mở cửa giúp mình nhé.`);
     }
@@ -722,6 +822,11 @@ export function customerRuleReply(
       ['Hôm nay còn giờ nào?', 'Xem bảng giá']);
     }
     default:
+      if (misses >= 2) {
+        return reply(`Xin lỗi bạn, câu này mình chưa trả lời chính xác được 🙏 Để không mất thời gian của bạn, bạn gọi hoặc nhắn Zalo `
+          + `${facts.hotline || 'hotline của tiệm'} — nhân viên tiệm hỗ trợ trực tiếp ngay. Mình vẫn ở đây nếu bạn cần hỏi giá, giờ trống hay dịch vụ.`,
+        [], ['Xem bảng giá', 'Hôm nay còn giờ nào?'], { intent: 'handoff', state: { ...carry, misses: 0 } });
+      }
       return reply('Mình chưa rõ ý bạn 😊 Mình trả lời tốt nhất về dịch vụ, giá, giờ còn trống và chính sách của tiệm — bạn thử mô tả nhu cầu '
         + '(vd. "tóc hư tổn", "da mụn", "mỏi vai gáy") hoặc chọn nhanh bên dưới nhé.', [], ['Xem bảng giá', 'Dịch vụ hot', 'Hôm nay còn giờ nào?']);
   }
@@ -785,6 +890,24 @@ export function leadSentence(text: string): string {
 export function stripBookingNag(text: string): string {
   return text.split('\n').map((l) => l.replace(/[^.!?\n]*(bấm\s*(nút\s*)?"?(đặt|chọn)|nhấn\s*"?đặt)[^.!?\n]*[.!?]?\s*$/i, '').trimEnd())
     .join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+/**
+ * Kiểm tra bám dữ liệu (grounding check) cho câu trả lời TỰ DO của mô hình: trả về lý do nếu câu đó khẳng định điều chỉ
+ * công cụ tra cứu mới biết — giờ trống / còn chỗ (phải tra lịch thật) hoặc một mức giá không có trong danh mục.
+ * Thử thật 12/10: "thế sáng thì sao" rơi vào nhánh tự do, mô hình 4B bịa "còn 12 khung giờ trống: 09:00, 09:15…".
+ */
+export function ungroundedClaim(text: string, catalog: CatalogItem[]): string | null {
+  const t = fold(text);
+  if (/\b(khung gio|gio trong|con trong|con cho|con slot|con lich)\b/.test(t) || (t.match(/\b\d{1,2}:\d{2}\b/g) ?? []).length >= 3) return 'availability';
+  const prices = new Set(catalog.map((x) => x.price));
+  for (const a of catalog) for (const b of catalog) prices.add(a.price + b.price); // tổng 2 dịch vụ khách hỏi cùng lúc
+  const money = /(\d{1,3}(?:[.,]\d{3})+|\d+)\s*(d|vnd|dong|k|nghin|ngan)\b/g;
+  for (let x = money.exec(t); x; x = money.exec(t)) {
+    const n = Number(x[1].replace(/[.,]/g, '')) * (/^(k|nghin|ngan)$/.test(x[2]) ? 1000 : 1);
+    if (n >= 10_000 && !prices.has(n)) return 'price';
+  }
+  return null;
 }
 
 export function sanitizeLlmAnswer(text: string): string {

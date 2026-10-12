@@ -19,6 +19,15 @@ Launcher (biểu tượng Hương Sen Salon / `HoYoSalon.bat`) đọc tệp này
 - Sửa lỗi bỏ dấu tiếng Việt: "cô dâu" ≠ "ở đâu", "giá cắt" ≠ "giá cả", "mất" ≠ "mặt", "thứ" ≠ "thư", "tháng" ≠ "thẳng", "gói" ≠ "gội", "đau" ≠ "đầu", "tiệm" ≠ "tiêm", "tôi" ≠ "tối".
 - "Combo có gì hot" xếp theo lượt đặt thật 90 ngày của mọi dịch vụ; mô hình chỉ viết một câu dẫn ngắn, danh sách / giá luôn lấy từ dữ liệu; không còn tự nhận "không phải bot".
 
+### Trợ lý AI — nhớ đang hỏi gì, không bịa số liệu (nhập vai khách lần 3)
+- **Trạng thái hội thoại**: "sáng mai có giờ nào trống?" → "cắt tóc nữ ?" → "thế giờ trống là ?" giữ đúng ngày mai buổi sáng + dịch vụ vừa chọn; "thế chiều thì sao", "vậy tối được không", "còn thứ 7 thì sao" đổi buổi / ngày mà giữ dịch vụ; hỏi giá giữa chừng thì thoát nhiệm vụ tra giờ.
+- "Bây giờ còn mở cửa không?" trả lời theo giờ thật (chưa mở / đang mở, còn bao lâu / đã đóng, mai mở lúc mấy giờ / hôm nay nghỉ lễ) thay vì in cả bảng giờ 7 ngày; "mấy giờ đóng cửa" chỉ nêu hôm nay và ngày mai.
+- Ngữ cảnh có từ 2 dịch vụ trở lên ("massage cổ vai gáy giá bao nhiêu" → "mai còn giờ không") thì hỏi lại khách chọn dịch vụ nào, không tự chọn bừa.
+- **Kiểm tra bám dữ liệu**: câu trả lời tự do của mô hình mà khẳng định giờ trống hoặc một mức giá không có trong danh mục bị loại, trả bằng dữ liệu thật (thử thật: mô hình 4B từng bịa "còn 12 khung giờ trống").
+- Chưa hiểu 2 lần liên tiếp → chuyển sang hotline / Zalo của tiệm thay vì hỏi lại mãi.
+- Ghi "lỗ hổng kiến thức" (câu chưa trả lời được, đã che SĐT / email) — chủ tiệm / lễ tân xem qua `GET /api/assistant/knowledge-gaps`.
+- Bộ chấm điểm nhiều lượt kiểu τ-bench `npm run eval:ai` (12 kịch bản, 33 lượt, k = 3): AI local đạt pass^3 = 100%.
+
 ### Hiệu năng & chịu tải
 - 1000 khách hỏi trợ lý cùng lúc: 100% được trả lời; khi có mô hình 1 luồng, p95 giảm từ 81 giây xuống 1,4 giây (cổng chặn đồng thời, gộp câu trùng, bộ nhớ đệm câu trả lời).
 - Danh mục công khai: truy vấn song song + bộ nhớ đệm 30 giây tự xoá khi chủ tiệm sửa (447 → 2.176 yêu cầu/giây).

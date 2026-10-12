@@ -712,4 +712,16 @@ export interface CustomerAssistantReply {
   model: string | null;
   /** Ngày trợ lý vừa tra giờ trống — "Đặt" mở phiếu đặt lịch đúng ngày này. */
   bookDate?: string;
+  /** Trạng thái hội thoại (đang tra giờ ngày nào, buổi nào, dịch vụ nào…) — gửi lại nguyên vẹn ở câu kế tiếp. */
+  state?: CustomerDialogState;
+}
+
+export interface CustomerDialogState {
+  task?: 'availability';
+  date?: string;
+  part?: 'sang' | 'trua' | 'chieu' | 'toi';
+  time?: string;
+  serviceId?: string;
+  awaitingService?: boolean;
+  misses?: number;
 }

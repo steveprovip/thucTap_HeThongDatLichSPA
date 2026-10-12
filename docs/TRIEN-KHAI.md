@@ -317,6 +317,23 @@ Laptop và điện thoại **không cần cập nhật gì**: chúng mở trang 
 
 Nhờ vậy test không làm bẩn dữ liệu bạn đang xem trên giao diện.
 
+### 6.1 Chấm điểm Trợ lý tư vấn khách (`npm run eval:ai`)
+
+Chạy khi máy chủ đang bật (có hoặc không có AI local): `npm run eval:ai` (tuỳ chọn `-- --k 5 --base http://<máy chủ>/api --min 0.9`).
+
+- Mỗi kịch bản là **một cuộc hội thoại nhiều lượt** nhập vai khách, gửi kèm lịch sử và **trạng thái hội thoại** (`state`) y như widget.
+- Chấm theo **kết quả** (ý định, ngày tra giờ trống, dịch vụ trong thẻ, giá đúng danh mục), không so từng chữ của câu văn.
+- Mỗi kịch bản chạy `k` lần (mặc định 3) → **pass^k** = tỉ lệ kịch bản đạt cả k lần, đo độ ổn định của mô hình (phương pháp τ-bench).
+- Báo cáo `logs/ai-eval-<ngày>.md`; mã thoát khác 0 khi pass^k dưới ngưỡng `--min` → dùng làm **cổng hồi quy** trước khi đổi model / prompt / luật.
+
+Vòng cải tiến liên tục:
+
+1. Câu trợ lý chưa trả lời được (chưa hiểu, chuyển người thật, dịch vụ tiệm không làm) được ghi vào `logs/assistant-gaps.jsonl`
+   (đã che SĐT / email / dãy số). Chủ tiệm / lễ tân xem gom nhóm 30 ngày qua `GET /api/assistant/knowledge-gaps`.
+2. Bổ sung mô tả dịch vụ / chính sách, hoặc thêm luật cho ý định mới.
+3. Thêm câu đó thành kịch bản trong `scripts/ai/eval-assistant.mjs` (và unit test trong `customer-persona.spec.ts`).
+4. `npm run eval:ai` đạt 100% rồi mới cập nhật.
+
 ---
 
 ## 7. Biến môi trường mới

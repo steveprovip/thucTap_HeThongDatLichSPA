@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CalendarCheck, Check, Clock3, Flower2, Loader2, MessageCircleHeart, Plus, Send, X } from 'lucide-react';
 import { assistantApi, getErrorMessage } from '@/api';
-import type { ChatTurn, CustomerAssistantService } from '@/types';
+import type { ChatTurn, CustomerAssistantService, CustomerDialogState } from '@/types';
 import { formatVnd } from '@/utils/format';
 import { serviceImage, serviceMediaKind } from '@/utils/images';
 import { SmartImage } from './Media';
@@ -41,6 +41,8 @@ export function CustomerAiAssistant({ onBook, liftPx = 0 }: {
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [picked, setPicked] = useState<CustomerAssistantService[]>([]);
+  /** Trạng thái hội thoại server trả về (ngày / buổi / dịch vụ đang hỏi) — để "cắt tóc nữ ?" nối tiếp "sáng mai có giờ trống?". */
+  const dialog = useRef<CustomerDialogState | undefined>(undefined);
   const logRef = useRef<HTMLDivElement>(null);
   const lastBotRef = useRef<HTMLDivElement>(null);
 
@@ -67,7 +69,8 @@ export function CustomerAiAssistant({ onBook, liftPx = 0 }: {
     setDraft('');
     setBusy(true);
     try {
-      const r = await assistantApi.customerChat(q, past);
+      const r = await assistantApi.customerChat(q, past, dialog.current);
+      dialog.current = r.state;
       setLines((l) => [...l, { from: 'bot', text: r.answer, suggestions: r.suggestions, meta: r.source === 'llm' ? 'AI tư vấn' : undefined, bookDate: r.bookDate }]);
       if (r.quickReplies?.length) setQuick(r.quickReplies);
     } catch (e) {

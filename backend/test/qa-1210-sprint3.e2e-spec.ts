@@ -179,6 +179,35 @@ describe('QA 12/10 — voucher PATCH, AI thợ đang trực, duyệt nghỉ, ema
       }).expect(200);
       expect(next.body.data.intent).toBe('availability');
       expect(next.body.data.answer).toContain(svc.name);
+    
+
+      // Trạng thái hội thoại (dialogue state) như widget: "ngày X còn giờ nào" → hỏi dịch vụ → khách chỉ gõ tên dịch vụ
+      const ask = await request(server).post('/api/public/assistant/chat').send({ message: `ngày ${ddmm} còn giờ nào trống` }).expect(200);
+      expect(ask.body.data.state).toMatchObject({ task: 'availability', date, awaitingService: true });
+      const answer = await request(server).post('/api/public/assistant/chat')
+        .send({ message: `${svc.name} ?`, state: ask.body.data.state }).expect(200);
+      expect(answer.body.data).toMatchObject({ intent: 'availability', bookDate: date });
+      expect(answer.body.data.answer).toContain(`còn ${count} khung giờ trống`);
+      // "thế giờ trống là ?" giữ đúng ngày + dịch vụ đang tra (log 12/10: từng nhảy về "hôm nay")
+      const again = await request(server).post('/api/public/assistant/chat')
+        .send({ message: 'thế giờ trống là ?', state: answer.body.data.state }).expect(200);
+      expect(again.body.data).toMatchObject({ intent: 'availability', bookDate: date });
+    });
+
+    it('state do client gửi được kiểm tra chặt (ngày / giờ / id sai định dạng → 400)', async () => {
+      for (const state of [{ date: '13/10' }, { time: '25:00' }, { serviceId: 'abc' }, { task: 'drop table' }]) {
+        await request(server).post('/api/public/assistant/chat').send({ message: 'còn giờ không', state }).expect(400);
+      }
+    });
+
+    it('câu chưa trả lời được ghi vào "lỗ hổng kiến thức" (đã che SĐT) — chỉ nhân viên xem được', async () => {
+      await request(server).post('/api/public/assistant/chat').send({ message: 'tiệm có bán vé số 0912345678 không qwz' }).expect(200);
+      await request(server).get('/api/assistant/knowledge-gaps').expect(401);
+      const gaps = (await request(server).get('/api/assistant/knowledge-gaps').set(as('owner')).expect(200)).body.data;
+      const hit = gaps.items.find((g: { question: string }) => g.question.includes('vé số'));
+      expect(hit).toBeDefined();
+      expect(hit.question).not.toContain('0912345678');
+      expect(hit.question).toContain('[sđt]');
     });
   });
 
