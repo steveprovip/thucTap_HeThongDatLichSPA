@@ -80,6 +80,8 @@ export function HomePage() {
   const [groups, setGroups] = useState<PublicCatalogGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  // Dev Frontend – phân hệ Khách: debounce 250ms (giống Step1Services) — gõ nhanh trên điện thoại chỉ tốn một request
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [category, setCategory] = useState("all");
   const toast = useToast();
   // TASK v4: ảnh đội ngũ ở hero = chuyên viên THẬT của tiệm (máy chủ), dự phòng ảnh tĩnh khi chưa tải được
@@ -88,12 +90,16 @@ export function HomePage() {
     ? team.slice(0, 5).map((m) => ({ src: stylistPhoto(m.id, m.avatarUrl, m.gender), name: m.fullName })).filter((m) => m.src)
     : TEAM;
   useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(search), 250);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+  useEffect(() => {
     let alive = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const fetchCatalog = (retryCount = 0) => {
       setLoading(true);
       publicApi
-        .catalog(search.trim() || undefined)
+        .catalog(debouncedSearch.trim() || undefined)
         .then((data) => {
           if (alive) setGroups(data);
         })
@@ -113,7 +119,7 @@ export function HomePage() {
       alive = false;
       if (timer) clearTimeout(timer);
     };
-  }, [search, toast]);
+  }, [debouncedSearch, toast]);
   const visible = useMemo(
     () =>
       category === "all"
