@@ -9,6 +9,10 @@ export const assistantApi = {
   async status(): Promise<AssistantStatus> {
     return unwrap<AssistantStatus>(await api.get('/assistant/status'));
   },
+  /** QA 12/10: bật AI local một chạm (máy chủ tự chạy model_AI_local\chay_ai_local.cmd ở chế độ ẩn). */
+  async startLocal(): Promise<{ started: boolean; starting: boolean; message: string }> {
+    return unwrap(await api.post('/assistant/local/start'));
+  },
   /** TASK v4 · NV1: số liệu hôm nay cho chế độ "Phân tích & số liệu". */
   async today(): Promise<AssistantToday> {
     return unwrap<AssistantToday>(await api.get('/assistant/today'));

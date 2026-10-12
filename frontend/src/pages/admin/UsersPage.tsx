@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { KeyRound, Lock, Plus, Search, Unlock, UserCog } from 'lucide-react';
-import { getErrorMessage, usersApi } from '@/api';
-import type { Role, UserRow } from '@/types';
+import { getErrorMessage, stylistsApi, usersApi } from '@/api';
+import type { Role, Stylist, UserRow } from '@/types';
 import {
-  EmailText,
+  EmailText, Notice,
   Button, ConfirmDialog, EmptyState, Field, Input, Modal, Pagination, SectionTitle, Select, TableSkeleton,
   TempPasswordDialog, type TempCredential,
 } from '@/components';
@@ -26,6 +27,8 @@ export function UsersPage() {
   const [limit, setLimit] = useState(20);
   const [data, setData] = useState<{ items: UserRow[]; total: number; totalPages: number } | null>(null);
   const [loading, setLoading] = useState(true);
+  /** QA Sprint 3 · mục 2: hồ sơ thợ chưa có tài khoản đăng nhập (không nằm trong danh sách tài khoản). */
+  const [noAccount, setNoAccount] = useState<Stylist[]>([]);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<UserRow | null>(null);
   const [resetTarget, setResetTarget] = useState<UserRow | null>(null);
@@ -95,6 +98,10 @@ export function UsersPage() {
     }
   };
 
+  useEffect(() => {
+    stylistsApi.list({ isActive: true }).then((l) => setNoAccount(l.filter((s) => !s.userId))).catch(() => setNoAccount([]));
+  }, []);
+
   return (
     <div className="space-y-3">
       <SectionTitle
@@ -104,6 +111,14 @@ export function UsersPage() {
           : 'Tạo tài khoản sẽ sinh mật khẩu tạm (hiển thị ngay để sao chép, đồng thời gửi qua email); người dùng buộc đổi ở lần đăng nhập đầu tiên.'}
         action={!readOnly && <Button size="sm" icon={<Plus size={15} />} onClick={openCreate}>Tạo tài khoản</Button>}
       />
+
+      {noAccount.length > 0 && (
+        <Notice tone="warning" title={`${noAccount.length} thợ chưa có tài khoản đăng nhập`}>
+          {noAccount.slice(0, 6).map((s) => s.fullName).join(', ')}{noAccount.length > 6 ? '…' : ''} — hồ sơ thợ đã có nhưng chưa có email
+          nên không hiện trong danh sách tài khoản. Thêm email ở{' '}
+          <Link to="/quan-ly/tho" className="font-semibold underline">Hồ sơ thợ</Link> để tạo hoặc gắn tài khoản cho thợ.
+        </Notice>
+      )}
 
       <div className="relative max-w-md">
         <Search size={17} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted" />

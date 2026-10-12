@@ -5,7 +5,7 @@ import { Type } from 'class-transformer';
 import { IsEnum, IsInt, IsOptional, Matches, Max, Min } from 'class-validator';
 import { InvoicesService } from './invoices.service';
 import {
-  AdjustInvoiceDto, CreateInvoiceDto, CreateVoucherDto, PayInvoiceDto, UpdateInvoiceDto,
+  AdjustInvoiceDto, CreateInvoiceDto, CreateVoucherDto, PayInvoiceDto, UpdateInvoiceDto, UpdateVoucherDto,
 } from './dto/invoice.dto';
 import { InvoiceStatus } from '../../database/entities/invoice.entity';
 import { AuditAction } from '../../database/entities/audit-log.entity';
@@ -105,6 +105,13 @@ export class VouchersController {
   @Audit(AuditAction.CREATE, 'voucher', 'Tạo mã giảm giá')
   create(@Body() dto: CreateVoucherDto) {
     return this.service.createVoucher(dto);
+  }
+
+  @Patch(':id')
+  @Roles(Role.OWNER)
+  @Audit(AuditAction.UPDATE, 'voucher', 'Cập nhật mã giảm giá')
+  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateVoucherDto) {
+    return this.service.updateVoucher(id, dto);
   }
 
   @Delete(':id')

@@ -8,8 +8,9 @@ import { WorkingHoursService } from '../working-hours/working-hours.service';
 import { AvailabilityService } from '../booking-engine/availability.service';
 import {
   AssistantContext, AssistantIntent, ComboInsight, contextForLlm, detectIntent, DOW_VI, fold, GoldenHour, hourLabel,
-  HolidayLite, quickReplies, ruleAnswer, ShiftGapSuggestion, SYSTEM_PROMPT, TodaySnapshot,
+  HolidayLite, quickReplies, ruleAnswer, ShiftGapSuggestion, SYSTEM_PROMPT, TodaySnapshot, WorkingStylist,
 } from './assistant-rules';
+import { findLocalAiDir, isLoopbackUrl, launchLocalAi } from './local-ai-launcher';
 import {
   CatalogItem, CUSTOMER_SYSTEM_PROMPT, customerContextForLlm, CustomerReply, customerRuleReply, SalonFacts,
 } from './customer-assistant-rules';
@@ -27,6 +28,10 @@ export interface AssistantStatus {
   localDetected: boolean;
   /** Địa chỉ máy chủ AI local được dò (chế độ auto) — để hướng dẫn bật AI local. */
   localUrl: string | null;
+  /** Máy này đã tải model (model_AI_local) và bật được AI local một chạm. */
+  localAvailable: boolean;
+  /** Đang khởi động AI local (đã bật chay_ai_local.cmd, chờ model nạp xong). */
+  localStarting: boolean;
 }
 
 export interface AssistantInsights {
@@ -59,6 +64,8 @@ const INSIGHT_DAYS = 90;
 /** Dò lại máy chủ AI local sau: 30 giây khi đang chạy, 10 giây khi chưa thấy / vừa lỗi (bật model lên là dùng ngay). */
 const PROBE_OK_MS = 30_000;
 const PROBE_MISS_MS = 10_000;
+/** Nạp model 4B lên card đồ hoạ mất 20–90 giây: không bật lại chay_ai_local.cmd lần nữa trong khoảng này. */
+const AUTOSTART_COOLDOWN_MS = 3 * 60_000;
 
 /**
  * Part 5 — Trợ lý AI cho chủ tiệm & lễ tân. Lõi là SỐ LIỆU THẬT (giờ vàng, combo, khung thiếu thợ, ngày lễ) tính bằng
@@ -115,8 +122,38 @@ export class AssistantService {
       if (cfg && !this.probe?.cfg) this.logger.log(`Phát hiện AI local ${cfg.model} tại ${this.localUrl} — chuyển câu hỏi cho mô hình`);
       if (!cfg && this.probe?.cfg) this.logger.warn('AI local đã tắt — trợ lý trả lời theo luật');
       this.probe = { at: Date.now(), cfg };
+      if (cfg) this.autostartAt = 0;
+      else if (this.config.get<boolean>('ai.autostart')) this.startLocal(false);
     }
     return this.probe?.cfg ?? null;
+  }
+
+  private autostartAt = 0;
+
+  /** Thư mục model_AI_local nếu máy này bật được AI local (chế độ auto + địa chỉ localhost + đã tải model). */
+  private localDir(): string | null {
+    if (this.settings.provider !== 'auto' || !isLoopbackUrl(this.localUrl)) return null;
+    return findLocalAiDir();
+  }
+
+  /**
+   * QA Sprint 3 · mục 6 — tự phục hồi AI: bật lại máy chủ AI local đã tải sẵn (ẩn cửa sổ). `manual` = người dùng bấm nút
+   * "Bật AI local" (vẫn tôn trọng thời gian chờ nạp model để không bật hai bản cùng lúc).
+   */
+  startLocal(manual = true): { started: boolean; starting: boolean; message: string } {
+    const dir = this.localDir();
+    if (!dir) {
+      return { started: false, starting: false, message: 'Máy này chưa tải AI local (model_AI_local\\tai_model_local.cmd) hoặc đang dùng AI cấu hình cố định' };
+    }
+    if (Date.now() - this.autostartAt < AUTOSTART_COOLDOWN_MS) {
+      return { started: false, starting: true, message: 'AI local đang khởi động, model nạp xong là trợ lý tự chuyển sang AI' };
+    }
+    const started = launchLocalAi(dir);
+    if (!started) return { started: false, starting: false, message: 'Hệ điều hành này chưa hỗ trợ bật AI local một chạm' };
+    this.autostartAt = Date.now();
+    this.probe = { at: Date.now(), cfg: null }; // dò lại sau 10 giây
+    this.logger.log(`${manual ? 'Người dùng bật' : 'Tự bật lại'} AI local: ${dir}`);
+    return { started: true, starting: true, message: 'Đang bật AI local, khoảng 30–90 giây nữa trợ lý sẽ trả lời bằng AI' };
   }
 
   /** Mô hình vừa lỗi / quá giờ: chế độ auto tạm dùng luật 10 giây rồi mới dò lại (không bắt khách chờ timeout liên tiếp). */
@@ -134,6 +171,8 @@ export class AssistantService {
       model: cfg?.model ?? null,
       localDetected: s.provider === 'auto' && !!cfg,
       localUrl: s.provider === 'auto' ? this.localUrl : null,
+      localAvailable: !cfg && !!this.localDir(),
+      localStarting: !cfg && Date.now() - this.autostartAt < AUTOSTART_COOLDOWN_MS,
     };
   }
 
@@ -267,6 +306,47 @@ export class AssistantService {
     };
   }
 
+  /**
+   * QA 12/10 — thợ có ca hôm nay + đang trong ca / đang làm khách / đang rảnh (tươi mỗi câu hỏi). Chỉ tên thợ (nhân sự),
+   * không có dữ liệu khách. Thợ xin nghỉ cả ngày không tính là đang trong ca.
+   */
+  async workingToday(): Promise<WorkingStylist[]> {
+    const rows: {
+      stylist_id: string; full_name: string; start_time: string; end_time: string; break_start: string | null; break_end: string | null;
+      time_off: string | null; on_shift: boolean; busy: boolean;
+    }[] = await this.dataSource.query(
+      `WITH n AS (SELECT (now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::time AS lt)
+       SELECT s.id AS stylist_id, s.full_name,
+              to_char(sh.start_time, 'HH24:MI') AS start_time, to_char(sh.end_time, 'HH24:MI') AS end_time,
+              to_char(sh.break_start, 'HH24:MI') AS break_start, to_char(sh.break_end, 'HH24:MI') AS break_end,
+              (SELECT string_agg(CASE WHEN o.start_time IS NULL THEN 'cả ngày'
+                        ELSE to_char(o.start_time, 'HH24:MI') || '–' || to_char(o.end_time, 'HH24:MI') END, ', ' ORDER BY o.start_time NULLS FIRST)
+                 FROM stylist_time_off o WHERE o.stylist_id = s.id AND o.off_date = sh.work_date) AS time_off,
+              (n.lt >= sh.start_time AND n.lt < sh.end_time
+                AND NOT (sh.break_start IS NOT NULL AND n.lt >= sh.break_start AND n.lt < sh.break_end)
+                AND NOT EXISTS (SELECT 1 FROM stylist_time_off o WHERE o.stylist_id = s.id AND o.off_date = sh.work_date
+                                 AND (o.start_time IS NULL OR (n.lt >= o.start_time AND n.lt < o.end_time)))) AS on_shift,
+              EXISTS (SELECT 1 FROM appointments a WHERE a.stylist_id = s.id
+                       AND (a.status = 'in_progress'
+                         OR (a.status IN ('confirmed', 'arrived') AND a.start_at <= now() AND a.end_at > now()))) AS busy
+         FROM stylist_shifts sh JOIN stylists s ON s.id = sh.stylist_id CROSS JOIN n
+        WHERE sh.work_date = $1 AND s.is_active
+        ORDER BY sh.start_time, s.full_name`, [todaySalon()]);
+
+    const byStylist = new Map<string, WorkingStylist>();
+    for (const r of rows) {
+      const text = `${r.start_time}–${r.end_time}${r.break_start ? ` (nghỉ ${r.break_start}–${r.break_end})` : ''}`;
+      const cur = byStylist.get(r.stylist_id);
+      if (cur) {
+        cur.shiftsText += `, ${text}`;
+        cur.onShiftNow ||= r.on_shift;
+      } else {
+        byStylist.set(r.stylist_id, { fullName: r.full_name, shiftsText: text, onShiftNow: r.on_shift, busyNow: r.busy, timeOff: r.time_off });
+      }
+    }
+    return [...byStylist.values()];
+  }
+
   /** Lịch sử hội thoại gần nhất (tối đa 6 lượt) để mô hình hiểu câu hỏi nối tiếp ("thế còn thứ 7?"). */
   private history(history: ChatTurn[] = []): LlmMessage[] {
     return history.slice(-6).map((h) => ({ role: h.role === 'assistant' ? 'assistant' : 'user', content: h.content.slice(0, 500) }));
@@ -274,8 +354,10 @@ export class AssistantService {
 
   async chat(message: string, opts: { userName?: string | null; history?: ChatTurn[] } = {}): Promise<AssistantChatResult> {
     const intent = detectIntent(message);
-    const [cached, today] = await Promise.all([this.context(), this.todaySnapshot().catch(() => null)]);
-    const ctx: AssistantContext = { ...cached, today };
+    const [cached, today, workingToday] = await Promise.all([
+      this.context(), this.todaySnapshot().catch(() => null), this.workingToday().catch(() => null),
+    ]);
+    const ctx: AssistantContext = { ...cached, today, workingToday };
     const fallback = ruleAnswer(intent, ctx, { userName: opts.userName, now: new Date() });
     const base = { intent, quickReplies: quickReplies(intent) };
     const cfg = await this.resolveLlm();

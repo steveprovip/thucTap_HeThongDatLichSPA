@@ -81,6 +81,33 @@ describe('Trợ lý AI — luật dự phòng khi không có mô hình ngôn ng�
     expect(contextForLlm({ ...ctx, today })).toContain('Hôm nay CN 11/10: 12 lịch');
   });
 
+  it('QA 12/10: hỏi thợ đang trực / ai đang rảnh → liệt kê thợ có ca hôm nay, không rơi vào "chưa hiểu"', () => {
+    for (const q of ['Đang có thợ nào làm việc vậy?', 'Ai đang rảnh?', 'hom nay ai di lam', 'Thợ trực hôm nay', 'Có mấy thợ đang làm?',
+      'danh sach tho hom nay', 'Ai đang trực vậy em']) {
+      expect(detectIntent(q)).toBe('working_stylists');
+    }
+    // câu xếp ca vẫn là xếp ca
+    expect(detectIntent('Tuần sau thiếu thợ ca nào?')).toBe('shifts');
+    expect(detectIntent('chào bạn, tuần này thiếu thợ không')).toBe('shifts');
+
+    const workingToday = [
+      { fullName: 'Trần Thu Hà', shiftsText: '09:00–18:00 (nghỉ 12:00–13:00)', onShiftNow: true, busyNow: true, timeOff: null },
+      { fullName: 'Lê Minh', shiftsText: '13:00–21:00', onShiftNow: true, busyNow: false, timeOff: null },
+      { fullName: 'Phạm Lan', shiftsText: '18:00–21:00', onShiftNow: false, busyNow: false, timeOff: '14:00–16:00' },
+    ];
+    const text = ruleAnswer('working_stylists', { ...ctx, workingToday });
+    expect(text).toContain('Hôm nay có 3 thợ có ca làm');
+    expect(text).toContain('• Trần Thu Hà: 09:00–18:00 (nghỉ 12:00–13:00) — đang làm khách');
+    expect(text).toContain('• Phạm Lan: 18:00–21:00 · xin nghỉ 14:00–16:00');
+    expect(text).toContain('Lúc này 2 thợ đang trong ca, đang rảnh: Lê Minh.');
+    expect(text).not.toContain('chưa chắc đã hiểu');
+    expect(ruleAnswer('working_stylists', { ...ctx, workingToday: [] })).toContain('chưa có thợ nào được xếp ca');
+    expect(ruleAnswer('working_stylists', { ...ctx, workingToday: null })).toContain('Bảng ca làm');
+    expect(contextForLlm({ ...ctx, workingToday })).toContain('Thợ có ca hôm nay: Trần Thu Hà 09:00–18:00');
+    expect(contextForLlm({ ...ctx, workingToday })).toContain('Lê Minh 13:00–21:00 — đang rảnh');
+    expect(quickReplies('today')).toContain('Đang có thợ nào làm việc?');
+  });
+
   it('ngữ cảnh gửi mô hình chỉ gồm số liệu tổng hợp', () => {
     const text = contextForLlm(ctx);
     expect(text).toContain('Giờ vàng: T7 10:00–11:00 (42 lượt)');

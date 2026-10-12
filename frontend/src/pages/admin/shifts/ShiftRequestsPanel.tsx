@@ -10,8 +10,11 @@ import { useToast } from '@/contexts/ToastContext';
  * Mentor Sprint 2 · mục 6 — hộp "Yêu cầu chờ duyệt" trên Bảng ca: quản lý xem lịch rảnh thợ gửi lên cạnh bảng ca
  * và cảnh báo thiếu thợ, rồi Duyệt / Sửa giờ & duyệt / Từ chối (kèm lý do) hoặc Duyệt tất cả.
  */
-export function ShiftRequestsPanel({ requests, canApprove, onChanged }: {
-  requests: ShiftRequest[]; canApprove: boolean; onChanged: () => void;
+export function ShiftRequestsPanel({ requests, canApprove, timeOffOnly = false, onChanged }: {
+  requests: ShiftRequest[]; canApprove: boolean;
+  /** QA Sprint 3 · mục 1: Lễ tân duyệt / từ chối được yêu cầu xin nghỉ, còn đăng ký ca làm do Chủ tiệm duyệt. */
+  timeOffOnly?: boolean;
+  onChanged: () => void;
 }) {
   const toast = useToast();
   const [busy, setBusy] = useState<string | null>(null);
@@ -20,6 +23,8 @@ export function ShiftRequestsPanel({ requests, canApprove, onChanged }: {
   const [force, setForce] = useState<{ req: ShiftRequest; warning: string; codes: string[] } | null>(null);
 
   if (!requests.length) return null;
+  const canAct = (r: ShiftRequest) => canApprove && (!timeOffOnly || r.kind === 'time_off');
+  const actionable = requests.filter(canAct);
 
   const approve = async (req: ShiftRequest, payload: { startTime?: string; endTime?: string; force?: boolean } = {}) => {
     setBusy(req.id);
@@ -40,7 +45,7 @@ export function ShiftRequestsPanel({ requests, canApprove, onChanged }: {
   const approveAll = async () => {
     setBusy('all');
     try {
-      const res = await shiftRequestsApi.approveMany(requests.map((r) => r.id));
+      const res = await shiftRequestsApi.approveMany(actionable.map((r) => r.id));
       if (res.approved.length) toast.success(`Đã duyệt ${res.approved.length} yêu cầu`);
       if (res.failed.length) toast.warning(`${res.failed.length} yêu cầu cần xem lại: ${res.failed[0].message}`);
       onChanged();
@@ -74,8 +79,10 @@ export function ShiftRequestsPanel({ requests, canApprove, onChanged }: {
         <h3 className="flex items-center gap-2 text-sm font-semibold text-amber-900">
           <Inbox size={16} /> {requests.length} yêu cầu thợ tự đăng ký đang chờ duyệt
         </h3>
-        {canApprove && (
-          <Button size="sm" icon={<CheckCheck size={15} />} loading={busy === 'all'} onClick={approveAll}>Duyệt tất cả</Button>
+        {actionable.length > 0 && (
+          <Button size="sm" icon={<CheckCheck size={15} />} loading={busy === 'all'} onClick={approveAll}>
+            {timeOffOnly ? `Duyệt ${actionable.length} yêu cầu nghỉ` : 'Duyệt tất cả'}
+          </Button>
         )}
       </div>
       <ul className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
@@ -90,7 +97,10 @@ export function ShiftRequestsPanel({ requests, canApprove, onChanged }: {
               </p>
               {r.note && <p className="truncate text-xs italic text-ink-muted">“{r.note}”</p>}
             </div>
-            {canApprove && (
+            {!canAct(r) && canApprove && r.kind === 'shift' && (
+              <span className="shrink-0 text-[11px] text-ink-muted" title="Yêu cầu đăng ký ca làm do Chủ tiệm duyệt">Chờ chủ tiệm</span>
+            )}
+            {canAct(r) && (
               <div className="flex shrink-0 gap-1">
                 <Button size="sm" variant="ghost" aria-label={`Duyệt yêu cầu của ${r.stylistName}`} title="Duyệt"
                         loading={busy === r.id} onClick={() => approve(r)}><Check size={15} className="text-emerald-600" /></Button>

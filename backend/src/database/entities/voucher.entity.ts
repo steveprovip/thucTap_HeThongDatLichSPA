@@ -31,6 +31,10 @@ export class Voucher {
   @Column({ name: 'end_date', type: 'date' })
   endDate!: string;
 
+  /** Giá trị đơn tối thiểu để áp mã (NULL = không yêu cầu). */
+  @Column({ name: 'min_order_value', type: 'numeric', precision: 12, scale: 0, nullable: true, transformer: NumericTransformer })
+  minOrderValue!: number | null;
+
   @Column({ name: 'max_usage', type: 'int', nullable: true })
   maxUsage!: number | null;
 

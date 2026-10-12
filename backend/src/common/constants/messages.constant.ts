@@ -106,6 +106,7 @@ export const MSG = {
   VOUCHER_NOT_FOUND: 'Mã giảm giá không tồn tại',
   VOUCHER_EXPIRED: 'Mã giảm giá đã hết hạn hoặc chưa tới ngày áp dụng',
   VOUCHER_USED_UP: 'Mã giảm giá đã hết lượt sử dụng',
+  VOUCHER_MIN_ORDER: (code: string, min: string) => `Mã ${code} chỉ áp dụng cho đơn từ ${min}`,
   VOUCHER_ALREADY_APPLIED: 'Mỗi phiếu chỉ được áp dụng một mã giảm giá',
   INVOICE_NO_ITEMS: 'Phiếu phải có ít nhất một dòng dịch vụ',
 
