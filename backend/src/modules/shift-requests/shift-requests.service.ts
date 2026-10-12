@@ -207,6 +207,7 @@ export class ShiftRequestsService {
   async approve(id: string, reviewer: AuthUser, dto: ApproveShiftRequestDto = {}): Promise<ShiftRequestView | ApproveWarning> {
     const req = await this.repo.findOne({ where: { id } });
     if (!req) throw new NotFoundException('Không tìm thấy yêu cầu đăng ký');
+    this.assertCanReview(req, reviewer);
     if (req.status !== ShiftRequestStatus.PENDING) throw new ConflictException('Yêu cầu này đã được xử lý');
 
     const workDate = String(req.workDate);
@@ -258,7 +259,17 @@ export class ShiftRequestsService {
     return view;
   }
 
+  /** Lễ tân chỉ xử lý yêu cầu xin nghỉ; yêu cầu đăng ký CA LÀM (xếp ca) vẫn do Chủ tiệm duyệt. */
+  private assertCanReview(req: ShiftRequest, reviewer: AuthUser): void {
+    if (reviewer.role === Role.RECEPTIONIST && req.kind !== ShiftRequestKind.TIME_OFF) {
+      throw new ForbiddenException('Lễ tân chỉ duyệt được yêu cầu xin nghỉ; yêu cầu đăng ký ca làm do Chủ tiệm duyệt');
+    }
+  }
+
   async reject(id: string, reviewer: AuthUser, note?: string): Promise<ShiftRequestView> {
+    const found = await this.repo.findOne({ where: { id } });
+    if (!found) throw new NotFoundException('Không tìm thấy yêu cầu đăng ký');
+    this.assertCanReview(found, reviewer);
     const res = await this.repo.createQueryBuilder().update(ShiftRequest)
       .set({ status: ShiftRequestStatus.REJECTED, reviewedBy: reviewer.id, reviewedAt: new Date(), reviewNote: note?.trim() || null })
       .where('id = :id AND status = :st', { id, st: ShiftRequestStatus.PENDING })

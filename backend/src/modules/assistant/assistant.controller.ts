@@ -21,6 +21,21 @@ export class AssistantController {
     return this.service.status();
   }
 
+  /** QA 12/10 — bật AI local một chạm (model_AI_local đã tải sẵn trên máy chạy backend). */
+  @Post('local/start')
+  @HttpCode(HttpStatus.OK)
+  @Roles(Role.OWNER, Role.RECEPTIONIST)
+  startLocal() {
+    return this.service.startLocal(true);
+  }
+
+  /** QA 12/10 — thợ có ca hôm nay, ai đang làm khách / đang rảnh. */
+  @Get('working-today')
+  @Roles(Role.OWNER, Role.RECEPTIONIST)
+  workingToday() {
+    return this.service.workingToday();
+  }
+
   /** TASK v4 · NV1 — số liệu hôm nay cho chế độ "Phân tích & số liệu" của widget. */
   @Get('today')
   @Roles(Role.OWNER, Role.RECEPTIONIST)

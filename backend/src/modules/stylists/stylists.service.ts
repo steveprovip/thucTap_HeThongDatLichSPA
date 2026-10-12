@@ -226,7 +226,7 @@ export class StylistsService {
     return { ...(await this.findOne(saved.id)), tempPassword };
   }
 
-  async update(id: string, dto: UpdateStylistDto): Promise<StylistView> {
+  async update(id: string, dto: UpdateStylistDto): Promise<StylistView & { tempPassword?: string | null }> {
     const stylist = await this.stylistRepo.findOne({ where: { id } });
     if (!stylist) throw new NotFoundException(MSG.STYLIST_NOT_FOUND);
 
@@ -253,7 +253,28 @@ export class StylistsService {
     if (dto.isActive !== undefined) stylist.isActive = dto.isActive;
 
     // Đồng bộ ngược sang tài khoản nhân sự: thợ nghỉ việc mất quyền truy cập ngay (S1-02, S1-07)
-    const user = stylist.userId ? await this.userRepo.findOne({ where: { id: stylist.userId } }) : null;
+    let user = stylist.userId ? await this.userRepo.findOne({ where: { id: stylist.userId } }) : null;
+
+    // QA Sprint 3 · mục 2 — email đăng nhập: đổi email tài khoản đã gắn, gắn tài khoản Thợ sẵn có, hoặc tạo tài khoản mới
+    const email = dto.email?.trim().toLowerCase() || null;
+    let tempPassword: string | null = null;
+    if (email) {
+      const owner = await this.userRepo.createQueryBuilder('u').where('lower(u.email) = :email', { email }).getOne();
+      if (user) {
+        if (owner && owner.id !== user.id) throw new ConflictException({ message: MSG.EMAIL_DUPLICATED, field: 'email' });
+        user.email = email;
+      } else if (owner) {
+        if (owner.role !== Role.STYLIST) {
+          throw new ConflictException({ message: 'Email này thuộc tài khoản không phải vai trò Thợ nên không gắn vào hồ sơ thợ được', field: 'email' });
+        }
+        const linked = await this.stylistRepo.findOne({ where: { userId: owner.id } });
+        if (linked) throw new ConflictException({ message: `Tài khoản email này đã gắn với hồ sơ thợ ${linked.fullName}`, field: 'email' });
+        stylist.userId = owner.id;
+        user = owner;
+      } else {
+        tempPassword = generateTempPassword();
+      }
+    }
     if (user) {
       if (dto.fullName !== undefined) user.fullName = stylist.fullName;
       if (dto.phone !== undefined) user.phone = stylist.phone;
@@ -264,6 +285,18 @@ export class StylistsService {
     }
 
     await this.dataSource.transaction(async (manager) => {
+      if (email && tempPassword) {
+        const created = await manager.save(manager.create(User, {
+          fullName: stylist.fullName,
+          email,
+          phone: stylist.phone ?? null,
+          role: Role.STYLIST,
+          isActive: stylist.isActive,
+          mustChangePassword: true,
+          passwordHash: await bcrypt.hash(tempPassword, this.config.get<number>('security.bcryptRounds')!),
+        }));
+        stylist.userId = created.id;
+      }
       await manager.save(Stylist, stylist);
       if (user) await manager.save(User, user);
       if (dto.serviceIds) {
@@ -278,6 +311,13 @@ export class StylistsService {
         }
       }
     });
+    if (email && tempPassword) {
+      const tpl = MailTemplates.accountCreated(this.mail.salonInfo, stylist.fullName, email, tempPassword);
+      await this.mail.enqueue({
+        kind: EmailKind.ACCOUNT_CREATED, toEmail: email, toName: stylist.fullName, subject: tpl.subject, html: tpl.html,
+      });
+      return { ...(await this.findOne(id)), tempPassword };
+    }
     return this.findOne(id);
   }
 

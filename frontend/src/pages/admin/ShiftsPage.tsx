@@ -237,7 +237,7 @@ export function ShiftsPage() {
       </div>
 
       {!loading && (
-        <ShiftRequestsPanel requests={requests} canApprove={canEdit} onChanged={() => void load()} />
+        <ShiftRequestsPanel requests={requests} canApprove={canManageOff} timeOffOnly={!canEdit} onChanged={() => void load()} />
       )}
 
       {!loading && (

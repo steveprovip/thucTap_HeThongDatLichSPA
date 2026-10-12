@@ -17,7 +17,7 @@ import { generateInvoiceCode } from '../../common/utils/code.util';
 import { todaySalon } from '../../common/utils/time.util';
 import { ReviewsService } from '../reviews/reviews.service';
 import {
-  AdjustInvoiceDto, CreateInvoiceDto, CreateVoucherDto, InvoiceItemDto, PayInvoiceDto, UpdateInvoiceDto,
+  AdjustInvoiceDto, CreateInvoiceDto, CreateVoucherDto, InvoiceItemDto, PayInvoiceDto, UpdateInvoiceDto, UpdateVoucherDto,
 } from './dto/invoice.dto';
 
 export interface InvoiceView {
@@ -128,6 +128,9 @@ export class InvoicesService {
     }
     if (voucher.maxUsage !== null && voucher.usedCount >= voucher.maxUsage) {
       throw new BadRequestException(MSG.VOUCHER_USED_UP);
+    }
+    if (voucher.minOrderValue && subtotal < voucher.minOrderValue) {
+      throw new BadRequestException(MSG.VOUCHER_MIN_ORDER(voucher.code, formatVnd(voucher.minOrderValue)));
     }
 
     const discount = voucher.discountType === DiscountType.PERCENT
@@ -399,12 +402,48 @@ export class InvoicesService {
         description: dto.description ?? null,
         discountType: dto.discountType,
         discountValue: dto.discountValue,
+        minOrderValue: dto.minOrderValue || null,
         startDate: dto.startDate.slice(0, 10),
         endDate: dto.endDate.slice(0, 10),
         maxUsage: dto.maxUsage ?? null,
         isActive: dto.isActive ?? true,
       }),
     );
+  }
+
+  /** QA 12/10 — sửa mã / bật-tắt nhanh (trước đây thiếu PATCH nên giao diện báo 404 "Cannot PATCH /api/vouchers/:id"). */
+  async updateVoucher(id: string, dto: UpdateVoucherDto): Promise<Voucher> {
+    const v = await this.voucherRepo.findOne({ where: { id } });
+    if (!v) throw new NotFoundException(MSG.VOUCHER_NOT_FOUND);
+
+    const code = dto.code?.trim().toUpperCase();
+    if (code && code !== v.code.toUpperCase()) {
+      const dup = await this.voucherRepo.createQueryBuilder('v')
+        .where('upper(v.code) = :c AND v.id <> :id', { c: code, id }).getOne();
+      if (dup) throw new ConflictException({ message: 'Mã giảm giá đã tồn tại', field: 'code' });
+    }
+    const discountType = dto.discountType ?? v.discountType;
+    const discountValue = dto.discountValue ?? v.discountValue;
+    if (discountType === DiscountType.PERCENT && discountValue > 100) {
+      throw new BadRequestException({ message: 'Giảm theo phần trăm tối đa là 100', field: 'discountValue' });
+    }
+    const startDate = dto.startDate?.slice(0, 10) ?? v.startDate;
+    const endDate = dto.endDate?.slice(0, 10) ?? v.endDate;
+    if (endDate < startDate) throw new BadRequestException(MSG.DATE_RANGE_INVALID);
+    if (dto.maxUsage !== undefined && dto.maxUsage !== null && dto.maxUsage < v.usedCount) {
+      throw new BadRequestException({ message: `Số lượt tối đa không được nhỏ hơn số lượt đã dùng (${v.usedCount})`, field: 'maxUsage' });
+    }
+
+    if (code) v.code = code;
+    if (dto.description !== undefined) v.description = dto.description?.trim() || null;
+    v.discountType = discountType;
+    v.discountValue = discountValue;
+    v.startDate = startDate;
+    v.endDate = endDate;
+    if (dto.minOrderValue !== undefined) v.minOrderValue = dto.minOrderValue || null;
+    if (dto.maxUsage !== undefined) v.maxUsage = dto.maxUsage;
+    if (dto.isActive !== undefined) v.isActive = dto.isActive;
+    return this.voucherRepo.save(v);
   }
 
   async removeVoucher(id: string): Promise<{ success: boolean }> {

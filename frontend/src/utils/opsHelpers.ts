@@ -170,3 +170,31 @@ export function weekCoveragePercent(days: { closedReason: string | null; openMin
   const total = open.reduce((a, d) => a + d.openMinutes, 0);
   return total ? Math.round((open.reduce((a, d) => a + d.coveredMinutes, 0) / total) * 100) : 100;
 }
+
+/** QA Sprint 3 · mục 3 — "Không đến" chỉ bật sau giờ hẹn 30 phút (khớp NO_SHOW_AFTER_MINUTES của backend). */
+export const NO_SHOW_AFTER_MIN = 30;
+
+/** Nút "Không đến": lịch đã xác nhận, CHƯA check-in, và đã qua giờ hẹn ít nhất 30 phút. */
+export function canMarkNoShow(status: string, startMs: number, nowMs: number): boolean {
+  return status === 'confirmed' && nowMs - startMs >= NO_SHOW_AFTER_MIN * 60_000;
+}
+
+/** QA Sprint 3 · mục 4 — ngưỡng cảnh báo lịch đang làm vượt thời lượng chuẩn (khớp OVERRUN_WARNING_MINUTES). */
+export const OVERRUN_WARN_MIN = 20;
+
+export interface OverrunInfo {
+  /** Số phút đã vượt thời lượng chuẩn (0 = chưa vượt). */
+  overMinutes: number;
+  /** 'warn' = đã quá thời lượng chuẩn; 'danger' = quá hơn 20 phút → các lịch sau của thợ có nguy cơ trễ. */
+  level: 'none' | 'warn' | 'danger';
+}
+
+/** Lịch đang làm (`in_progress`) đã chạy quá thời lượng chuẩn bao lâu — tính từ lúc bấm "Bắt đầu". */
+export function overrunInfo(
+  a: { status: string; startedAt: string | null; totalDurationMinutes: number }, nowMs: number,
+): OverrunInfo {
+  if (a.status !== 'in_progress' || !a.startedAt) return { overMinutes: 0, level: 'none' };
+  const over = Math.floor((nowMs - new Date(a.startedAt).getTime()) / 60_000) - a.totalDurationMinutes;
+  if (over <= 0) return { overMinutes: 0, level: 'none' };
+  return { overMinutes: over, level: over > OVERRUN_WARN_MIN ? 'danger' : 'warn' };
+}

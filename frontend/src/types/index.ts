@@ -671,6 +671,10 @@ export interface AssistantStatus {
   model: string | null;
   localDetected: boolean;
   localUrl: string | null;
+  /** QA 12/10: máy chạy backend đã tải model_AI_local — bật được AI local một chạm. */
+  localAvailable?: boolean;
+  /** Đang khởi động AI local (model đang nạp). */
+  localStarting?: boolean;
 }
 /** TASK v4 · NV1: số liệu tổng hợp hôm nay cho chế độ "Phân tích & số liệu". */
 export interface AssistantToday {

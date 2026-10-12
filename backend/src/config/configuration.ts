@@ -118,6 +118,9 @@ const configuration = () => ({
     model: (process.env.AI_MODEL ?? '').trim(),
     apiKey: process.env.AI_API_KEY ?? '',
     timeoutMs: int(process.env.AI_TIMEOUT_MS, 25000),
+    // QA 12/10: chế độ auto tự bật lại model_AI_local khi máy chủ AI local tắt (sau khi khởi động lại máy). 0 = tắt.
+    autostart: !['0', 'false', 'off', 'no'].includes((process.env.AI_LOCAL_AUTOSTART ?? '').trim().toLowerCase())
+      && process.env.NODE_ENV !== 'test',
   },
   // Thông báo đa kênh: webhook nhận sự kiện appointment.created / appointment.confirmed (Zalo ZNS, SMS Brandname, n8n…)
   dispatch: {
