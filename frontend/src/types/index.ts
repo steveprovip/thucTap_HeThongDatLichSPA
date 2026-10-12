@@ -710,4 +710,6 @@ export interface CustomerAssistantReply {
   quickReplies: string[];
   source: 'llm' | 'rules';
   model: string | null;
+  /** Ngày trợ lý vừa tra giờ trống — "Đặt" mở phiếu đặt lịch đúng ngày này. */
+  bookDate?: string;
 }

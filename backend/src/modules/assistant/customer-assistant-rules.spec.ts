@@ -135,7 +135,7 @@ describe('AI tư vấn khách — luật dựa trên danh mục thật (TASK v3 
       expect(price.intent).toBe('service_price');
       expect(price.answer).toContain('Massage body đá nóng');
       expect(price.answer).toContain('650.000');
-      expect(price.suggestions.map((s) => s.id)).toEqual(['stone', 'vip2']);
+      expect(price.suggestions.map((s) => s.id)).toEqual(['stone']); // hỏi giá đúng tên → chỉ dịch vụ đó
       // "trị" trơn không còn khớp "trị gàu" khi khách hỏi về mụn
       const acne = [...real3, svc('scalp', 'Detox da đầu & trị gàu chuyên sâu', 'Gội đầu dưỡng sinh', 60, 350000)];
       expect(matchServices('da mặt bị mụn', acne).map((s) => s.id)).not.toContain('scalp');

@@ -14,8 +14,8 @@ import { findLocalAiDir, isLoopbackUrl, launchLocalAi } from './local-ai-launche
 import { LlmGate, SingleFlight, TtlCache } from './llm-gate';
 import { EventsService } from '../events/events.service';
 import {
-  CARD_INTENTS, CatalogItem, CUSTOMER_SYSTEM_PROMPT, customerContextForLlm, CustomerReply, customerRuleReply, SalonFacts,
-  DIRECT_INTENTS, matchServices, sanitizeLlmAnswer,
+  CatalogItem, CUSTOMER_SYSTEM_PROMPT, customerContextForLlm, CustomerReply, customerRuleReply, SalonFacts,
+  DIRECT_INTENTS, availabilityAnswer, isUnaccented, leadSentence, matchServices, sanitizeLlmAnswer, stripBookingNag,
 } from './customer-assistant-rules';
 import { callLlm, DEFAULT_LOCAL_AI_URL, LlmConfig, LlmMessage, pickModel, probeLocalServer } from './llm-client';
 
@@ -49,9 +49,20 @@ export interface AssistantInsights {
 
 export interface ChatTurn { role: 'user' | 'assistant'; content: string }
 
+interface PublicData {
+  at: number;
+  catalog: CatalogItem[];
+  hotIds: string[];
+  facts: SalonFacts;
+  /** serviceId → lượt đặt 90 ngày. */
+  popularity: Record<string, number>;
+}
+
 export interface CustomerChatResult extends CustomerReply {
   source: 'llm' | 'rules';
   model: string | null;
+  /** Ngày vừa tra giờ trống (yyyy-MM-dd) — nút "Đặt" mở phiếu đặt lịch đúng ngày này. */
+  bookDate?: string;
 }
 
 export interface AssistantChatResult {
@@ -110,7 +121,7 @@ export class AssistantService implements OnApplicationBootstrap {
   private readonly gate: LlmGate;
   private readonly answerCache: TtlCache<{ answer: string; suggestions: CatalogItem[] }>;
   private readonly llmFlight = new SingleFlight<{ answer: string; suggestions: CatalogItem[] } | 'busy' | null>();
-  private readonly publicFlight = new SingleFlight<{ at: number; catalog: CatalogItem[]; hotIds: string[]; facts: SalonFacts }>();
+  private readonly publicFlight = new SingleFlight<PublicData>();
   private readonly contextFlight = new SingleFlight<AssistantContext>();
 
   private probe: { at: number; cfg: LlmConfig | null } | null = null;
@@ -431,23 +442,28 @@ export class AssistantService implements OnApplicationBootstrap {
   }
 
   // ------------------------------------------------------------- AI tư vấn khách (trang công khai)
-  private publicCache: { at: number; catalog: CatalogItem[]; hotIds: string[]; facts: SalonFacts } | null = null;
+  private publicCache: PublicData | null = null;
 
-  private async publicData(): Promise<{ catalog: CatalogItem[]; hotIds: string[]; facts: SalonFacts }> {
+  private async publicData(): Promise<PublicData> {
     if (this.publicCache && Date.now() - this.publicCache.at < 60_000) return this.publicCache;
     // Hết hạn bộ nhớ đệm lúc đang đông khách: MỘT lần đọc CSDL cho mọi request đang chờ (không 1000 lần)
     return this.publicFlight.do('public', () => this.loadPublicData());
   }
 
-  private async loadPublicData(): Promise<{ at: number; catalog: CatalogItem[]; hotIds: string[]; facts: SalonFacts }> {
-    const [groups, hot, hours] = await Promise.all([
+  private async loadPublicData(): Promise<PublicData> {
+    const [groups, counts, hours, team] = await Promise.all([
       this.availability.publicCatalog(),
+      // Lượt đặt 90 ngày của MỌI dịch vụ (trước đây LIMIT 8 → nhóm combo bị báo "chưa đủ lượt đặt" dù có khách đặt)
       this.dataSource.query(
         `SELECT x.service_id AS id, count(*)::int AS n
            FROM appointment_services x JOIN appointments a ON a.id = x.appointment_id
           WHERE a.start_at >= now() - interval '90 days' AND a.status <> 'cancelled'
-          GROUP BY 1 ORDER BY n DESC LIMIT 8`) as Promise<{ id: string; n: number }[]>,
+          GROUP BY 1 ORDER BY n DESC`) as Promise<{ id: string; n: number }[]>,
       this.workingHours.list(),
+      // Thợ đang làm việc theo giới tính (tên / giới tính vốn công khai ở bước chọn thợ) — "có thợ nữ không"
+      this.dataSource.query(
+        `SELECT count(*)::int AS total, count(*) FILTER (WHERE gender = 'female')::int AS female,
+                count(*) FILTER (WHERE gender = 'male')::int AS male FROM stylists WHERE is_active`) as Promise<{ total: number; female: number; male: number }[]>,
     ]);
     const catalog: CatalogItem[] = groups.flatMap((g) => g.services.map((s) => ({
       id: s.id, name: s.name, categoryName: g.categoryName, durationMinutes: s.durationMinutes,
@@ -458,37 +474,64 @@ export class AssistantService implements OnApplicationBootstrap {
       name: c('salonName'), hotline: c('salonHotline'), address: c('salonAddress'),
       openingHours: hours.map((h) => ({ dayLabel: h.dayLabel, isClosed: h.isClosed, openTime: h.openTime, closeTime: h.closeTime })),
       cancelCutoffMinutes: this.config.get<number>('business.cancelCutoffMinutes') ?? 120,
+      maxActiveBookingsPerPhone: this.config.get<number>('business.maxActiveBookingsPerPhone') ?? 3,
+      stylists: team[0] ?? { total: 0, female: 0, male: 0 },
     };
     const ids = new Set(catalog.map((x) => x.id));
-    this.publicCache = { at: Date.now(), catalog, hotIds: hot.map((h) => h.id).filter((id) => ids.has(id)), facts };
+    const live = counts.filter((h) => ids.has(h.id));
+    this.publicCache = {
+      at: Date.now(), catalog, facts,
+      hotIds: live.slice(0, 8).map((h) => h.id),
+      popularity: Object.fromEntries(live.map((h) => [h.id, h.n])),
+    };
     return this.publicCache;
   }
 
   /**
-   * TASK v3 · NV1 — tư vấn khách trên trang công khai. Gợi ý dịch vụ luôn lấy từ danh mục thật (luật), mô hình ngôn
-   * ngữ (nếu bật) chỉ diễn đạt lại cho tự nhiên; dịch vụ mô hình nhắc tới cũng được thêm vào gợi ý để khách bấm chọn.
+   * TASK v3 · NV1 + QA nhập vai 12/10 — tư vấn khách trên trang công khai. NỘI DUNG luôn lấy từ dữ liệu thật (danh mục, lượt đặt,
+   * giờ trống, chính sách); mô hình ngôn ngữ (nếu bật) chỉ lo phần trò chuyện: câu dẫn cho gợi ý, giải thích theo mô tả dịch vụ,
+   * chào hỏi và câu tự do. Thẻ dịch vụ luôn trùng với dịch vụ có trong câu trả lời.
    */
   async customerChat(message: string, history: ChatTurn[] = []): Promise<CustomerChatResult> {
-    const { catalog, hotIds, facts } = await this.publicData();
-    const rule = customerRuleReply(message, catalog, hotIds, facts, new Date());
-    // Deterministic pre-query: đếm / rẻ nhất / đắt nhất / nhanh nhất / theo nhóm → tính trên danh mục thật, không gọi mô hình
-    // (mô hình 4B từng trả lời "60 dịch vụ" khi tiệm có 43, "rẻ nhất 100.000 ₫" khi có dịch vụ 90.000 ₫)
-    // + số liệu / chính sách khác (DIRECT_INTENTS): hot, bảng giá, giờ mở cửa, liên hệ, cọc, huỷ, thanh toán, khuyến mãi
-    if (DIRECT_INTENTS.has(rule.intent)) return { ...rule, source: 'rules', model: null };
-    const cfg = await this.resolveLlm();
-    if (!cfg) return { ...rule, source: 'rules', model: null };
+    const { catalog, hotIds, facts, popularity } = await this.publicData();
+    const today = todaySalon();
+    const { pending, ...rule } = customerRuleReply(message, catalog, hotIds, facts, new Date(), { history, popularity, today });
+    const direct = (r: CustomerReply = rule): CustomerChatResult => ({ ...r, source: 'rules', model: null });
 
-    // Câu mở đầu (không có lịch sử) giống nhau → dùng lại câu trả lời; đang có người hỏi y hệt → chờ chung một lời gọi
+    // Giờ trống: tra THẬT bằng bộ tính khung giờ của trang đặt lịch (cùng luật ca làm, ngày nghỉ, giữ chỗ, 60 phút đặt trước)
+    if (pending?.kind === 'availability') {
+      const service = catalog.find((s) => s.id === pending.serviceId);
+      try {
+        const data = await this.availability.getAvailability({ date: pending.when.date, serviceIds: [pending.serviceId] });
+        if (service) return { ...direct({ ...rule, answer: availabilityAnswer(service, pending.when, data, today) }), bookDate: pending.when.date };
+      } catch (e) {
+        this.logger.warn(`Không tra được giờ trống cho trợ lý: ${(e as Error).message}`);
+      }
+      return direct();
+    }
+    // Số liệu / chính sách (đếm, rẻ nhất, hot, giá, thời lượng, ngân sách, giờ mở cửa, cọc, huỷ…) → trả thẳng, không qua mô hình
+    if (DIRECT_INTENTS.has(rule.intent)) return direct();
+    const cfg = await this.resolveLlm();
+    if (!cfg) return direct();
+
+    // Kiểu LAI cho tư vấn nhu cầu / đặt lịch: mô hình chỉ viết 1–2 câu dẫn, danh sách dịch vụ + giá do dữ liệu quyết định
+    // (thử thật: mô hình 4B đọc "toc kho xo" thành gợi ý CẮT tóc, kể dịch vụ khác với thẻ gợi ý bên dưới)
+    const hybrid = rule.intent === 'need' || rule.intent === 'book';
+    // Câu gõ không dấu: mô hình 4B hay đọc sai ("toc kho xo" → "làm tóc kho xo đẹp") → trả bằng dữ liệu, không câu dẫn
+    if (hybrid && isUnaccented(message)) return direct();
     const key = history.length ? null : `${cfg.model}|${rule.intent}|${fold(message)}`;
     const cached = key ? this.answerCache.get(key) : undefined;
     if (cached) return { ...rule, ...cached, source: 'llm', model: cfg.model };
 
-    // Câu giải thích: KHÔNG đưa câu trả lời luật ("gọi hotline…") làm gợi ý, chỉ đưa dịch vụ liên quan làm dữ liệu
-    const hint = rule.intent === 'explain'
-      ? `(Khách hỏi để hiểu: giải thích ngắn gọn CHỈ dựa trên mô tả dịch vụ của tiệm dưới đây; thiếu thông tin thì nói chuyên viên sẽ `
-        + `tư vấn tại tiệm. Mô tả: ${matchServices(message, catalog, 3, true)
-          .map((s) => `${s.name} (${s.durationMinutes} phút, ${s.priceText}): ${s.description ?? 'chưa có mô tả'}`).join(' | ') || 'không có'})`
-      : `(Gợi ý theo luật, dùng nếu phù hợp: ${rule.answer})`;
+    const hint = hybrid
+      ? `(Viết 1–2 câu mở đầu thân thiện, đồng cảm với nhu cầu của khách. KHÔNG liệt kê dịch vụ, KHÔNG nêu giá hay thời lượng — `
+        + 'danh sách dịch vụ sẽ được hệ thống gắn ngay sau câu của bạn.)'
+      : rule.intent === 'explain'
+        // Câu giải thích: chỉ đưa MÔ TẢ dịch vụ liên quan làm dữ liệu (không đưa câu trả lời luật "gọi hotline…")
+        ? `(Khách hỏi để hiểu: giải thích ngắn gọn CHỈ dựa trên mô tả dịch vụ của tiệm dưới đây; thiếu thông tin thì nói chuyên viên sẽ `
+          + `tư vấn tại tiệm. Mô tả: ${(rule.suggestions.length ? rule.suggestions : matchServices(message, catalog, 3, true))
+            .map((s) => `${s.name} (${s.durationMinutes} phút, ${s.priceText}): ${s.description ?? 'chưa có mô tả'}`).join(' | ') || 'không có'})`
+        : `(Gợi ý theo luật, dùng nếu phù hợp: ${rule.answer})`;
     const ask = async (): Promise<{ answer: string; suggestions: CatalogItem[] } | 'busy' | null> => {
       const call = await this.gate.run(() => callLlm(cfg, [
         { role: 'system', content: `${CUSTOMER_SYSTEM_PROMPT}\n${customerContextForLlm(catalog, hotIds, facts)}` },
@@ -496,23 +539,27 @@ export class AssistantService implements OnApplicationBootstrap {
         { role: 'user', content: `${message.trim()}\n\n${hint}` },
       ]).then((text) => ({ text })));
       if (!call) return 'busy';
-      const answer = call.text ? sanitizeLlmAnswer(call.text) : '';
-      if (!answer) return null;
-      const folded = fold(answer);
-      const mentioned = catalog.filter((s) => fold(s.name).length >= 4 && folded.includes(fold(s.name)));
-      // Thẻ dịch vụ chỉ khi khách đang chọn dịch vụ (hoặc câu tự do mà mô hình nêu đích danh dịch vụ) — tối đa 3 thẻ
-      const suggestions = CARD_INTENTS.has(rule.intent) || rule.intent === 'unknown'
-        ? [...rule.suggestions, ...mentioned.filter((m) => !rule.suggestions.some((r) => r.id === m.id))].slice(0, 3)
-        : [];
-      const out = { answer, suggestions };
+      const text = call.text ? sanitizeLlmAnswer(call.text) : '';
+      if (!text) return null;
+      let out: { answer: string; suggestions: CatalogItem[] };
+      if (hybrid) {
+        const intro = leadSentence(text);
+        out = { answer: intro ? `${intro}\n${rule.answer.replace(/^Với nhu cầu của bạn, mình gợi ý:/, 'Mình gợi ý:')}` : rule.answer, suggestions: rule.suggestions };
+      } else {
+        // Thẻ = đúng các dịch vụ mô hình nêu tên trong câu trả lời (theo thứ tự xuất hiện) — chỉ cho câu tự do
+        const folded = fold(text);
+        const mentioned = catalog.map((s) => ({ s, at: folded.indexOf(fold(s.name)) })).filter((x) => x.at >= 0 && fold(x.s.name).length >= 4)
+          .sort((a, b) => a.at - b.at).map((x) => x.s);
+        out = { answer: stripBookingNag(text) || text, suggestions: rule.intent === 'unknown' ? mentioned.slice(0, 3) : [] };
+      }
       if (key) this.answerCache.set(key, out);
       return out;
     };
     const res = key ? await this.llmFlight.do(key, ask) : await ask();
-    if (res === 'busy') return { ...rule, source: 'rules', model: null }; // quá tải: trả lời ngay bằng số liệu thật
+    if (res === 'busy') return direct(); // quá tải: trả lời ngay bằng số liệu thật
     if (!res) {
       this.markLlmDown();
-      return { ...rule, source: 'rules', model: null };
+      return direct();
     }
     return { ...rule, ...res, source: 'llm', model: cfg.model };
   }

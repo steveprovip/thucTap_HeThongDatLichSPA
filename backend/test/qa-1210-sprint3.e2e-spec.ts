@@ -150,6 +150,38 @@ describe('QA 12/10 — voucher PATCH, AI thợ đang trực, duyệt nghỉ, ema
     });
   });
 
+  describe('AI tư vấn khách — tra giờ trống THẬT (QA nhập vai 12/10)', () => {
+    it('"<dịch vụ> ngày dd/mm còn giờ nào" trả đúng số khung giờ của trang đặt lịch; câu nối tiếp hiểu theo ngữ cảnh', async () => {
+      const groups = (await request(server).get('/api/public/catalog').expect(200)).body.data as { services: { id: string; name: string }[] }[];
+      let pick: { svc: { id: string; name: string }; date: string; count: number } | null = null;
+      for (let d = 3; d < 12 && !pick; d += 1) {
+        const date = isoIn(d);
+        for (const svc of groups.flatMap((g) => g.services).slice(0, 6)) {
+          const slots = (await request(server).get('/api/public/availability').query({ date, serviceIds: svc.id }).expect(200)).body.data.slots as { stylistIds: string[] }[];
+          const count = slots.filter((x) => x.stylistIds.length).length;
+          if (count > 0) { pick = { svc, date, count }; break; }
+        }
+      }
+      expect(pick).not.toBeNull();
+      const { svc, date, count } = pick!;
+      const ddmm = `${date.slice(8, 10)}/${date.slice(5, 7)}`;
+      const r = await request(server).post('/api/public/assistant/chat').send({ message: `${svc.name} ngày ${ddmm} còn giờ nào` }).expect(200);
+      expect(r.body.data).toMatchObject({ intent: 'availability', source: 'rules' });
+      expect(r.body.data.answer).toContain(`còn ${count} khung giờ trống`);
+      expect(r.body.data.suggestions.map((s: { id: string }) => s.id)).toEqual([svc.id]);
+      expect(r.body.data.pending).toBeUndefined(); // dữ liệu nội bộ không lộ ra giao diện
+      expect(r.body.data.bookDate).toBe(date); // nút "Đặt" mở phiếu đặt lịch đúng ngày vừa tra
+
+      // Lượt sau không nêu dịch vụ: hiểu theo câu trước
+      const next = await request(server).post('/api/public/assistant/chat').send({
+        message: `ngày ${ddmm} buổi tối còn không`,
+        history: [{ role: 'user', content: `${svc.name} ngày ${ddmm} còn giờ nào` }, { role: 'assistant', content: r.body.data.answer }],
+      }).expect(200);
+      expect(next.body.data.intent).toBe('availability');
+      expect(next.body.data.answer).toContain(svc.name);
+    });
+  });
+
   describe('Bộ nhớ đệm danh mục công khai không làm chậm thay đổi của chủ tiệm (S1-06, S1-07, S2-03)', () => {
     type Group = { categoryId: string; services: { id: string }[] };
     const catalog = async (): Promise<Group[]> => (await request(server).get('/api/public/catalog').expect(200)).body.data;

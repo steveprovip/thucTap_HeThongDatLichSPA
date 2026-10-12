@@ -12,6 +12,13 @@ Launcher (biểu tượng Hương Sen Salon / `HoYoSalon.bat`) đọc tệp này
 - Làm sạch câu trả lời của mô hình (bỏ `**[Đặt lịch]**`, markdown, token rác); không còn chèn "bấm nút Đặt lịch" vào mọi câu.
 - AI local tự bật khi backend khởi động, tự thử lại khi mất kết nối; widget hiện trạng thái (Đang chạy / Đang kết nối / Mất kết nối) và nút "Khởi động lại AI" chỉ khi cần.
 
+### Trợ lý AI — kiểm thử nhập vai khách (2 bộ, 75 câu hỏi nhiều lượt trên AI local thật)
+- **Tra giờ trống thật** ngay trong khung chat ("massage chân hôm nay còn giờ nào", "mai 9h còn chỗ không", "chủ nhật 10h được không", "15/10…"): dùng đúng bộ tính khung giờ của trang đặt lịch; bấm "Đặt" mở phiếu đặt lịch đúng dịch vụ và ngày.
+- **Hiểu ngữ cảnh hội thoại**: "cái đó giá bao nhiêu", "làm mất bao lâu", "cái nào rẻ hơn", "trọn gói gồm những gì" hiểu theo dịch vụ / nhóm vừa nói tới.
+- Thêm: nhiều dịch vụ trong một câu + tổng thời lượng, so sánh "A hay B", hỏi theo ngân sách ("dưới 200k", "tầm 300 nghìn"), giờ mở cửa theo ngày, đi nhóm, hỏi về thợ, dịch vụ tiệm không có ("nối tóc", "xăm chân mày" → nói thật là chưa có), tiếng Anh cơ bản.
+- Sửa lỗi bỏ dấu tiếng Việt: "cô dâu" ≠ "ở đâu", "giá cắt" ≠ "giá cả", "mất" ≠ "mặt", "thứ" ≠ "thư", "tháng" ≠ "thẳng", "gói" ≠ "gội", "đau" ≠ "đầu", "tiệm" ≠ "tiêm", "tôi" ≠ "tối".
+- "Combo có gì hot" xếp theo lượt đặt thật 90 ngày của mọi dịch vụ; mô hình chỉ viết một câu dẫn ngắn, danh sách / giá luôn lấy từ dữ liệu; không còn tự nhận "không phải bot".
+
 ### Hiệu năng & chịu tải
 - 1000 khách hỏi trợ lý cùng lúc: 100% được trả lời; khi có mô hình 1 luồng, p95 giảm từ 81 giây xuống 1,4 giây (cổng chặn đồng thời, gộp câu trùng, bộ nhớ đệm câu trả lời).
 - Danh mục công khai: truy vấn song song + bộ nhớ đệm 30 giây tự xoá khi chủ tiệm sửa (447 → 2.176 yêu cầu/giây).

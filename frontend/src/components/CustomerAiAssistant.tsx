@@ -7,7 +7,7 @@ import { formatVnd } from '@/utils/format';
 import { serviceImage, serviceMediaKind } from '@/utils/images';
 import { SmartImage } from './Media';
 
-interface Line { from: 'me' | 'bot'; text: string; suggestions?: CustomerAssistantService[]; meta?: string }
+interface Line { from: 'me' | 'bot'; text: string; suggestions?: CustomerAssistantService[]; meta?: string; bookDate?: string }
 
 const QUICK = ['Xem bảng giá', 'Dịch vụ hot', 'Đặt lịch ngay'];
 /** TASK v4 · NV4: chủ đề tư vấn nhanh như quầy lễ tân spa — bấm là hỏi ngay. */
@@ -31,7 +31,7 @@ const greeting = (): string => `Chào bạn, chúc bạn buổi ${partOfDay()} t
  *  - `liftPx`: nâng nút lên trên thanh thao tác dính đáy của wizard trên điện thoại.
  */
 export function CustomerAiAssistant({ onBook, liftPx = 0 }: {
-  onBook?: (services: CustomerAssistantService[]) => void;
+  onBook?: (services: CustomerAssistantService[], date?: string) => void;
   liftPx?: number;
 }) {
   const navigate = useNavigate();
@@ -68,7 +68,7 @@ export function CustomerAiAssistant({ onBook, liftPx = 0 }: {
     setBusy(true);
     try {
       const r = await assistantApi.customerChat(q, past);
-      setLines((l) => [...l, { from: 'bot', text: r.answer, suggestions: r.suggestions, meta: r.source === 'llm' ? 'AI tư vấn' : undefined }]);
+      setLines((l) => [...l, { from: 'bot', text: r.answer, suggestions: r.suggestions, meta: r.source === 'llm' ? 'AI tư vấn' : undefined, bookDate: r.bookDate }]);
       if (r.quickReplies?.length) setQuick(r.quickReplies);
     } catch (e) {
       setLines((l) => [...l, { from: 'bot', text: getErrorMessage(e, 'Mình đang bận một chút, bạn thử lại sau ít phút nhé.') }]);
@@ -77,12 +77,13 @@ export function CustomerAiAssistant({ onBook, liftPx = 0 }: {
     }
   };
 
-  const book = (services: CustomerAssistantService[]) => {
+  /** `date`: ngày trợ lý vừa tra giờ trống → phiếu đặt lịch mở sẵn đúng ngày đó. */
+  const book = (services: CustomerAssistantService[], date?: string) => {
     if (!services.length) return;
     setOpen(false);
     setPicked([]);
-    if (onBook) onBook(services);
-    else navigate(`/dat-lich?services=${services.map((s) => encodeURIComponent(s.id)).join(',')}`);
+    if (onBook) onBook(services, date);
+    else navigate(`/dat-lich?services=${services.map((s) => encodeURIComponent(s.id)).join(',')}${date ? `&date=${date}` : ''}`);
   };
   const toggle = (s: CustomerAssistantService) =>
     setPicked((p) => (p.some((x) => x.id === s.id) ? p.filter((x) => x.id !== s.id) : p.length >= 5 ? p : [...p, s]));
@@ -169,7 +170,7 @@ export function CustomerAiAssistant({ onBook, liftPx = 0 }: {
                                   className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border ${on ? 'border-teal-500 bg-teal-50 text-teal-700' : 'border-slate-200 text-slate-500 hover:border-teal-400 hover:text-teal-700'}`}>
                             {on ? <Check size={14} /> : <Plus size={14} />}
                           </button>
-                          <button type="button" onClick={() => book([s])} title={`Đặt lịch ${s.name}`}
+                          <button type="button" onClick={() => book([s], l.bookDate)} title={`Đặt lịch ${s.name}${l.bookDate ? ` ngày ${l.bookDate.slice(8, 10)}/${l.bookDate.slice(5, 7)}` : ''}`}
                                   className="inline-flex h-7 shrink-0 items-center gap-1 rounded-lg bg-teal-600 px-2 text-[11px] font-semibold text-white hover:bg-teal-700">
                             <CalendarCheck size={12} /> Đặt
                           </button>
