@@ -32,14 +32,14 @@ export const isLoopbackUrl = (url: string): boolean => {
  * Bật chay_ai_local.cmd ở chế độ ẩn. Dùng PowerShell Start-Process thay vì spawn trực tiếp: tiến trình con của Node
  * trên Windows nằm trong job object của backend (tắt backend là tắt luôn model) và llama-server sẽ bật cửa sổ console.
  */
-export function launchLocalAi(dir: string): boolean {
+export function launchLocalAi(dir: string, port = 11434): boolean {
   if (process.platform !== 'win32') return false;
   const quoted = dir.replace(/'/g, "''");
   try {
     const child = spawn('powershell.exe', [
       '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command',
       `Start-Process -FilePath 'cmd.exe' -ArgumentList '/d','/c','${LOCAL_AI_SCRIPT}' -WorkingDirectory '${quoted}' -WindowStyle Hidden`,
-    ], { windowsHide: true, stdio: 'ignore', env: { ...process.env, SALON_NO_PAUSE: '1' } });
+    ], { windowsHide: true, stdio: 'ignore', env: { ...process.env, SALON_NO_PAUSE: '1', PORT: String(port), AI_PORT: String(port) } });
     child.on('error', () => undefined);
     child.unref();
     return true;

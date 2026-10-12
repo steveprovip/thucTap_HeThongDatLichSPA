@@ -16,6 +16,8 @@ title AI local Spark-X2.5-4B - http://localhost:11434/v1
 
 set "MODEL_FILE=Spark-X2.5-4B-Q4_K_M.gguf"
 set "ALIAS=spark-x2.5-4b"
+if defined AI_PORT set "PORT=%AI_PORT%"
+if "%PORT%"=="3000" set "PORT=11434"
 if not defined PORT set "PORT=11434"
 
 if not exist "%MODEL_FILE%" (
