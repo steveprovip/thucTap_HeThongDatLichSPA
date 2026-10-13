@@ -68,8 +68,8 @@ export function Step1Services() {
           {[{ id: 'all', name: 'Tất cả', n: groups.reduce((a, g) => a + g.services.length, 0) },
             ...groups.map((g) => ({ id: g.categoryId, name: g.categoryName, n: g.services.length }))].map((t) => (
             <button key={t.id} type="button" role="tab" aria-selected={category === t.id} onClick={() => setCategory(t.id)}
-                    className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition
-                      ${category === t.id ? 'border-teal-700 bg-teal-700 text-white' : 'border-slate-200 bg-white text-slate-700 hover:border-teal-300'}`}>
+                    className={`inline-flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-xs font-medium transition-[color,background-color,border-color] duration-150 ease-out
+                      ${category === t.id ? 'border-teal-800 bg-teal-800 text-white' : 'border-ivory-line bg-white text-slate-700 hover:border-teal-300'}`}>
               {t.name}
               <span className={`rounded-full px-1.5 text-[10px] font-semibold ${category === t.id ? 'bg-white/20' : 'bg-slate-100 text-slate-500'}`}>{t.n}</span>
             </button>
@@ -99,12 +99,12 @@ export function Step1Services() {
                         const r = toggleService(s);
                         if (!r.ok && r.reason) toast.warning(r.reason);
                       }}
-                      className={`press flex w-full items-start gap-3 rounded-2xl border p-3 text-left shadow-sm transition-all duration-200
-                        ${isOn ? 'border-teal-600 bg-teal-50/30 ring-1 ring-teal-600' : 'border-slate-100 bg-white hover:border-slate-200 hover:shadow-md'}
+                      className={`press flex w-full items-start gap-3 rounded-2xl border p-3 text-left transition-[background-color,border-color,box-shadow,transform] duration-150 ease-out
+                        ${isOn ? 'border-teal-700 bg-teal-800/[0.04] ring-1 ring-teal-700' : 'border-ivory-line bg-white hover:border-teal-200 hover:shadow-card'}
                         ${disabled ? 'cursor-not-allowed opacity-50' : ''}`}
                     >
                       <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2
-                        ${isOn ? 'border-teal-600 bg-teal-600 text-white' : 'border-slate-300 bg-white'}`}>
+                        ${isOn ? 'border-teal-700 bg-teal-700 text-white' : 'border-slate-300 bg-white'}`}>
                         {isOn && <Check size={14} strokeWidth={3} className="animate-fade-in-scale" />}
                       </span>
                       <SmartImage src={photos[s.id]} alt="" loading="lazy" className="hidden h-16 w-16 shrink-0 rounded-xl xs:block"

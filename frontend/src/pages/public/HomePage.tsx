@@ -145,61 +145,45 @@ export function HomePage() {
   );
   return (
     <div className="space-y-8 pb-4">
-      <section className="animate-fade-in relative isolate overflow-hidden rounded-[28px] border border-slate-200/80 bg-white shadow-card">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -left-24 -top-32 -z-10 h-96 w-96 rounded-full bg-teal-100/50 blur-3xl"
-        />
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -bottom-40 left-1/3 -z-10 h-80 w-80 rounded-full bg-amber-50 blur-3xl"
-        />
-        <div className="grid items-stretch lg:grid-cols-[1.15fr_1fr]">
-          <div className="stagger px-6 py-8 sm:px-10 sm:py-10">
-            <p
-              style={{ "--i": 0 } as React.CSSProperties}
-              className="inline-flex items-center gap-2 rounded-full border border-teal-200 bg-teal-50 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-teal-700"
-            >
-              <Sparkles size={14} /> Luxury wellness & spa
-            </p>
+      {/* Hero: ảnh không gian tiệm luôn hiện (điện thoại ở trên, máy tính bên phải); tiêu đề serif thay chữ gradient */}
+      <section className="animate-fade-in overflow-hidden rounded-2xl bg-white ring-1 ring-ivory-line">
+        <div className="grid items-stretch lg:grid-cols-[1.1fr_1fr]">
+          <div className="stagger order-2 px-5 pb-7 pt-6 sm:px-10 sm:py-12 lg:order-1 lg:py-14">
             <h1
-              style={{ "--i": 1 } as React.CSSProperties}
-              className="mt-4 text-3xl font-bold leading-[1.1] tracking-tight text-slate-900 sm:text-5xl"
+              style={{ "--i": 0 } as React.CSSProperties}
+              className="text-balance break-words font-display text-[2.6rem] font-semibold leading-[1.02] tracking-[-0.02em] text-slate-900 sm:text-6xl lg:text-[4.25rem]"
             >
-              Khoảnh khắc
-              <br className="hidden sm:block" /> dành riêng{" "}
-              <span className="whitespace-nowrap bg-gradient-to-r from-teal-600 to-emerald-500 bg-clip-text text-transparent">
-                cho bạn
-              </span>
+              Khoảnh khắc dành riêng{" "}
+              <em className="whitespace-nowrap font-medium italic text-teal-700">cho bạn</em>
             </h1>
             <p
-              style={{ "--i": 2 } as React.CSSProperties}
-              className="mt-3 max-w-lg text-base leading-relaxed text-slate-600"
+              style={{ "--i": 1 } as React.CSSProperties}
+              className="mt-4 max-w-md text-[15px] leading-relaxed text-slate-600 sm:text-base"
             >
               Chăm sóc tóc, làn da và tinh thần trong một không gian tinh tế.
               Chọn dịch vụ yêu thích và giữ lịch hẹn chỉ trong vài bước.
             </p>
             <div
-              style={{ "--i": 3 } as React.CSSProperties}
-              className="mt-6 flex flex-wrap gap-3"
+              style={{ "--i": 2 } as React.CSSProperties}
+              className="mt-7 flex flex-wrap gap-3 [&>*]:w-full sm:[&>*]:w-auto"
             >
               <Link
                 to="/dat-lich"
-                className="btn-primary group px-6 shadow-lg shadow-teal-600/20"
+                className="btn group min-h-[48px] bg-teal-800 px-6 text-[15px] text-white shadow-[0_10px_24px_-12px_rgba(17,94,89,0.55)] hover:bg-teal-900"
               >
                 <CalendarCheck size={18} /> Đặt Lịch Ngay{" "}
                 <ArrowRight
                   size={17}
-                  className="transition-transform group-hover:translate-x-0.5"
+                  className="transition-transform duration-200 ease-out group-hover:translate-x-0.5"
                 />
               </Link>
-              <Link to="/tra-cuu" className="btn-outline px-6">
+              <Link to="/tra-cuu" className="btn btn-outline min-h-[48px] border-ivory-line px-6 text-[15px] hover:border-slate-300 hover:bg-ivory">
                 <Search size={17} /> Tra cứu lịch
               </Link>
             </div>
             <div
-              style={{ "--i": 4 } as React.CSSProperties}
-              className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-3"
+              style={{ "--i": 3 } as React.CSSProperties}
+              className="mt-8 flex flex-wrap items-center gap-x-5 gap-y-3 border-t border-ivory-line pt-6"
             >
               <div className="flex -space-x-2.5">
                 {heroTeam.map(member => (
@@ -212,13 +196,13 @@ export function HomePage() {
                   Đội ngũ chuyên viên tận tâm
                 </p>
                 <p className="mt-0.5 flex items-center gap-1 text-slate-500">
-                  <ShieldCheck size={14} className="text-teal-600" /> Xác nhận
+                  <ShieldCheck size={14} className="text-teal-700" /> Xác nhận
                   lịch nhanh · giá minh bạch
                 </p>
               </div>
             </div>
           </div>
-          <div className="relative hidden min-h-[300px] overflow-hidden lg:block">
+          <div className="relative order-1 h-52 overflow-hidden xs:h-60 sm:h-72 lg:order-2 lg:h-auto lg:min-h-[440px]">
             <SmartImage
               src={IMAGES.hero_spa_interior}
               alt="Không gian boutique spa hiện đại"
@@ -226,8 +210,7 @@ export function HomePage() {
               className="absolute inset-0 h-full w-full"
               imgClassName="animate-ken-burns"
             />
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-white via-white/5 to-transparent" />
-            <div className="animate-fade-in absolute bottom-6 right-6 flex items-center gap-3 rounded-2xl border border-white/60 bg-white/85 px-4 py-3 shadow-lg backdrop-blur-md [animation-delay:500ms]">
+            <div className="animate-fade-in absolute bottom-3 left-3 flex items-center gap-3 rounded-xl bg-white px-3.5 py-2.5 shadow-[0_8px_24px_-8px_rgba(15,23,42,0.28)] [animation-delay:400ms] sm:bottom-5 sm:left-auto sm:right-5">
               <span className="relative flex h-2.5 w-2.5">
                 <span className="animate-ping-soft absolute inline-flex h-full w-full rounded-full bg-emerald-400" />
                 <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
@@ -247,16 +230,13 @@ export function HomePage() {
       <section aria-labelledby="catalog-title" className="space-y-4">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-teal-600">
-              Dịch vụ của chúng tôi
-            </p>
             <h2
               id="catalog-title"
-              className="mt-1 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl"
+              className="font-display text-[2rem] font-semibold leading-tight tracking-[-0.01em] text-slate-900 sm:text-[2.5rem]"
             >
               Chăm sóc theo cách của bạn
             </h2>
-            <p className="mt-2 text-sm text-slate-500">
+            <p className="mt-1 text-sm tabular-nums text-slate-500">
               {total} dịch vụ · giá minh bạch · chuyên viên tận tâm
             </p>
           </div>
@@ -295,9 +275,9 @@ export function HomePage() {
                 role="tab"
                 aria-selected={active}
                 onClick={() => setCategory(tab.id)}
-                className={`press inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full border px-4 text-sm font-medium transition-all duration-200 ${active ? "border-teal-700 bg-teal-700 text-white shadow-md shadow-teal-900/10" : "border-slate-200 bg-white text-slate-700 hover:border-teal-300 hover:text-teal-800"}`}
+                className={`press inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full border px-4 text-sm font-medium transition-[color,background-color,border-color,transform] duration-150 ease-out ${active ? "border-teal-800 bg-teal-800 text-white" : "border-ivory-line bg-white text-slate-700 hover:border-teal-300 hover:text-teal-800"}`}
               >
-                <span className={active ? "text-white" : "text-teal-600"}>{tab.id === "all" ? <LayoutGrid size={15} /> : categoryIcon(tab.name)}</span>
+                <span className={active ? "text-amber-100" : "text-teal-700"}>{tab.id === "all" ? <LayoutGrid size={15} /> : categoryIcon(tab.name)}</span>
                 {tab.name}
                 <span className={`rounded-full px-1.5 py-0.5 text-[11px] font-semibold tabular-nums ${active ? "bg-white/20 text-white" : "bg-slate-100 text-slate-500"}`}>{tab.count}</span>
               </button>
@@ -315,12 +295,12 @@ export function HomePage() {
               <>
                 <div className="stagger grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">{shown.map(({ service, group }, index) => (
                   <article key={service.id} style={{ '--i': index } as React.CSSProperties}
-                           className="group flex overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md sm:flex-col">
+                           className="group flex overflow-hidden rounded-2xl border border-ivory-line/80 bg-white transition-[transform,box-shadow] duration-200 ease-out hover:-translate-y-0.5 hover:shadow-card-hover sm:flex-col">
                     <div className="relative w-32 shrink-0 overflow-hidden sm:w-auto">
                       <SmartImage src={photos[service.id]} alt={service.name} loading="lazy" className="h-full min-h-[112px] sm:aspect-[4/3] sm:h-auto" seed={service.id}
                         kind={serviceMediaKind({ name: service.name, categoryId: group.categoryId, categoryName: group.categoryName })}
                         fallbackLabel={group.categoryName}
-                        imgClassName="duration-700 group-hover:scale-[1.05]" />
+                        imgClassName="duration-500 ease-out group-hover:scale-[1.04]" />
                       <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-white/95 px-2 py-0.5 text-[11px] font-semibold text-slate-700 shadow-sm backdrop-blur"><Clock3 size={11} /> {formatDuration(service.durationMinutes)}</span>
                     </div>
                     <div className="flex min-w-0 flex-1 flex-col gap-1.5 p-3.5">
@@ -328,12 +308,9 @@ export function HomePage() {
                       <h4 className="line-clamp-2 text-[15px] font-semibold leading-snug text-slate-900">{service.name}</h4>
                       <p className="line-clamp-2 text-xs leading-relaxed text-slate-500">{service.description}</p>
                       <div className="mt-auto flex items-center justify-between gap-2 pt-2">
-                        <span className="leading-tight">
-                          <span className="block text-base font-bold tabular-nums text-slate-900">{service.priceText}</span>
-                          <span className="text-[11px] text-slate-500">{formatDuration(service.durationMinutes)}</span>
-                        </span>
+                        <span className="min-w-0 truncate text-base font-bold tabular-nums text-slate-900" title={service.priceText}>{service.priceText}</span>
                         <Link to={`/dat-lich?service=${encodeURIComponent(service.id)}`}
-                              className="inline-flex items-center gap-1 rounded-full bg-teal-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-teal-700">
+                              className="inline-flex min-h-[40px] shrink-0 items-center gap-1 rounded-full bg-teal-800 px-4 text-xs font-semibold text-white transition-[background-color,transform] duration-150 ease-out hover:bg-teal-900 active:scale-[0.97]">
                           Đặt lịch <ArrowRight size={13} className="transition-transform duration-300 group-hover:translate-x-0.5" />
                         </Link>
                       </div>
@@ -343,7 +320,7 @@ export function HomePage() {
                 {!open && (
                   <div className="mt-3 text-center">
                     <button type="button" onClick={() => setExpanded((e) => ({ ...e, [category]: true }))}
-                            className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-4 py-1.5 text-xs font-semibold text-slate-700 hover:border-slate-300">
+                            className="press inline-flex min-h-[44px] items-center gap-1 rounded-full border border-ivory-line bg-white px-5 text-sm font-semibold text-slate-700 hover:border-slate-300">
                       Xem thêm {items.length - limit} dịch vụ <ChevronDown size={14} />
                     </button>
                   </div>

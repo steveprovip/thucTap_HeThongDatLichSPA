@@ -18,6 +18,8 @@ export default {
         accent: { gold: '#D97706', bright: '#F59E0B', glow: '#FEF3C7' },
         ink: { DEFAULT: '#0F172A', soft: '#475569', muted: '#64748B' },
         surface: { DEFAULT: '#FFFFFF', card: '#FFFFFF', alt: '#F8FAFC', page: '#F8FAFC' },
+        // Trang khách: nền ngà ấm + đường viền vàng sen (không đổi màn quản trị)
+        ivory: { DEFAULT: '#FBF8F3', deep: '#F4EEE4', line: '#E9DFCF' },
         border: { subtle: '#E2E8F0' },
         status: {
           pending: '#D97706', confirmed: '#2563EB', arrived: '#7C3AED',
@@ -26,11 +28,18 @@ export default {
       },
       fontFamily: {
         sans: ['Inter', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
+        // Tiêu đề trang khách: serif cổ điển, đủ dấu tiếng Việt — chất "spa sen" thay vì sans mặc định
+        display: ['"Cormorant Garamond"', 'Georgia', 'serif'],
       },
       boxShadow: {
         card: '0 4px 20px -2px rgba(0, 0, 0, 0.05), 0 2px 6px -1px rgba(0, 0, 0, 0.02)',
         'card-hover': '0 12px 32px -6px rgba(15, 23, 42, 0.10), 0 4px 10px -2px rgba(15, 23, 42, 0.04)',
         pop: '0 24px 48px -12px rgba(15, 23, 42, 0.18)',
+      },
+      transitionTimingFunction: {
+        // Ease-out mạnh (emil-design-eng): phản hồi tức thì, dừng mềm, không nảy quá đà
+        out: 'cubic-bezier(0.23, 1, 0.32, 1)',
+        drawer: 'cubic-bezier(0.32, 0.72, 0, 1)',
       },
       screens: { xs: '360px' },
     },

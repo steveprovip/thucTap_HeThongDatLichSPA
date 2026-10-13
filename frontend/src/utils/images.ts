@@ -36,7 +36,8 @@ export const IMAGES = {
   spa_relax_wash: u('1600334089648-b0d9d3028eb2'),
   spa_face_massage: u('1515377905703-c4788e51af15'),
   spa_couple: u('1544161515-4ab6ce6db874'),
-  hero_spa_interior: u('1629909613654-28e377c37b09', 1200, 85),
+  // Sảnh spa nhiệt đới (ảnh cũ 1629909613654 là phòng nha khoa — lộ ra khi hero hiện ảnh trên điện thoại)
+  hero_spa_interior: u('1560750588-73207b1ef5b8', 1400, 80),
 } as const;
 
 export type ImageKey = keyof typeof IMAGES;

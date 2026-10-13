@@ -37,6 +37,10 @@ export function BookingWizard() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const preselected = useRef(false);
+  // Hướng chuyển bước: tiến trượt từ phải, lùi trượt từ trái (khách luôn biết mình đang đi tới hay quay lại)
+  const prevStep = useRef(step);
+  const stepMotion = step >= prevStep.current ? 'step-forward' : 'step-back';
+  useEffect(() => { prevStep.current = step; }, [step]);
 
   useEffect(() => {
     const serviceId = searchParams.get('service');
@@ -172,6 +176,7 @@ export function BookingWizard() {
         to="/"
       />
       {/* Thanh bước */}
+      <div className="space-y-2">
       <ol className="grid grid-cols-4 gap-1 sm:gap-2" aria-label="Các bước đặt lịch">
         {STEPS.map((s) => {
           const done = step > s.n;
@@ -182,14 +187,14 @@ export function BookingWizard() {
                 type="button"
                 onClick={() => booking.canGoToStep(s.n) && setStep(s.n)}
                 disabled={!booking.canGoToStep(s.n)}
-                className={`flex w-full min-w-0 flex-col items-center gap-1 rounded-xl border px-1 py-2 text-[11px] font-semibold
-                  transition-colors sm:flex-row sm:gap-2 sm:px-3 sm:text-xs
-                  ${active ? 'border-teal-600 bg-teal-600 text-white shadow-sm' : done ? 'border-teal-200 bg-teal-50 text-teal-800' : 'border-slate-200 bg-white text-slate-500'}
+                className={`flex min-h-[48px] w-full min-w-0 flex-col items-center justify-center gap-1 rounded-xl border px-1 py-2 text-[11px] font-semibold
+                  transition-[color,background-color,border-color,transform] duration-200 ease-out active:scale-[0.97] sm:flex-row sm:gap-2 sm:px-3 sm:text-xs
+                  ${active ? 'border-teal-800 bg-teal-800 text-white' : done ? 'border-teal-200 bg-white text-teal-800 hover:border-teal-400' : 'border-ivory-line bg-white/70 text-slate-500'}
                   ${booking.canGoToStep(s.n) ? '' : 'cursor-not-allowed opacity-60'}`}
                 aria-current={active ? 'step' : undefined}
               >
-                <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px]
-                  ${active ? 'bg-white text-teal-700' : done ? 'bg-teal-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] tabular-nums
+                  ${active ? 'bg-amber-100 text-teal-900' : done ? 'bg-teal-700 text-white' : 'bg-slate-100 text-slate-500'}`}>
                   {done ? <Check size={12} strokeWidth={3} /> : s.n}
                 </span>
                 <span className="w-full truncate text-center sm:text-left">{s.label}</span>
@@ -198,8 +203,14 @@ export function BookingWizard() {
           );
         })}
       </ol>
+      {/* Thanh tiến độ mảnh: chỉ transform scaleX (chạy trên GPU, không reflow) */}
+      <div className="h-[3px] overflow-hidden rounded-full bg-ivory-line" aria-hidden>
+        <div className="h-full origin-left rounded-full bg-teal-700 transition-transform duration-300 ease-out"
+             style={{ transform: `scaleX(${(step - 1) / (STEPS.length - 1)})` }} />
+      </div>
+      </div>
 
-      <div key={step} className="card animate-fade-in p-4 sm:p-6">
+      <div key={step} className={`rounded-2xl bg-white p-4 ring-1 ring-ivory-line sm:p-6 ${stepMotion}`}>
         {step === 1 && <Step1Services />}
         {step === 2 && <Step2Slot />}
         {step === 3 && <Step3Stylist />}
@@ -213,7 +224,7 @@ export function BookingWizard() {
       </div>
 
       {/* Thanh tổng kết + điều hướng, dính đáy màn hình trên điện thoại */}
-      <div className="fixed inset-x-0 bottom-[calc(var(--bottom-nav-h)+1px+env(safe-area-inset-bottom))] z-20 border-t border-slate-200 bg-white/95 px-3 py-2.5 shadow-[0_-8px_24px_-12px_rgba(15,23,42,0.12)] backdrop-blur
+      <div className="fixed inset-x-0 bottom-[calc(var(--bottom-nav-h)+1px+env(safe-area-inset-bottom))] z-20 border-t border-ivory-line bg-white/95 px-3 py-2.5 shadow-[0_-8px_24px_-12px_rgba(15,23,42,0.12)] backdrop-blur
                       sm:sticky sm:bottom-4 sm:rounded-2xl sm:border sm:px-5 sm:py-3.5 sm:shadow-card">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2">
           {/* Cố định ngay trên giỏ dịch vụ và nút "Tiếp tục", ở mọi bước */}
@@ -223,7 +234,7 @@ export function BookingWizard() {
               <Clock size={14} /> {selected.length} dịch vụ · {formatDuration(totalDuration)}
             </span>
             <span className="inline-flex items-center gap-1 text-base font-bold text-slate-900">
-              <Wallet size={15} className="text-teal-600" /> <span key={totalPrice} className="animate-fade-in-scale inline-block">{formatVnd(totalPrice)}</span>
+              <Wallet size={15} className="text-teal-700" /> <span key={totalPrice} className="animate-fade-in-scale inline-block">{formatVnd(totalPrice)}</span>
             </span>
           </div>
           <div className="flex w-full items-center gap-2 sm:w-auto [&>*]:flex-1 sm:[&>*]:flex-none">

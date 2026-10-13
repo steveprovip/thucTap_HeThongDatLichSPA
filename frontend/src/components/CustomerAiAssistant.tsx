@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CalendarCheck, Check, Clock3, Flower2, Loader2, MessageCircleHeart, Plus, Send, ThumbsDown, ThumbsUp, X } from 'lucide-react';
+import { Brush, CalendarCheck, Check, Clock3, Flower2, Gem, MessageCircleHeart, Plus, Scissors, Send, Sparkles, ThumbsDown, ThumbsUp, X } from 'lucide-react';
 import { assistantApi, getErrorMessage } from '@/api';
 import type { ChatTurn, CustomerAssistantService, CustomerDialogState } from '@/types';
 import { formatVnd } from '@/utils/format';
@@ -15,9 +15,9 @@ interface Line {
 
 const QUICK = ['Xem bảng giá', 'Dịch vụ hot', 'Đặt lịch ngay'];
 /** TASK v4 · NV4: chủ đề tư vấn nhanh như quầy lễ tân spa — bấm là hỏi ngay. */
-const TOPICS: [string, string][] = [
-  ['💇‍♀️ Tóc', 'Tư vấn chăm sóc tóc'], ['✨ Da mặt', 'Tư vấn chăm sóc da'], ['💆 Massage', 'Massage thư giãn'],
-  ['💅 Nail', 'Tư vấn làm móng'], ['💄 Trang điểm', 'Tư vấn trang điểm dự tiệc'],
+const TOPICS: [string, string, typeof Scissors][] = [
+  ['Tóc', 'Tư vấn chăm sóc tóc', Scissors], ['Da mặt', 'Tư vấn chăm sóc da', Sparkles], ['Massage', 'Massage thư giãn', Flower2],
+  ['Nail', 'Tư vấn làm móng', Gem], ['Trang điểm', 'Tư vấn trang điểm dự tiệc', Brush],
 ];
 const partOfDay = (): string => {
   const h = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', hour12: false }).format(new Date())) % 24;
@@ -107,18 +107,23 @@ export function CustomerAiAssistant({ onBook, liftPx = 0 }: {
 
   const onSubmit = (e: FormEvent) => { e.preventDefault(); void ask(draft); };
   const bottom = `calc(var(--bottom-nav-h, 0px) + env(safe-area-inset-bottom) + ${12 + liftPx}px)`;
+  // Khung chat phủ lên thanh "Tiếp tục" nên không cần nâng; cao theo 100dvh để không tràn mép trên ở điện thoại thấp
+  // Trang đặt lịch (nút nâng trên thanh "Tiếp tục"): điện thoại chỉ hiện icon tròn để không che ô khung giờ
+  const compact = liftPx > 0;
+  const panelBottom ='calc(var(--bottom-nav-h, 0px) + env(safe-area-inset-bottom) + 12px)';
+  const panelHeight = 'min(600px, calc(100dvh - var(--bottom-nav-h, 0px) - env(safe-area-inset-bottom) - 84px))';
 
   return (
     <div className="no-print">
       {!open && (
         <button type="button" onClick={() => setOpen(true)} aria-label="Mở trợ lý tư vấn sắc đẹp"
                 style={{ bottom }}
-                className="group fixed right-4 z-40 inline-flex items-center gap-2.5 rounded-full bg-white py-1.5 pl-1.5 pr-4 text-sm font-semibold text-slate-800 shadow-lg ring-1 ring-slate-200 transition hover:-translate-y-0.5 hover:shadow-xl sm:!bottom-6">
-          <span className="relative flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-teal-500 to-emerald-600 text-white">
+                className={`group fixed right-4 z-40 inline-flex min-h-[48px] items-center gap-2.5 rounded-full bg-white py-1.5 pl-1.5 ${compact ? 'pr-1.5 sm:pr-4' : 'pr-4'} text-sm font-semibold text-slate-800 shadow-[0_12px_32px_-12px_rgba(15,23,42,0.35)] ring-1 ring-ivory-line transition-[transform,box-shadow] duration-200 ease-out animate-fade-in hover:-translate-y-0.5 active:scale-[0.97] sm:!bottom-6`}>
+          <span className="relative flex h-9 w-9 items-center justify-center rounded-full bg-teal-800 text-amber-100">
             <MessageCircleHeart size={18} />
             <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-emerald-400 ring-2 ring-white" aria-hidden />
           </span>
-          <span className="leading-tight">
+          <span className={`leading-tight ${compact ? 'hidden sm:inline' : ''}`}>
             <span className="block">Tư vấn sắc đẹp</span>
             <span className="hidden text-[11px] font-normal text-slate-500 sm:block">Gợi ý dịch vụ · báo giá ngay</span>
           </span>
@@ -127,42 +132,43 @@ export function CustomerAiAssistant({ onBook, liftPx = 0 }: {
 
       {open && (
         <section role="dialog" aria-label="Trợ lý tư vấn dịch vụ"
-                 style={{ bottom }}
-                 className="fixed inset-x-3 z-50 flex h-[min(600px,78vh)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl sm:inset-x-auto sm:right-6 sm:!bottom-6 sm:w-[390px]">
-          <header className="flex items-center gap-2.5 bg-gradient-to-r from-teal-700 via-teal-600 to-emerald-600 px-3.5 py-3 text-white">
-            <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/15 ring-2 ring-white/40">
+                 style={{ bottom: panelBottom, height: panelHeight }}
+                 onKeyDown={(e) => { if (e.key === 'Escape') setOpen(false); }}
+                 className="animate-pop-in fixed inset-x-3 z-50 flex flex-col overflow-hidden rounded-2xl bg-white shadow-[0_24px_64px_-16px_rgba(15,23,42,0.35)] ring-1 ring-slate-900/[0.06] sm:inset-x-auto sm:right-6 sm:!bottom-6 sm:w-[400px]">
+          <header className="flex items-center gap-2.5 bg-teal-900 px-3.5 py-3 text-white">
+            <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10 text-amber-100 ring-1 ring-amber-100/30">
               <Flower2 size={20} />
-              <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-300 ring-2 ring-teal-700" aria-hidden />
+              <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-400 ring-2 ring-teal-900" aria-hidden />
             </span>
             <div className="min-w-0 leading-tight">
-              <p className="text-sm font-semibold">Trợ lý tư vấn sắc đẹp</p>
-              <p className="text-[11px] opacity-85">Trợ lý tự động · trả lời ngay · giá đúng bảng giá tiệm</p>
+              <p className="font-display text-lg font-semibold leading-none">Trợ lý tư vấn sắc đẹp</p>
+              <p className="mt-1 truncate text-[11px] text-teal-100/80">Trả lời ngay · giá đúng bảng giá tiệm</p>
             </div>
             <button type="button"
                     onClick={() => { if (picked.length) book(picked); else { setOpen(false); if (!onBook) navigate('/dat-lich'); } }}
                     title={picked.length ? 'Điền các dịch vụ đã chọn vào phiếu đặt lịch' : 'Mở phiếu đặt lịch'}
-                    className="ml-auto hidden rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-teal-800 shadow-sm transition hover:bg-teal-50 sm:inline-flex">
+                    className="ml-auto hidden shrink-0 whitespace-nowrap rounded-full bg-amber-100 px-3 py-1.5 text-xs font-semibold text-teal-900 transition-[background-color,transform] duration-150 ease-out hover:bg-white active:scale-[0.97] sm:inline-flex">
               Đặt lịch ngay
             </button>
             <button type="button" onClick={() => setOpen(false)} aria-label="Đóng trợ lý"
-                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg hover:bg-white/15 sm:ml-1"><X size={17} /></button>
+                    className="hit-44 ml-auto inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg hover:bg-white/10 sm:ml-1"><X size={18} /></button>
           </header>
 
-          <div ref={logRef} className="thin-scroll min-h-0 flex-1 space-y-2.5 overflow-y-auto bg-slate-50/60 px-3 py-3 text-[13px]">
+          <div ref={logRef} className="thin-scroll min-h-0 flex-1 space-y-2.5 overflow-y-auto overscroll-contain bg-ivory px-3 py-3 text-[13.5px] leading-relaxed">
             {lines.length === 1 && (
               <div className="flex flex-wrap gap-1.5 pb-1" aria-label="Chủ đề tư vấn">
-                {TOPICS.map(([label, q]) => (
+                {TOPICS.map(([label, q, Icon]) => (
                   <button key={label} type="button" disabled={busy} onClick={() => void ask(q)}
-                          className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition hover:border-teal-400 hover:text-teal-800 disabled:opacity-50">
-                    {label}
+                          className="inline-flex min-h-[36px] items-center gap-1.5 rounded-full border border-ivory-line bg-white px-3 text-xs font-medium text-slate-700 transition-[color,border-color,transform] duration-150 ease-out hover:border-teal-400 hover:text-teal-800 active:scale-[0.97] disabled:opacity-50">
+                    <Icon size={13} className="text-teal-700" /> {label}
                   </button>
                 ))}
               </div>
             )}
             {lines.map((l, i) => (
               <div key={i} ref={i === lines.length - 1 && l.from === 'bot' ? lastBotRef : undefined}
-                   className={l.from === 'me' ? 'flex justify-end' : ''}>
-                <div className={`max-w-[90%] whitespace-pre-line rounded-2xl px-3 py-2 ${l.from === 'me' ? 'rounded-br-md bg-teal-600 text-white' : 'rounded-bl-md bg-white text-slate-800 shadow-sm'}`}>
+                   className={`animate-bubble-in ${l.from === 'me' ? 'flex justify-end' : ''}`}>
+                <div className={`max-w-[88%] whitespace-pre-line break-words rounded-2xl px-3.5 py-2 ${l.from === 'me' ? 'rounded-br-md bg-teal-700 text-white' : 'rounded-bl-md bg-white text-slate-800 ring-1 ring-ivory-line'}`}>
                   {l.understoodAs && <span className="mb-1 block text-[11px] italic text-slate-500">Mình hiểu là: “{l.understoodAs}”</span>}
                   {l.text}
                   {l.meta && <span className="mt-1 block text-[10px] opacity-50">{l.meta}</span>}
@@ -171,8 +177,8 @@ export function CustomerAiAssistant({ onBook, liftPx = 0 }: {
                       {l.rated ? (l.rated === 'up' ? 'Cảm ơn bạn!' : 'Cảm ơn bạn — tiệm sẽ cải thiện câu này.') : (
                         <>
                           <span>Câu trả lời có giúp ích?</span>
-                          <button type="button" onClick={() => rate(i, true)} aria-label="Hữu ích" className="rounded p-0.5 hover:bg-slate-100 hover:text-teal-700"><ThumbsUp size={12} /></button>
-                          <button type="button" onClick={() => rate(i, false)} aria-label="Chưa đúng ý" className="rounded p-0.5 hover:bg-slate-100 hover:text-rose-600"><ThumbsDown size={12} /></button>
+                          <button type="button" onClick={() => rate(i, true)} aria-label="Hữu ích" className="hit-44 rounded p-1 hover:bg-slate-100 hover:text-teal-700"><ThumbsUp size={12} /></button>
+                          <button type="button" onClick={() => rate(i, false)} aria-label="Chưa đúng ý" className="hit-44 rounded p-1 hover:bg-slate-100 hover:text-rose-600"><ThumbsDown size={12} /></button>
                         </>
                       )}
                     </span>
@@ -180,7 +186,7 @@ export function CustomerAiAssistant({ onBook, liftPx = 0 }: {
                 </div>
                 {!!l.suggestions?.length && (
                   // Gợi ý GỌN: mỗi dịch vụ một dòng (ảnh nhỏ · tên · giá · Chọn / Đặt), tối đa 3 — không lấn át câu trả lời
-                  <ul className="mt-1.5 max-w-[90%] divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white" aria-label="Dịch vụ liên quan">
+                  <ul className="mt-1.5 max-w-[92%] divide-y divide-ivory-line overflow-hidden rounded-xl bg-white ring-1 ring-ivory-line" aria-label="Dịch vụ liên quan">
                     {l.suggestions.slice(0, 3).map((s) => {
                       const on = picked.some((x) => x.id === s.id);
                       return (
@@ -196,11 +202,11 @@ export function CustomerAiAssistant({ onBook, liftPx = 0 }: {
                           </div>
                           <button type="button" onClick={() => toggle(s)} aria-pressed={on}
                                   aria-label={on ? `Bỏ chọn ${s.name}` : `Chọn thêm ${s.name}`} title={on ? 'Bỏ chọn' : 'Chọn thêm để đặt chung'}
-                                  className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border ${on ? 'border-teal-500 bg-teal-50 text-teal-700' : 'border-slate-200 text-slate-500 hover:border-teal-400 hover:text-teal-700'}`}>
+                                  className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition-[color,background-color,border-color,transform] duration-150 ease-out active:scale-[0.92] sm:h-8 sm:w-8 ${on ? 'border-teal-600 bg-teal-50 text-teal-800' : 'border-slate-200 text-slate-500 hover:border-teal-400 hover:text-teal-700'}`}>
                             {on ? <Check size={14} /> : <Plus size={14} />}
                           </button>
                           <button type="button" onClick={() => book([s], l.bookDate)} title={`Đặt lịch ${s.name}${l.bookDate ? ` ngày ${l.bookDate.slice(8, 10)}/${l.bookDate.slice(5, 7)}` : ''}`}
-                                  className="inline-flex h-7 shrink-0 items-center gap-1 rounded-lg bg-teal-600 px-2 text-[11px] font-semibold text-white hover:bg-teal-700">
+                                  className="inline-flex h-9 shrink-0 items-center gap-1 rounded-lg bg-teal-700 px-2.5 text-[11px] font-semibold text-white transition-[background-color,transform] duration-150 ease-out hover:bg-teal-800 active:scale-[0.96] sm:h-8">
                             <CalendarCheck size={12} /> Đặt
                           </button>
                         </li>
@@ -210,35 +216,40 @@ export function CustomerAiAssistant({ onBook, liftPx = 0 }: {
                 )}
               </div>
             ))}
-            {busy && <p className="flex items-center gap-1.5 text-xs text-slate-500"><Loader2 size={13} className="animate-spin" /> Đang trả lời…</p>}
+            {busy && (
+              <p role="status" className="animate-bubble-in inline-flex items-center gap-1 rounded-2xl rounded-bl-md bg-white px-3.5 py-3 ring-1 ring-ivory-line">
+                <span className="sr-only">Đang trả lời…</span>
+                {[0, 1, 2].map((d) => <span key={d} aria-hidden className="typing-dot h-1.5 w-1.5 rounded-full bg-teal-700" />)}
+              </p>
+            )}
           </div>
 
           {picked.length > 0 && (
-            <div className="flex items-center gap-2 border-t border-teal-100 bg-teal-50 px-3 py-2 text-xs">
+            <div className="animate-fade-in flex items-center gap-2 border-t border-teal-100 bg-teal-50 px-3 py-2 text-xs">
               <span className="min-w-0 flex-1 leading-tight text-teal-900">
                 <span className="block truncate font-semibold">Đã chọn {picked.length} dịch vụ · {picked.reduce((a, p) => a + p.durationMinutes, 0)} phút</span>
                 <span className="block truncate">{formatVnd(picked.reduce((a, p) => a + p.price, 0))} · {picked.map((p) => p.name).join(', ')}</span>
               </span>
               <button type="button" onClick={() => book(picked)}
-                      className="inline-flex shrink-0 items-center gap-1 rounded-xl bg-teal-600 px-3 py-2 font-semibold text-white shadow-sm hover:bg-teal-700">
+                      className="inline-flex min-h-[40px] shrink-0 items-center gap-1 rounded-xl bg-teal-700 px-3 font-semibold text-white transition-[background-color,transform] duration-150 ease-out hover:bg-teal-800 active:scale-[0.97]">
                 <CalendarCheck size={14} /> Đặt lịch ngay
               </button>
             </div>
           )}
 
-          <div className="flex gap-1.5 overflow-x-auto border-t border-slate-100 px-2.5 pt-2 thin-scroll" aria-label="Câu hỏi nhanh">
+          <div className="flex gap-1.5 overflow-x-auto border-t border-ivory-line px-2.5 pt-2 thin-scroll" aria-label="Câu hỏi nhanh">
             {quick.map((q) => (
               <button key={q} type="button" disabled={busy} onClick={() => void ask(q)}
-                      className="shrink-0 rounded-full border border-teal-200 bg-white px-2.5 py-1 text-xs font-medium text-teal-800 hover:bg-teal-50 disabled:opacity-50">
+                      className="min-h-[36px] shrink-0 rounded-full border border-teal-200 bg-white px-3 text-xs font-medium text-teal-800 transition-[background-color,transform] duration-150 ease-out hover:bg-teal-50 active:scale-[0.97] disabled:opacity-50">
                 {q}
               </button>
             ))}
           </div>
-          <form onSubmit={onSubmit} className="flex items-center gap-1.5 px-2.5 py-2">
+          <form onSubmit={onSubmit} className="flex items-center gap-1.5 px-2.5 pb-2.5 pt-2">
             <input value={draft} onChange={(e) => setDraft(e.target.value)} maxLength={500} placeholder="VD: tóc khô xơ, muốn phục hồi…"
                    aria-label="Câu hỏi cho trợ lý" className="field-input min-h-[38px] flex-1 py-1.5 text-sm" />
             <button type="submit" disabled={busy || !draft.trim()} aria-label="Gửi"
-                    className="inline-flex h-[38px] w-[38px] items-center justify-center rounded-lg bg-teal-600 text-white disabled:opacity-40"><Send size={16} /></button>
+                    className="tap-44 inline-flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-xl bg-teal-700 text-white transition-[background-color,transform,opacity] duration-150 ease-out hover:bg-teal-800 active:scale-[0.92] disabled:opacity-40"><Send size={16} /></button>
           </form>
         </section>
       )}

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, CalendarX2, Info } from 'lucide-react';
+import { type ReactNode, useCallback, useEffect, useState } from 'react';
+import { AlertTriangle, CalendarX2, CheckCircle2, Info, Moon, Sun, Sunset } from 'lucide-react';
 import { getErrorMessage, publicApi } from '@/api';
 import type { Availability } from '@/types';
 import { Button, Skeleton } from '@/components';
@@ -8,10 +8,10 @@ import { useBooking } from '@/contexts/BookingContext';
 import { useToast } from '@/contexts/ToastContext';
 
 /** Nhóm khung giờ theo buổi; mọi khung giờ đều rơi vào đúng một nhóm. */
-const SESSIONS: { label: string; test: (t: string) => boolean }[] = [
-  { label: 'Sáng', test: (t) => t < '12:00' },
-  { label: 'Chiều', test: (t) => t >= '12:00' && t < '17:00' },
-  { label: 'Tối', test: (t) => t >= '17:00' },
+const SESSIONS: { label: string; icon: ReactNode; test: (t: string) => boolean }[] = [
+  { label: 'Sáng', icon: <Sun size={14} className="text-amber-600" />, test: (t) => t < '12:00' },
+  { label: 'Chiều', icon: <Sunset size={14} className="text-orange-600" />, test: (t) => t >= '12:00' && t < '17:00' },
+  { label: 'Tối', icon: <Moon size={14} className="text-indigo-500" />, test: (t) => t >= '17:00' },
 ];
 
 /** Bước 2 — chọn ngày rồi chọn khung giờ còn đủ chỗ cho tổng thời lượng (S2-05). */
@@ -53,18 +53,25 @@ export function Step2Slot() {
       <div>
         <p className="field-label">Chọn ngày</p>
         <div className="-mx-1 flex snap-x gap-2 overflow-x-auto px-1 pb-1 thin-scroll">
-          {quickDays.map((d) => {
+          {quickDays.map((d, i) => {
             const active = d === date;
             const label = formatWeekdayDate(`${d}T00:00:00+07:00`);
             return (
               <button
                 key={d}
+                type="button"
+                aria-pressed={active}
+                aria-label={label}
                 onClick={() => { setDate(d); setTime(''); }}
-                className={`min-w-[104px] snap-start rounded-xl border px-3 py-2.5 text-center transition-colors
-                  ${active ? 'border-teal-600 bg-teal-50/30 text-teal-800 ring-1 ring-teal-600' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'}`}
+                className={`flex min-h-[72px] min-w-[76px] snap-start flex-col items-center justify-center rounded-xl border px-2 py-2 text-center
+                  transition-[color,background-color,border-color,transform] duration-150 ease-out active:scale-[0.96]
+                  ${active ? 'border-teal-800 bg-teal-800 text-white' : 'border-ivory-line bg-white text-slate-700 hover:border-teal-300'}`}
               >
-                <span className="block text-[11px] opacity-80">{label.split(' ').slice(0, 2).join(' ')}</span>
-                <span className="block text-sm font-bold">{label.split(' ').slice(-1)[0]}</span>
+                <span className={`block text-[11px] font-medium ${active ? 'text-amber-100' : i === 0 ? 'text-teal-700' : 'text-slate-500'}`}>
+                  {i === 0 ? 'Hôm nay' : label.split(' ').slice(0, -1).join(' ')}
+                </span>
+                <span className="my-0.5 block text-xl font-semibold leading-none tabular-nums">{d.slice(8, 10)}</span>
+                <span className={`block text-[10px] ${active ? 'text-white/75' : 'text-slate-400'}`}>Th{Number(d.slice(5, 7))}</span>
               </button>
             );
           })}
@@ -82,7 +89,7 @@ export function Step2Slot() {
         </div>
       </div>
 
-      <div className="flex items-start gap-2 rounded-xl border border-teal-100 bg-teal-50/60 px-3.5 py-2.5 text-xs text-teal-900">
+      <div className="flex items-start gap-2 rounded-xl bg-ivory px-3.5 py-2.5 text-xs text-slate-700">
         <Info size={14} className="mt-0.5 shrink-0" />
         <p className="leading-relaxed">
           Tổng thời lượng bạn chọn: <strong>{formatDuration(totalDuration)}</strong>.
@@ -140,19 +147,21 @@ export function Step2Slot() {
             if (!group.length) return null;
             return (
               <section key={session.label} className="mb-3 last:mb-0" aria-label={`Buổi ${session.label}`}>
-                <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  {session.label} <span className="font-normal normal-case">({group.length})</span>
+                <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-slate-600">
+                  {session.icon} {session.label} <span className="font-normal tabular-nums text-slate-400">· {group.length} khung</span>
                 </p>
                 <div className="grid grid-cols-3 gap-2 xs:grid-cols-4 sm:grid-cols-6">
                   {group.map((s) => (
                     <button
                       key={s.time}
+                      type="button"
                       onClick={() => pick(s.time)}
                       aria-pressed={time === s.time}
-                      className={`min-h-[44px] rounded-xl border text-sm font-semibold transition-colors
+                      className={`min-h-[48px] rounded-xl border text-sm font-semibold tabular-nums
+                        transition-[color,background-color,border-color,transform] duration-150 ease-out active:scale-[0.95]
                         ${time === s.time
-                          ? 'border-teal-600 bg-teal-600 text-white shadow-sm'
-                          : 'border-slate-200 bg-white text-slate-800 hover:border-teal-600 hover:text-teal-700'}`}
+                          ? 'border-teal-800 bg-teal-800 text-white'
+                          : 'border-ivory-line bg-white text-slate-800 hover:border-teal-500 hover:text-teal-800'}`}
                     >
                       {s.time}
                     </button>
@@ -162,9 +171,12 @@ export function Step2Slot() {
             );
           })}
           {time && (
-            <p className="mt-3 rounded-xl bg-green-50 px-3.5 py-2.5 text-xs text-green-900">
+            <p key={time} className="animate-fade-in mt-3 flex items-start gap-2 rounded-xl bg-teal-800/[0.06] px-3.5 py-2.5 text-xs text-teal-900">
+              <CheckCircle2 size={15} className="mt-px shrink-0 text-teal-700" />
+              <span>
               Đã chọn <strong>{time}</strong> ngày {formatWeekdayDate(`${date}T00:00:00+07:00`)} — dự kiến xong lúc{' '}
               <strong>{addMinutesLabel(time, totalDuration)}</strong>.
+              </span>
             </p>
           )}
         </div>
