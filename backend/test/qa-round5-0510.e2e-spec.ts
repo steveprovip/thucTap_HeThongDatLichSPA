@@ -28,14 +28,21 @@ describe('QA vòng 05/10 — số liệu khách hàng và ngày nghỉ lễ trê
          FROM salon_working_hours WHERE day_of_week = $1 AND is_closed = FALSE`, [dow]);
     return row as Hours | undefined;
   };
-  /** Ngày mở cửa, không trùng ngày nghỉ lễ nào, đủ xa để không đụng các bộ kiểm thử khác. */
+  /**
+   * Ngày mở cửa, không trùng ngày nghỉ lễ nào và TRỐNG HOÀN TOÀN (chưa có lịch hẹn / ca của bất kỳ ai).
+   * Các bộ khác cũng chọn "ngày mở cửa đầu tiên từ +N" (vd. qa-1310-field-notes từ +110, invariants từ +70)
+   * và để lại lịch hẹn; Jest đổi thứ tự tệp giữa các lần chạy -> chỉ chọn ngày trống để không phụ thuộc thứ tự.
+   */
   const openDays = async (start: number, count: number): Promise<{ date: string; hours: Hours }[]> => {
     const found: { date: string; hours: Hours }[] = [];
     for (let d = start; d < start + 40 && found.length < count; d += 1) {
       const date = tomorrowISO(d);
       const [holiday] = await ds.query('SELECT 1 FROM salon_holidays WHERE $1::date BETWEEN start_date AND end_date', [date]);
+      const [booked] = await ds.query(
+        `SELECT 1 FROM appointments WHERE (start_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date = $1::date LIMIT 1`, [date]);
+      const [shift] = await ds.query('SELECT 1 FROM stylist_shifts WHERE work_date = $1::date LIMIT 1', [date]);
       const hours = await hoursOf(date);
-      if (!holiday && hours) found.push({ date, hours });
+      if (!holiday && !booked && !shift && hours) found.push({ date, hours });
     }
     if (found.length < count) throw new Error('Không tìm đủ ngày mở cửa');
     return found;
