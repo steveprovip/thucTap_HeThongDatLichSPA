@@ -1,6 +1,6 @@
 {
   "name": "salon-spa-booking",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "private": true,
   "repository": { "type": "git", "url": "https://github.com/steveprovip/thucTap_HeThongDatLichSPA.git" },
   "description": "Hệ thống đặt lịch Salon - Spa: quản lý lịch hẹn, ca làm, thanh toán và báo cáo",
