@@ -3,6 +3,18 @@
 Định dạng theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), phiên bản theo [Semantic Versioning](https://semver.org/lang/vi/).
 Launcher (biểu tượng Hương Sen Salon / `HoYoSalon.bat`) đọc tệp này cho mục **Có gì mới** và **Nhật ký cập nhật**.
 
+## [Chưa phát hành] - 2026-10-13
+
+### Ghi chú test thực tế 13/10
+- **Chờ xác nhận:** nút "Xử lý" đổi thành "Chi tiết".
+- **Lịch ngày kiểu Jira:** thêm chế độ **Bảng Kanban** — mỗi trạng thái một cột, kéo thẻ để xác nhận / check-in / bắt đầu / hoàn tất / không đến / huỷ (huỷ & từ chối hỏi lý do; bước sai luồng bị chặn kèm lời giải thích); trên **dòng thời gian** kéo khối lịch sang thợ khác / giờ khác (bắt bước 15 phút, hỏi xác nhận, máy chủ kiểm tra kỹ năng & giờ trống, khách nhận email). Dùng được chuột, cảm ứng, bàn phím.
+- **Bảng ca làm kiểu Jira:** kéo viên ca sang ô khác để chuyển (đổi người / đổi ngày), giữ Ctrl để sao chép; chặn chồng ca, ngoài giờ mở cửa, ca còn lịch hẹn.
+- **Khách vãng lai:** tạo xong chỉ hiện thông báo (khách, giờ, thợ), không hiện mã lịch.
+- **Email không tới:** hệ thống đang gửi vào hộp thư thử nghiệm MailDev trên máy — trang Tổng quan nay cảnh báo rõ, hướng dẫn thiết lập Gmail (mật khẩu ứng dụng) và có nút **Gửi email thử**.
+- **Dữ liệu mẫu đủ 39 user story:** `npm run seed:check` (41 tình huống); dữ liệu tự "lão hoá" theo thời gian như ngày làm việc thật; bổ sung dịch vụ ngưng bán, dịch vụ chưa có thợ, yêu cầu ca chờ duyệt, thợ ốm ngày mai còn lịch, phiếu điều chỉnh…
+- **Ảnh phong cách Việt Nam:** ảnh dịch vụ / thợ chọn lại (áo dài cô dâu, kỷ yếu, khăn vấn, gội đầu dưỡng sinh, tiệm tóc Việt).
+- **Chia sẻ link 1 chạm:** HoYoSalon tạo link HTTPS công khai + mã QR, mở trên mọi thiết bị (Cloudflare Quick Tunnel).
+
 ## [2.1.1] - 2026-10-13
 
 ### AI local 1 chạm trên mọi máy (sửa lỗi laptop không chạy được AI)

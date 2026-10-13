@@ -246,6 +246,7 @@
     <div class="menu" id="menu" role="menu">
       <button role="menuitem" data-act="check">Kiểm tra phiên bản mới nhất</button>
       <button role="menuitem" data-act="open-app">Mở ứng dụng trong trình duyệt</button>
+      <button role="menuitem" data-act="share">Chia sẻ link — mở trên điện thoại / máy khác</button>
       <button role="menuitem" data-act="logs">Xem log Client / Server</button>
       <button role="menuitem" data-act="mail">Hộp thư thử nghiệm (Maildev)</button>
       <button role="menuitem" data-act="docs">Tài liệu API (Swagger)</button>
@@ -267,6 +268,7 @@
       <button class="tab" data-tab="logs">Log Client / Server</button>
       <button class="tab" data-tab="device">Chẩn đoán thiết bị</button>
       <button class="tab" data-tab="shop">Thiết lập cửa hàng</button>
+      <button class="tab" data-tab="share">Chia sẻ link</button>
       <button class="tab" data-tab="settings">Cài đặt</button>
     </nav>
     <div class="panel" id="panel"></div>
@@ -470,6 +472,7 @@ $('menu').addEventListener('click', async (e) => {
     if (act === 'docs') await post('/api/open', { target: 'docs' });
     if (act === 'logs') openModal('logs');
     if (act === 'shop') openModal('shop');
+    if (act === 'share') openModal('share');
     if (act === 'backups') await post('/api/open', { target: 'backups' });
     if (act === 'backup') { await post('/api/backup'); toast('Đang sao lưu dữ liệu…'); }
     if (act === 'force-update' && confirm('Build lại và chạy lại bản hiện tại (sao lưu CSDL trước khi migration)?')) { await post('/api/update', { force: true }); toast('Bắt đầu cập nhật lại…'); }
@@ -640,6 +643,42 @@ async function showTab(tab) {
         refresh();
       } catch (e) { toast(e.message, 'err'); }
     };
+    return;
+  }
+  if (tab === 'share') {
+    // Ghi chú test 13/10: "có đường link riêng, mở bằng mọi thiết bị"
+    const draw = (s, busy = '') => {
+      panel.innerHTML = `${closeBtn}<h3>Chia sẻ link</h3>
+        <p class="sub">Tạo đường link HTTPS công khai tới hệ thống đang chạy trên máy này — mở được trên điện thoại, laptop, máy tính bảng ở bất kỳ đâu (qua Cloudflare, miễn phí, không cần tài khoản).</p>
+        ${s.sharing ? `<div class="card" style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+            ${s.qr ? `<img src="${s.qr}" alt="Mã QR của link" width="160" height="160" style="background:#fff;border-radius:12px;padding:6px">` : ''}
+            <div style="min-width:0;flex:1"><div class="k">Đang chia sẻ</div>
+              <div class="v" style="word-break:break-all;font-size:16px"><a href="${esc(s.url)}" target="_blank" rel="noreferrer" style="color:inherit">${esc(s.url)}</a></div>
+              <p class="sub" style="margin-top:6px">Quét mã QR bằng điện thoại, hoặc gửi link cho người cần dùng. Link đổi mỗi lần mở lại; đóng Launcher vẫn giữ link.</p>
+              <div class="row"><button class="btn gold" id="shCopy">Sao chép link</button><button class="btn danger" id="shStop">Đóng link</button></div></div></div>`
+          : `<div class="row"><button class="btn gold" id="shStart" ${busy ? 'disabled' : ''}>${busy || 'Tạo link công khai'}</button></div>`}
+        <p class="sub" style="margin-top:10px">Lưu ý: link tạm thời để thử nghiệm / trình diễn (Cloudflare không cam kết chạy liên tục, máy này phải bật).
+        Cần link cố định chạy 24/7: xem docs/TRIEN-KHAI.md (tên miền riêng qua Cloudflare Tunnel, hoặc Render + Neon miễn phí).</p>`;
+      if ($('shCopy')) $('shCopy').onclick = async () => { try { await navigator.clipboard.writeText(s.url); toast('Đã sao chép link', 'ok'); } catch { prompt('Sao chép link:', s.url); } };
+      if ($('shStop')) $('shStop').onclick = async () => { await post('/api/share/stop'); toast('Đã đóng link công khai', 'ok'); draw({ sharing: false }); };
+      if ($('shStart')) $('shStart').onclick = () => start(false);
+    };
+    const start = async (acceptDemo) => {
+      draw({ sharing: false }, 'Đang tạo link… (lần đầu tải cloudflared ~1 phút)');
+      try {
+        const r = await post('/api/share/start', { acceptDemo });
+        if (r.needConfirm) {
+          draw({ sharing: false });
+          const ok = confirm(`CẢNH BÁO: các tài khoản mẫu ${r.emails.join(', ')} vẫn dùng mật khẩu mặc định ghi trong README — ai có link đều đăng nhập được.\n\nChỉ tiếp tục nếu đây là bản thử nghiệm / trình diễn (dữ liệu mẫu). Máy tiệm thật: đổi mật khẩu các tài khoản đó trước.\n\nVẫn tạo link?`);
+          if (ok) return start(true);
+          return;
+        }
+        draw(r);
+        toast('Đã tạo link công khai', 'ok');
+      } catch (e) { toast(e.message, 'err'); draw({ sharing: false }); }
+    };
+    draw({ sharing: false }, 'Đang kiểm tra…');
+    try { draw(await api('/api/share')); } catch (e) { toast(e.message, 'err'); draw({ sharing: false }); }
     return;
   }
   if (tab === 'settings') {
