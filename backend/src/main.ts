@@ -6,6 +6,10 @@ import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ValidationError } from 'class-validator';
 import { AppModule } from './app.module';
+import { DataSource } from 'typeorm';
+import { join } from 'path';
+import { restoreUploads } from './common/utils/stored-files';
+import { markActivity } from './common/utils/activity';
 import { MSG } from './common/constants/messages.constant';
 
 // Toàn hệ thống chạy theo múi giờ của tiệm
@@ -27,9 +31,16 @@ async function bootstrap(): Promise<void> {
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
     next();
   });
+  // Có người dùng thật (mọi lệnh /api) → tác vụ nền chạy bình thường; /health/live của lệnh giữ thức không tính
+  app.use((req: { path?: string }, _res: unknown, next: () => void) => {
+    if (req.path?.startsWith('/api')) markActivity();
+    next();
+  });
+  // Ảnh tải lên đã mất khỏi đĩa tạm (hosting miễn phí ngủ dậy / triển khai lại) → lấy lại bản sao trong CSDL
+  app.use(restoreUploads(app.get(DataSource), join(process.cwd(), config.get<string>('upload.dir') ?? 'uploads')));
 
   const prefix = config.get<string>('app.apiPrefix')!;
-  app.setGlobalPrefix(prefix, { exclude: ['health'] });
+  app.setGlobalPrefix(prefix, { exclude: ['health', 'health/live'] });
 
   // CORS_ORIGINS: giao diện đặt trên tên miền khác API (vd. Cloudflare Pages -> API trên Render).
   // Khi NestJS tự phục vụ giao diện (SERVE_FRONTEND=true) thì cùng một nguồn, không cần CORS.

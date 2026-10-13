@@ -3,6 +3,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { backgroundAllowed } from '../../common/utils/activity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository } from 'typeorm';
 import {
@@ -746,6 +747,7 @@ export class AppointmentsService {
    */
   @Cron(CronExpression.EVERY_MINUTE)
   async watchOverruns(now: Date = new Date()): Promise<number> {
+    if (!backgroundAllowed('overruns')) return 0; // tiệm vắng: cho CSDL đám mây miễn phí được ngủ
     const overrun = this.config.get<number>('business.overrunWarningMinutes')!;
     const rows: { id: string; code: string; full_name: string; total: number; elapsed: number; next_appt: string | null }[] =
       await this.dataSource.query(

@@ -102,6 +102,11 @@ describe('Ghi chú test 13/10 — kéo thả ca, trạng thái gửi email', () 
     await request(server).patch(`/api/shifts/${id}/move`).set(as('owner')).send({ stylistId: s2, workDate: d1.date, copy: true }).expect(200);
   });
 
+  it('GET /health/live (lệnh giữ máy chủ đám mây thức) không cần đăng nhập, không truy vấn CSDL', async () => {
+    const r = await request(server).get('/health/live').expect(200);
+    expect(r.body.data ?? r.body).toMatchObject({ status: 'ok' });
+  });
+
   it('trạng thái gửi email cho trang Tổng quan; gửi thử chỉ Chủ tiệm / Quản trị, email sai định dạng bị từ chối', async () => {
     const st = await request(server).get('/api/notifications/mail-status').set(as('receptionist')).expect(200);
     expect(['test-inbox', 'smtp']).toContain(st.body.data.mode);

@@ -3,6 +3,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { backgroundAllowed } from '../../common/utils/activity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomBytes } from 'crypto';
 import { DataSource, EntityManager, LessThan, Repository } from 'typeorm';
@@ -150,6 +151,7 @@ export class SlotHoldService {
 
   @Cron(CronExpression.EVERY_5_MINUTES)
   async purgeExpired(): Promise<number> {
+    if (!backgroundAllowed('slot-holds')) return 0;
     try {
       const res = await this.repo.delete({ expiresAt: LessThan(new Date(Date.now() - 60_000)) });
       return res.affected ?? 0;

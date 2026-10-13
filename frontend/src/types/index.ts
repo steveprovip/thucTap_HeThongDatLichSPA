@@ -705,7 +705,7 @@ export interface CustomerAssistantService {
 }
 /** Trạng thái gửi thư (GET /notifications/mail-status). */
 export interface MailStatus {
-  mode: 'test-inbox' | 'smtp';
+  mode: 'test-inbox' | 'smtp' | 'api';
   host: string;
   fromAddress: string;
   testInboxUrl: string | null;

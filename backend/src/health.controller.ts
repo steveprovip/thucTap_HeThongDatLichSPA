@@ -16,6 +16,16 @@ import { Public } from './common/decorators/public.decorator';
 export class HealthController {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
+  /**
+   * GET /health/live — máy chủ còn sống, KHÔNG truy vấn CSDL. Dùng cho lệnh giữ máy chủ thức (Cloudflare Worker gọi mỗi
+   * 10 phút) và health check của Render: CSDL đám mây miễn phí vẫn được ngủ khi tiệm vắng.
+   */
+  @Get('live')
+  @HttpCode(HttpStatus.OK)
+  live() {
+    return { status: 'ok', uptimeSeconds: Math.round(process.uptime()), time: new Date().toISOString() };
+  }
+
   @Get()
   @HttpCode(HttpStatus.OK)
   async check(@Res({ passthrough: true }) res: Response) {

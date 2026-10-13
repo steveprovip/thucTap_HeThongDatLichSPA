@@ -105,6 +105,9 @@ const configuration = () => ({
     fromName: process.env.MAIL_FROM_NAME ?? 'Salon & Spa Hương Sen',
     fromAddress: process.env.MAIL_FROM_ADDRESS ?? 'no-reply@salon.vn',
     workerEnabled: bool(process.env.MAIL_WORKER_ENABLED, true),
+    // Hosting miễn phí (Render Free…) chặn cổng SMTP 25/465/587 → gửi qua API HTTPS của Brevo (gói miễn phí 300 thư/ngày):
+    // đặt BREVO_API_KEY là đủ. Trống = gửi bằng SMTP như cũ.
+    brevoApiKey: (process.env.BREVO_API_KEY ?? '').trim(),
     maxAttempts: 3,
     retryMinutes: 10,
   },

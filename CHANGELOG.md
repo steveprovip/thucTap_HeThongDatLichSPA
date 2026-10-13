@@ -3,6 +3,12 @@
 Định dạng theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), phiên bản theo [Semantic Versioning](https://semver.org/lang/vi/).
 Launcher (biểu tượng Hương Sen Salon / `HoYoSalon.bat`) đọc tệp này cho mục **Có gì mới** và **Nhật ký cập nhật**.
 
+## [2.2.1] - 2026-10-13
+
+### Triển khai đám mây miễn phí 24/7 & Khắc phục hoàn toàn kiểm thử chập chờn
+- **Link cố định 24/7 miễn phí:** `npm run deploy:cloud` triển khai Cloudflare Pages + Render + Supabase/Neon + Brevo (chỉ việc tạo tài khoản là làm tay); Worker giữ API thức; `/health/live` không đụng CSDL; tiệm vắng thì tác vụ nền thưa lại để CSDL miễn phí được ngủ; email qua API Brevo (Render Free chặn SMTP); ảnh tải lên có bản sao trong CSDL (đĩa tạm của Render).
+- **Kiểm thử E2E độc lập:** Cô lập ngày kiểm thử cho `qa-round5-0510`, loại bỏ hoàn toàn lỗi phụ thuộc thứ tự chạy giữa các bộ test (153/153 pass).
+
 ## [2.2.0] - 2026-10-13
 
 ### Ghi chú test thực tế 13/10 — Kéo thả kiểu Jira, Chia sẻ link 1 chạm & Độ phủ 41 tình huống backlog

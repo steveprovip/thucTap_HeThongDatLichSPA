@@ -109,6 +109,31 @@ lưu ở `backups/` (đổi bằng `BACKUP_DIR`, giữ 14 bản mới nhất cho
       └─► Cloudflare Pages (giao diện React tĩnh) ── gọi API qua HTTPS
 ```
 
+### 3.0 Link cố định 24/7, miễn phí 100% — triển khai bằng 1 lệnh
+
+| Thành phần | Dịch vụ (gói Free) | Vì sao chọn | Giới hạn cần biết |
+|---|---|---|---|
+| Giao diện | Cloudflare Pages → `https://<tên>.pages.dev` | CDN toàn cầu, HTTPS, **không ngủ**, gắn tên miền riêng miễn phí | 500 lượt build / tháng |
+| API | Render Free → `https://<tên>.onrender.com` | Tự build từ GitHub (`render.yaml`), migration tự chạy | Ngủ sau 15′ → **Worker giữ thức** gọi `/health/live` mỗi 10′; 750 giờ/tháng đủ 1 dịch vụ 24/7; không SLA |
+| Giữ thức | Cloudflare Worker cron (`deploy/cloudflare/keepalive`) | Cùng tài khoản Cloudflare, miễn phí | — |
+| CSDL | **Supabase Free** (khuyên dùng) hoặc Neon Free | Supabase không giới hạn giờ máy, chỉ dừng khi 7 ngày liền không ai dùng | 500 MB; không sao lưu tự động (tự `pg_dump`) |
+| Email | Brevo Free (API HTTPS) | Render Free chặn cổng SMTP | 300 thư / ngày |
+| Ảnh tải lên | Bản sao trong PostgreSQL (`stored_files`) | Render Free là đĩa tạm, ảnh tự khôi phục từ CSDL | Ảnh ≤ 2 MB |
+
+Đã sửa trong mã để gói miễn phí chạy ổn định: `/health/live` (không đụng CSDL), `IDLE_DB_SLEEP=true` (tiệm vắng thì tác vụ nền
+chạy tối đa 1 lần / giờ để CSDL được ngủ — Neon Free chỉ có 100 CU-giờ/tháng), gửi thư qua API Brevo, sao lưu ảnh vào CSDL.
+
+Các bước (chỉ việc tạo tài khoản là làm tay — đăng nhập bằng GitHub, không cần thẻ):
+
+1. `npm run deploy:cloud` lần đầu tạo `deploy/cloud.env` (không đưa lên GitHub) kèm hướng dẫn từng dòng lấy giá trị ở đâu.
+2. Tạo dự án Supabase (region Singapore) → dán chuỗi *Session pooler* vào `DATABASE_URL`.
+3. Render → New → Blueprint → chọn repo → copy địa chỉ dịch vụ vào `API_URL` (điền `RENDER_API_KEY` + `RENDER_SERVICE_ID` để script tự đặt biến).
+4. Brevo → API key + xác minh email người gửi.
+5. Chạy lại `npm run deploy:cloud`: kiểm tra kết nối CSDL → đặt biến Render + triển khai lại → build & đẩy giao diện lên Pages
+   (lần đầu mở trình duyệt để bạn đăng nhập Cloudflare) → triển khai Worker giữ thức → kiểm tra từ Internet và in link cố định.
+
+Chạy riêng từng bước: `npm run deploy:cloud -- check | render | pages | keepalive | verify`; xem trước: `-- --dry-run`.
+
 ### 3.1 Cơ sở dữ liệu: Neon (khuyên dùng) hoặc Supabase
 
 | | Neon Free | Supabase Free |
@@ -175,6 +200,17 @@ GitHub Actions miễn phí cho kho **công khai**; với kho riêng tư gói Fre
 
 Commit migration mới cùng mã nguồn rồi đẩy lên `main`. Render chạy migration trước khi bật bản mới, nên khách và nhân viên không thấy trạng thái nửa vời.
 Migration phải tương thích ngược một bản (chỉ thêm cột/bảng, không đổi tên hay xoá ngay) để bản cũ còn chạy trong lúc triển khai.
+
+### 3.6a Tên miền riêng (chuyên nghiệp khi bán hệ thống)
+
+- `huongsen-salon.pages.dev` đã là HTTPS, dùng được ngay. Muốn `datlich.tentiem.vn`: mua tên miền (rẻ nhất vài chục nghìn đồng / năm
+  với `.io.vn`, `.com` khoảng 250–300 nghìn / năm — ưu đãi `.id.vn` miễn phí cho 18–23 tuổi đã hết hạn cuối 2025) → Cloudflare Pages →
+  **Custom domains** → nhập tên miền (HTTPS tự cấp, miễn phí). API cũng gắn được `api.tentiem.vn` trong Render → Settings → Custom Domains (miễn phí).
+- Subdomain miễn phí kiểu is-a.dev / eu.org dành cho cá nhân / phi lợi nhuận — không nên dùng để bán.
+
+**Khi bán cho nhiều tiệm:** mỗi tiệm một bộ tài khoản riêng do chính tiệm sở hữu (Supabase 2 dự án / tài khoản, Render 750 giờ /
+workspace chỉ đủ 1 API chạy 24/7) — dữ liệu khách thuộc về tiệm, chi phí 0 đ. Gói miễn phí **không có cam kết hoạt động (SLA)**;
+tiệm cần chắc chắn hơn thì nâng Render Starter (~7 USD/tháng, không ngủ) hoặc chạy tại máy quầy + Cloudflare Tunnel tên miền riêng (mục 4.3).
 
 ### 3.6 Tổng hợp rủi ro của Phương án 1
 
