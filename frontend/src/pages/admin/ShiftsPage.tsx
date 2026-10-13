@@ -150,6 +150,18 @@ export function ShiftsPage() {
     } catch (e) { toast.error(getErrorMessage(e)); throw e; }
   };
 
+  /** Ghi chú test 13/10 — kéo thả ca kiểu Jira. */
+  const moveShift = async (shift: Shift, stylistId: string, date: string, copy: boolean) => {
+    try {
+      await stylistsApi.moveShift(shift.id, {
+        ...(stylistId !== shift.stylistId ? { stylistId } : {}), ...(date !== shift.workDate ? { workDate: date } : {}), ...(copy ? { copy: true } : {}),
+      });
+      const who = stylistPage.items.find((s) => s.id === stylistId)?.fullName ?? '';
+      toast.success(`${copy ? 'Đã sao chép' : 'Đã chuyển'} ca ${shift.startTime.slice(0, 5)}–${shift.endTime.slice(0, 5)} sang ${who} ngày ${date.slice(8)}/${date.slice(5, 7)}`);
+      void load();
+    } catch (e) { toast.error(getErrorMessage(e)); throw e; }
+  };
+
   const addShift = async () => {
     try {
       await stylistsApi.createShifts(addStylist, [{
@@ -261,6 +273,7 @@ export function ShiftsPage() {
           onUpdateShift={updateShift}
           onRemoveShift={setRemoveTarget}
           onRemoveOff={setRemoveOffTarget}
+          onMoveShift={moveShift}
         />
         <Pagination page={stylistPage.page} totalPages={stylistPage.totalPages} total={stylistPage.total} onChange={stylistPage.setPage}
                     limit={stylistPage.limit} onLimitChange={stylistPage.setLimit} />

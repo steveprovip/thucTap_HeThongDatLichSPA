@@ -1,5 +1,8 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode, type TdHTMLAttributes } from 'react';
 import { createPortal } from 'react-dom';
+import {
+  DndContext, KeyboardSensor, PointerSensor, TouchSensor, pointerWithin, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent,
+} from '@dnd-kit/core';
 import { Coffee, Pencil, Plus, SlidersHorizontal, Trash2, X } from 'lucide-react';
 import type { Shift, ShiftRequest, Stylist, TimeOff } from '@/types';
 import { StylistAvatar, TimeSelect24 } from '@/components';
@@ -53,6 +56,26 @@ export interface ShiftBoardProps {
   onUpdateShift: (shift: Shift, patch: { startTime: string; endTime: string }) => Promise<void>;
   onRemoveShift: (shift: Shift) => void;
   onRemoveOff: (off: TimeOff) => void;
+  /** Kéo thả (ghi chú test 13/10): chuyển ca sang thợ / ngày khác; `copy` = giữ Ctrl / Alt khi thả để sao chép. */
+  onMoveShift?: (shift: Shift, stylistId: string, date: string, copy: boolean) => Promise<void>;
+}
+
+/** Ô (thợ, ngày) nhận thả ca. */
+function DropCell({ id, disabled, children, className, ...rest }: TdHTMLAttributes<HTMLTableCellElement> & { id: string; disabled: boolean }) {
+  const { setNodeRef, isOver } = useDroppable({ id, disabled });
+  return <td ref={setNodeRef} {...rest} className={`${className ?? ''} ${isOver ? 'bg-teal-100/70 ring-2 ring-inset ring-teal-400' : ''}`}>{children}</td>;
+}
+
+/** Viên ca kéo được — bấm (không kéo) vẫn mở hộp sửa giờ như cũ. */
+function DragShift({ id, disabled, children, ...rest }: { id: string; disabled: boolean; children: ReactNode } & Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'id'>) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id, disabled });
+  return (
+    <button ref={setNodeRef} type="button" {...rest} {...(disabled ? {} : { ...listeners, ...attributes })}
+            style={transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` } : undefined}
+            className={`${rest.className ?? ''} ${disabled ? '' : 'cursor-grab touch-none active:cursor-grabbing'} ${isDragging ? 'relative z-50 shadow-xl ring-2 ring-teal-500' : ''}`}>
+      {children}
+    </button>
+  );
 }
 
 type Pop =
@@ -97,8 +120,32 @@ function Popover({ anchor, onClose, children }: { anchor: DOMRect; onClose: () =
  */
 export function ShiftBoard({
   days, stylists, shifts, timeOff, pendingRequests = [], today, canEdit, canManageOff, understaffedDates,
-  onAdd, onQuickAdd, onUpdateShift, onRemoveShift, onRemoveOff,
+  onAdd, onQuickAdd, onUpdateShift, onRemoveShift, onRemoveOff, onMoveShift,
 }: ShiftBoardProps) {
+  const draggable = canEdit && !!onMoveShift;
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 6 } }),
+    useSensor(KeyboardSensor),
+  );
+  // Giữ Ctrl / Alt / ⌘ lúc THẢ = sao chép ca (như kéo-sao-chép trong Jira / Excel)
+  const copyKey = useRef(false);
+  useEffect(() => {
+    const on = (e: KeyboardEvent) => { copyKey.current = e.ctrlKey || e.altKey || e.metaKey; };
+    window.addEventListener('keydown', on);
+    window.addEventListener('keyup', on);
+    return () => { window.removeEventListener('keydown', on); window.removeEventListener('keyup', on); };
+  }, []);
+  const onDragEnd = (e: DragEndEvent) => {
+    const shift = shifts.find((s) => s.id === e.active.id);
+    const over = e.over ? String(e.over.id).split('|') : null;
+    if (!shift || !over || over[0] !== 'cell' || !onMoveShift) return;
+    const [, stylistId, date] = over;
+    const ev = e.activatorEvent as PointerEvent | KeyboardEvent | null;
+    const copy = copyKey.current || !!(ev && (ev.ctrlKey || ev.altKey || ev.metaKey));
+    if (!copy && stylistId === shift.stylistId && date === shift.workDate) return;
+    void onMoveShift(shift, stylistId, date, copy).catch(() => undefined);
+  };
   const [pop, setPop] = useState<Pop | null>(null);
   const [busy, setBusy] = useState(false);
   const [edit, setEdit] = useState({ start: '', end: '' });
@@ -122,6 +169,12 @@ export function ShiftBoard({
 
   return (
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-card">
+      {draggable && (
+        <p className="border-b border-slate-100 bg-slate-50/70 px-3 py-1.5 text-[11px] text-ink-muted">
+          Kéo viên ca sang ô khác để <strong>chuyển</strong> ca (đổi người / đổi ngày) · giữ <kbd className="rounded border bg-white px-1">Ctrl</kbd> khi thả để <strong>sao chép</strong> · bấm viên ca để sửa giờ.
+        </p>
+      )}
+      <DndContext sensors={sensors} collisionDetection={pointerWithin} onDragEnd={onDragEnd}>
       <div className="thin-scroll max-h-[calc(100vh-200px)] overflow-auto">
         <table className="w-full min-w-[820px] table-fixed border-collapse text-sm">
           <colgroup>
@@ -174,7 +227,7 @@ export function ShiftBoard({
                   const isToday = d.date === today;
                   const addable = canEdit && !closed;
                   return (
-                    <td key={d.date}
+                    <DropCell key={d.date} id={`cell|${st.id}|${d.date}`} disabled={!draggable || closed}
                         className={`group/cell relative border-b border-slate-100 p-1 align-middle ${isToday ? 'border-x border-x-teal-100 bg-teal-50/30' : ''}
                           ${closed ? 'bg-stripes' : empty ? 'bg-slate-50/70' : ''}`}>
                       <div className="flex min-h-[34px] flex-col justify-center gap-1">
@@ -195,9 +248,10 @@ export function ShiftBoard({
                           const k = shiftKind(sh.startTime, sh.endTime);
                           const brk = sh.breakStart ? `Nghỉ giữa ca ${hhmm(sh.breakStart)}–${hhmm(sh.breakEnd)}` : '';
                           return (
-                            <button key={sh.id} type="button" disabled={!canEdit}
-                                    title={[KIND_STYLE[k].label, brk, sh.note].filter(Boolean).join(' · ')}
+                            <DragShift key={sh.id} id={sh.id} disabled={!draggable} aria-disabled={!canEdit}
+                                    title={[KIND_STYLE[k].label, brk, sh.note, draggable ? 'Kéo để chuyển · Ctrl+kéo để sao chép' : ''].filter(Boolean).join(' · ')}
                                     onClick={(e) => {
+                                      if (!canEdit) return;
                                       setEdit({ start: hhmm(sh.startTime), end: hhmm(sh.endTime) });
                                       setPop({ kind: 'edit', stylist: st, shift: sh, anchor: e.currentTarget.getBoundingClientRect() });
                                     }}
@@ -207,7 +261,7 @@ export function ShiftBoard({
                                 {brk && <Coffee size={11} className="opacity-50" aria-label={brk} />}
                               </span>
                               <span className="text-[10px] font-medium opacity-70">{KIND_STYLE[k].label} · {hoursText(shiftWorkMinutes(sh))}</span>
-                            </button>
+                            </DragShift>
                           );
                         })}
                         {reqs.map((r) => (
@@ -232,7 +286,7 @@ export function ShiftBoard({
                           </button>
                         )}
                       </div>
-                    </td>
+                    </DropCell>
                   );
                 })}
               </tr>
@@ -254,6 +308,7 @@ export function ShiftBoard({
           </tfoot>
         </table>
       </div>
+      </DndContext>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 border-t border-slate-100 px-3 py-1.5 text-[11px] text-ink-muted">
         {(Object.keys(KIND_STYLE) as ShiftKind[]).map((k) => (
           <span key={k} className="inline-flex items-center gap-1"><span className={`h-2 w-2 rounded-full ${KIND_STYLE[k].dot}`} /> {KIND_STYLE[k].label}</span>

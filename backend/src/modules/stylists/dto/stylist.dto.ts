@@ -80,6 +80,18 @@ export class CreateShiftsDto {
   shifts!: ShiftItemDto[];
 }
 
+/** Ghi chú test 13/10 — kéo thả ca kiểu Jira: chuyển ca sang thợ / ngày khác, hoặc sao chép (giữ Ctrl / Alt khi thả). */
+export class MoveShiftDto {
+  @IsOptional() @IsUUID('4', { message: 'Thợ không hợp lệ' }) stylistId?: string;
+
+  @IsOptional() @Matches(DATE_RE, { message: 'Ngày làm việc phải theo định dạng yyyy-MM-dd' })
+  @IsCalendarDate({ message: 'Ngày làm việc không hợp lệ' })
+  workDate?: string;
+
+  /** true = sao chép (ca gốc giữ nguyên). */
+  @IsOptional() @IsBoolean() copy?: boolean;
+}
+
 export class UpdateShiftDto {
   @IsOptional() @Matches(TIME_RE, { message: 'Giờ bắt đầu ca phải theo định dạng HH:mm' }) startTime?: string;
   @IsOptional() @Matches(TIME_RE, { message: 'Giờ kết thúc ca phải theo định dạng HH:mm' }) endTime?: string;

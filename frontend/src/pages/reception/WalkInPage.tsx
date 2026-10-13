@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
 import {
   CalendarDays, CheckCircle2, Clock, History, Loader2, Search, Sparkles, UserCheck, UserPlus, Zap,
 } from 'lucide-react';
@@ -98,7 +97,6 @@ export function WalkInModal({ open, onClose, onCreated }: {
   const [checkInNow, setCheckInNow] = useState(true);
   const [touched, setTouched] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [created, setCreated] = useState<Appointment | null>(null);
   // "Hẹn ngày/giờ khác" cho phép chọn cả ngày, không chỉ giờ trong hôm nay
   const [date, setDate] = useState(todayISO());
   const isToday = date === todayISO();
@@ -107,7 +105,7 @@ export function WalkInModal({ open, onClose, onCreated }: {
     setPhone(''); setFullName(''); setEmail(''); setNote(''); setLookup('idle'); setCustomer(null); setHistory([]);
     setRenameProfile(false);
     autoFilledName.current = null; setServiceQuery(''); setSelectedIds([]); setMode('now'); setTime(nowRounded());
-    setDate(todayISO()); setStylistId(''); setCheckInNow(true); setTouched(false); setCreated(null);
+    setDate(todayISO()); setStylistId(''); setCheckInNow(true); setTouched(false);
   }, []);
 
   useEffect(() => {
@@ -249,9 +247,14 @@ export function WalkInModal({ open, onClose, onCreated }: {
       if (mode === 'now' && checkInNow) {
         final = await appointmentsApi.checkIn(res.id).catch(() => res);
       }
-      setCreated(final);
       onCreated(final);
-      toast.success(`Đã tạo lịch tại quầy ${res.code}`);
+      // Ghi chú test 13/10: tạo xong chỉ báo bằng thông báo (không hiện mã lịch) và đóng hộp thoại — lịch mới nháy sáng
+      // ngay trên Lịch ngày. Mã lịch vẫn xem được trong chi tiết lịch hẹn khi cần.
+      toast.success(`Đã tạo lịch cho ${final.customer.fullName} · ${final.startTime}–${final.endTime} `
+        + `${final.date === todayISO() ? 'hôm nay' : formatDate(`${final.date}T00:00:00+07:00`)} · thợ ${final.stylist.fullName}`
+        + `${final.status === 'arrived' ? ' · đã check-in' : ''}`);
+      reset();
+      onClose();
     } catch (e) {
       toast.error(getErrorMessage(e));
     } finally {
@@ -267,12 +270,7 @@ export function WalkInModal({ open, onClose, onCreated }: {
       onClose={onClose}
       size="xl"
       title="Khách vãng lai — tạo lịch nhanh tại quầy"
-      footer={created ? (
-        <div className="flex flex-wrap justify-end gap-2">
-          <Button variant="ghost" onClick={onClose}>Đóng</Button>
-          <Button icon={<UserPlus size={16} />} onClick={reset}>Tạo lịch khác</Button>
-        </div>
-      ) : (
+      footer={(
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm">
             <span className="text-ink-muted">Tổng: </span><strong>{formatDuration(duration)}</strong>
@@ -288,22 +286,7 @@ export function WalkInModal({ open, onClose, onCreated }: {
         </div>
       )}
     >
-      {created ? (
-        <div className="py-6 text-center">
-          <CheckCircle2 size={44} className="mx-auto text-emerald-600" />
-          <p className="mt-3 text-lg font-bold">Đã tạo lịch cho {created.customer.fullName}</p>
-          <p className="mt-1 font-mono text-2xl tracking-[0.3em] text-teal-700">{created.code}</p>
-          <p className="mt-2 text-sm text-ink-soft">
-            {created.startTime}–{created.endTime}{' '}
-            {created.date === todayISO() ? 'hôm nay' : formatDate(`${created.date}T00:00:00+07:00`)} · thợ {created.stylist.fullName}
-          </p>
-          <div className="mt-3 flex justify-center"><StatusBadge status={created.status} /></div>
-          <p className="mt-3 text-xs text-ink-muted">
-            Lịch đã có ngay trên <Link to={`/quan-ly?date=${created.date}`} className="font-semibold text-teal-700 hover:underline" onClick={onClose}>Lịch ngày</Link>
-            {' '}và <Link to={`/quan-ly/lich-hen?date=${created.date}`} className="font-semibold text-teal-700 hover:underline" onClick={onClose}>Danh sách lịch hẹn</Link>.
-          </p>
-        </div>
-      ) : (
+      {(
         <div className="grid gap-5 lg:grid-cols-[1fr_1.25fr]">
           {/* ---- Khách hàng ---- */}
           <section className="space-y-3">

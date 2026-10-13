@@ -8,7 +8,7 @@ import { diskStorage } from 'multer';
 import { open, unlink } from 'fs/promises';
 import { StylistsService } from './stylists.service';
 import {
-  CopyWeekDto, CoverageQueryDto, CreateShiftsDto, CreateStylistDto, CreateTimeOffDto, UpdateShiftDto, UpdateStylistDto,
+  CopyWeekDto, CoverageQueryDto, CreateShiftsDto, CreateStylistDto, CreateTimeOffDto, MoveShiftDto, UpdateShiftDto, UpdateStylistDto,
 } from './dto/stylist.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Role } from '../../common/constants/roles.constant';
@@ -163,6 +163,14 @@ export class ShiftsController {
   @Audit(AuditAction.UPDATE, 'stylist_shift', 'Sửa ca làm')
   update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateShiftDto) {
     return this.service.updateShift(id, dto);
+  }
+
+  /** Kéo thả trên Bảng ca: chuyển ca sang thợ / ngày khác hoặc sao chép. */
+  @Patch(':id/move')
+  @Roles(Role.OWNER)
+  @Audit(AuditAction.UPDATE, 'stylist_shift', 'Chuyển / sao chép ca làm bằng kéo thả')
+  move(@Param('id', ParseUUIDPipe) id: string, @Body() dto: MoveShiftDto) {
+    return this.service.moveShift(id, dto);
   }
 
   @Delete(':id')

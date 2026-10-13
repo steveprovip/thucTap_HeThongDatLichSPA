@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import { Banknote, CheckCircle2, RefreshCw, UserX, Users2 } from 'lucide-react';
 import { analyticsApi, appointmentsApi, customersApi, getErrorMessage } from '@/api';
 import type { Appointment, AppointmentStatus, TodayDashboard } from '@/types';
-import { Button, Card, EmptyState, SectionTitle, Skeleton, StatGridSkeleton, ContentSkeleton } from '@/components';
+import { Button, Card, EmptyState, MailStatusNotice, SectionTitle, Skeleton, StatGridSkeleton, ContentSkeleton } from '@/components';
 import { STATUS_LABELS, STATUS_STYLES } from '@/utils/constants';
 import { formatTime, todayISO } from '@/utils/format';
 import { useToast } from '@/contexts/ToastContext';
@@ -65,6 +65,7 @@ export function DashboardPage() {
         description={`Số liệu tự làm mới mỗi 60 giây · cập nhật lúc ${formatTime(data.refreshedAt)}`}
         action={<Button variant="outline" size="sm" icon={<RefreshCw size={15} />} onClick={() => load()}>Làm mới</Button>}
       />
+      <MailStatusNotice />
 
       <div className="stagger grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Doanh thu đã thu" value={data.revenueText} valueClass="text-slate-900"

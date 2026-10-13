@@ -1,6 +1,7 @@
-import { Controller, Get, Param, ParseUUIDPipe, Patch, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, Max, Min } from 'class-validator';
+import { IsEmail, IsInt, IsOptional, Max, MaxLength, Min } from 'class-validator';
+import { MailService } from './mail.service';
 import { NotificationsService } from './notifications.service';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AuthUser } from '../../common/types/auth.types';
@@ -13,11 +14,34 @@ class ListQuery {
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100) limit = 20;
 }
 
+class MailTestDto {
+  @IsEmail({}, { message: 'Email nhận thư thử không hợp lệ' }) @MaxLength(160) to!: string;
+}
+
 @Controller('notifications')
 @UseGuards(RolesGuard)
 @Roles(Role.STYLIST, Role.RECEPTIONIST, Role.OWNER, Role.ADMIN)
 export class NotificationsController {
-  constructor(private readonly service: NotificationsService) {}
+  constructor(private readonly service: NotificationsService, private readonly mail: MailService) {}
+
+  /** Thư đang gửi thật hay vào hộp thư thử nghiệm (MailDev) — trang Tổng quan cảnh báo khi khách không nhận được thư. */
+  @Get('mail-status')
+  @Roles(Role.RECEPTIONIST, Role.OWNER, Role.ADMIN)
+  mailStatus() {
+    return this.mail.status();
+  }
+
+  /** Gửi ngay một thư thử để kiểm tra cấu hình Gmail. */
+  @Post('mail-test')
+  @HttpCode(HttpStatus.OK)
+  @Roles(Role.OWNER, Role.ADMIN)
+  async mailTest(@Body() dto: MailTestDto) {
+    try {
+      return await this.mail.sendTest(dto.to);
+    } catch (e) {
+      throw new BadRequestException((e as Error).message);
+    }
+  }
 
   @Get()
   list(@CurrentUser() user: AuthUser, @Query() q: ListQuery) {
