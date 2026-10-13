@@ -204,7 +204,7 @@ describe('NestJS phục vụ giao diện đã build (SERVE_FRONTEND) — một �
     const saved: Record<string, string | undefined> = {};
     for (const k of Object.keys(env)) { saved[k] = process.env[k]; if (env[k] === undefined) delete process.env[k]; else process.env[k] = env[k]; }
     const app = await NestFactory.create<NestExpressApplication>(AppModule, { logger: false });
-    app.setGlobalPrefix('api', { exclude: ['health'] });
+    app.setGlobalPrefix('api', { exclude: ['health', 'health/live'] });
     await app.init();
     try { await fn(app); } finally {
       await app.close();

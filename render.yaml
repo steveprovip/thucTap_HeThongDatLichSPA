@@ -20,7 +20,8 @@ services:
     #   3. security:lock:prod   khoá tài khoản mẫu còn mật khẩu mặc định (nếu ai lỡ nạp seed.sql vào CSDL này)
     # Một bước lỗi (&&) thì máy chủ KHÔNG khởi động và Render giữ nguyên bản đang chạy trước đó.
     startCommand: npm run migration:run:prod && npm run bootstrap:prod && npm run security:lock:prod && npm run start:prod
-    healthCheckPath: /health
+    # /health/live KHÔNG truy vấn CSDL → CSDL miễn phí (Neon / Supabase) được ngủ khi tiệm vắng; /health (có CSDL) vẫn dùng cho giám sát
+    healthCheckPath: /health/live
     envVars:
       - key: NODE_ENV
         value: production
@@ -36,6 +37,10 @@ services:
         value: require       # Neon cũng chạy được với "true"; Supabase pooler cần "require"
       - key: DB_POOL_MAX
         value: "10"          # gói Free của CSDL có giới hạn số kết nối
+      - key: IDLE_DB_SLEEP   # tiệm vắng: tác vụ nền chạy tối đa 1 lần/giờ → Neon Free không hết 100 CU-giờ/tháng (xem common/utils/activity.ts)
+        value: "true"
+      - key: BREVO_API_KEY   # Render Free CHẶN cổng SMTP 25/465/587 → gửi email qua API HTTPS của Brevo (miễn phí 300 thư/ngày)
+        sync: false
       - key: JWT_ACCESS_SECRET
         generateValue: true  # Render sinh chuỗi ngẫu nhiên 256 bit; không bao giờ đổi sau khi đã có người đăng nhập
       - key: JWT_REFRESH_SECRET
@@ -50,7 +55,7 @@ services:
         sync: false
       - key: BOOTSTRAP_ADMIN_PASSWORD   # >= 8 ký tự, có chữ và số; có thể xoá khỏi Render sau lần đăng nhập đầu tiên
         sync: false
-      - key: SMTP_HOST       # Render Free chặn cổng 25/465/587 -> dùng dịch vụ email có API/cổng khác (xem tài liệu)
+      - key: SMTP_HOST       # chỉ dùng khi KHÔNG có BREVO_API_KEY; Render Free chặn cổng 25/465/587 (xem tài liệu)
         sync: false
       - key: SMTP_PORT
         sync: false
@@ -58,5 +63,7 @@ services:
         sync: false
       - key: SMTP_PASSWORD
         sync: false
-      - key: MAIL_FROM_ADDRESS
+      - key: MAIL_FROM_ADDRESS   # với Brevo: đúng email người gửi đã xác minh trong Brevo (Senders)
+        sync: false
+      - key: MAIL_FROM_NAME
         sync: false

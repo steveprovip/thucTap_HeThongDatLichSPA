@@ -32,3 +32,5 @@ __pycache__/
 # HoYoSalon > Chia sẻ link: trạng thái đường hầm + cloudflared tự tải
 .salon-share.json
 tools/cloudflared*
+# Triển khai đám mây: chứa chuỗi kết nối CSDL và API key — không bao giờ commit
+deploy/cloud.env

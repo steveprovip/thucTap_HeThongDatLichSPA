@@ -18,6 +18,8 @@ import { AuditAction } from '../../database/entities/audit-log.entity';
 import { MSG } from '../../common/constants/messages.constant';
 import { MAX_AVATAR_BYTES } from '../../common/constants/upload.constant';
 import { detectImageSignature } from '../../common/utils/image-signature.util';
+import { mirrorUpload } from '../../common/utils/stored-files';
+import { DataSource } from 'typeorm';
 
 /**
  * QA-22: Content-Type trong multipart do client tự khai -> đọc "magic bytes" của tệp đã lưu để chắc chắn
@@ -43,6 +45,7 @@ export class StylistsController {
   constructor(
     private readonly service: StylistsService,
     private readonly config: ConfigService,
+    private readonly dataSource: DataSource,
   ) {}
 
   @Get()
@@ -99,6 +102,8 @@ export class StylistsController {
   async uploadAvatar(@Param('id', ParseUUIDPipe) id: string, @UploadedFile() file?: Express.Multer.File) {
     if (!file) throw new BadRequestException('Vui lòng chọn tệp ảnh');
     await assertRealImage(file.path);
+    // Bản sao trong CSDL: hosting miễn phí (đĩa tạm) xoá thư mục uploads mỗi lần máy chủ ngủ dậy
+    await mirrorUpload(this.dataSource, file.path);
     return this.service.setAvatar(id, `/uploads/${file.filename}`);
   }
 

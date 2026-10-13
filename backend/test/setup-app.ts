@@ -23,7 +23,7 @@ export async function createTestApp(): Promise<INestApplication> {
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
   const app = moduleRef.createNestApplication();
 
-  app.setGlobalPrefix('api', { exclude: ['health'] });
+  app.setGlobalPrefix('api', { exclude: ['health', 'health/live'] });
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,

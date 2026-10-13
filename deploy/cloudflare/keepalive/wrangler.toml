@@ -1,0 +1,12 @@
+# Cloudflare Worker giữ API Render Free luôn thức — xem worker.js. Triển khai bằng: npm run deploy:cloud
+name = "huongsen-keepalive"
+main = "worker.js"
+compatibility_date = "2026-09-01"
+workers_dev = true
+
+[triggers]
+crons = ["*/10 * * * *"]
+
+[vars]
+# deploy-cloud.mjs ghi đè bằng --var API_HEALTH_URL:<địa chỉ API>/health/live
+API_HEALTH_URL = "https://salon-spa-api.onrender.com/health/live"

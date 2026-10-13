@@ -14,6 +14,7 @@ Launcher (biểu tượng Hương Sen Salon / `HoYoSalon.bat`) đọc tệp này
 - **Dữ liệu mẫu đủ 39 user story:** `npm run seed:check` (41 tình huống); dữ liệu tự "lão hoá" theo thời gian như ngày làm việc thật; bổ sung dịch vụ ngưng bán, dịch vụ chưa có thợ, yêu cầu ca chờ duyệt, thợ ốm ngày mai còn lịch, phiếu điều chỉnh…
 - **Ảnh phong cách Việt Nam:** ảnh dịch vụ / thợ chọn lại (áo dài cô dâu, kỷ yếu, khăn vấn, gội đầu dưỡng sinh, tiệm tóc Việt).
 - **Chia sẻ link 1 chạm:** HoYoSalon tạo link HTTPS công khai + mã QR, mở trên mọi thiết bị (Cloudflare Quick Tunnel).
+- **Link cố định 24/7 miễn phí:** `npm run deploy:cloud` triển khai Cloudflare Pages + Render + Supabase/Neon + Brevo (chỉ việc tạo tài khoản là làm tay); Worker giữ API thức; `/health/live` không đụng CSDL; tiệm vắng thì tác vụ nền thưa lại để CSDL miễn phí được ngủ; email qua API Brevo (Render Free chặn SMTP); ảnh tải lên có bản sao trong CSDL (đĩa tạm của Render).
 
 ## [2.1.1] - 2026-10-13
 

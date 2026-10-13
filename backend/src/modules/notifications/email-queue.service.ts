@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { backgroundAllowed } from '../../common/utils/activity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { LessThanOrEqual, Repository } from 'typeorm';
 import { EmailQueueItem, EmailStatus } from '../../database/entities/email-queue.entity';
@@ -24,7 +25,7 @@ export class EmailQueueService {
   @Cron(CronExpression.EVERY_MINUTE)
   async processDue(): Promise<void> {
     if (!this.config.get<boolean>('mail.workerEnabled')) return;
-    if (this.running) return;
+    if (this.running || !backgroundAllowed('email-queue')) return;
     this.running = true;
     try {
       await this.drain();

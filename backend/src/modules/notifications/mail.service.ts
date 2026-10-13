@@ -8,8 +8,8 @@ import { SalonInfo } from './mail-templates';
 
 /** Trạng thái gửi thư cho trang quản lý (ghi chú test 13/10: "email chưa nhận được thông báo"). */
 export interface MailStatus {
-  /** 'test-inbox' = MailDev trên máy (localhost:1025): thư KHÔNG ra Internet, khách / nhân viên không nhận được. */
-  mode: 'test-inbox' | 'smtp';
+  /** 'test-inbox' = MailDev trên máy (localhost:1025): thư KHÔNG ra Internet; 'api' = API HTTPS của Brevo. */
+  mode: 'test-inbox' | 'smtp' | 'api';
   host: string;
   fromAddress: string;
   /** Hộp thư thử nghiệm để xem thư đã "gửi" khi đang ở chế độ test-inbox. */
@@ -25,6 +25,7 @@ export function explainMailError(e: unknown): string {
   const err = e as { code?: string; responseCode?: number; message?: string };
   const msg = err?.message ?? String(e);
   if (err?.code === 'EAUTH' || err?.responseCode === 535 || /auth|password|credentials|Username and Password/i.test(msg)) {
+    if (/brevo/i.test(msg)) return 'Brevo từ chối API key (BREVO_API_KEY sai hoặc đã bị thu hồi) — tạo key mới trong Brevo > SMTP & API.';
     return 'Máy chủ thư từ chối đăng nhập: kiểm tra địa chỉ Gmail và MẬT KHẨU ỨNG DỤNG 16 ký tự (không phải mật khẩu Gmail thường; '
       + 'tài khoản phải bật Xác minh 2 bước). Sửa trong HoYoSalon > ⚙ Thiết lập cửa hàng.';
   }
@@ -118,6 +119,7 @@ export class MailService implements OnModuleInit {
 
   /** Đang gửi vào MailDev trên máy (cấu hình mặc định khi phát triển)? */
   get mode(): MailStatus['mode'] {
+    if (this.config.get<string>('mail.brevoApiKey')) return 'api';
     const host = (this.config.get<string>('mail.host') ?? '').toLowerCase();
     const port = this.config.get<number>('mail.port');
     return ['localhost', '127.0.0.1', '::1', 'maildev'].includes(host) && Number(port) === 1025 ? 'test-inbox' : 'smtp';
@@ -133,7 +135,7 @@ export class MailService implements OnModuleInit {
     ]);
     const mode = this.mode;
     return {
-      mode, host: this.config.get<string>('mail.host') ?? '', fromAddress: this.config.get<string>('mail.fromAddress') ?? '',
+      mode, host: mode === 'api' ? 'api.brevo.com' : this.config.get<string>('mail.host') ?? '', fromAddress: this.config.get<string>('mail.fromAddress') ?? '',
       testInboxUrl: mode === 'test-inbox' ? 'http://localhost:1080' : null,
       sent24h, failed24h, pending, lastError: last?.lastError ?? null,
     };
@@ -143,14 +145,10 @@ export class MailService implements OnModuleInit {
   async sendTest(to: string): Promise<{ ok: true; mode: MailStatus['mode'] }> {
     const salon = this.salonInfo;
     try {
-      await this.transporter.sendMail({
-        from: `"${this.config.get<string>('mail.fromName')}" <${this.config.get<string>('mail.fromAddress')}>`,
-        to,
-        subject: `[${salon.name}] Thư thử — hệ thống gửi email đã hoạt động`,
-        html: `<p>Xin chào,</p><p>Đây là thư thử từ hệ thống đặt lịch <b>${salon.name}</b>. Nhận được thư này nghĩa là khách hàng `
+      await this.send(to, null, `[${salon.name}] Thư thử — hệ thống gửi email đã hoạt động`,
+        `<p>Xin chào,</p><p>Đây là thư thử từ hệ thống đặt lịch <b>${salon.name}</b>. Nhận được thư này nghĩa là khách hàng `
           + 'và nhân viên sẽ nhận được email xác nhận, nhắc lịch, mật khẩu tạm… như bình thường.</p>'
-          + `<p>Gửi lúc ${new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}.</p>`,
-      });
+          + `<p>Gửi lúc ${new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}.</p>`);
     } catch (e) {
       throw new Error(explainMailError(e));
     }
@@ -159,13 +157,38 @@ export class MailService implements OnModuleInit {
 
   /** Gửi thật qua SMTP. Ném lỗi khi thất bại để worker đếm số lần thử. */
   async deliver(item: EmailQueueItem): Promise<void> {
-    const fromName = this.config.get<string>('mail.fromName');
-    const fromAddress = this.config.get<string>('mail.fromAddress');
+    await this.send(item.toEmail, item.toName, item.subject, item.bodyHtml);
+  }
+
+  /** SMTP, hoặc API HTTPS của Brevo khi có BREVO_API_KEY (hosting miễn phí chặn cổng SMTP). */
+  private async send(toEmail: string, toName: string | null, subject: string, html: string): Promise<void> {
+    const fromName = this.config.get<string>('mail.fromName') ?? '';
+    const fromAddress = this.config.get<string>('mail.fromAddress') ?? '';
+    const apiKey = this.config.get<string>('mail.brevoApiKey');
+    if (apiKey) {
+      const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: { 'api-key': apiKey, 'content-type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify({
+          sender: { name: fromName, email: fromAddress },
+          to: [{ email: toEmail, ...(toName ? { name: toName } : {}) }],
+          subject, htmlContent: html,
+        }),
+        signal: AbortSignal.timeout(20_000),
+      });
+      if (!res.ok) {
+        const detail = (await res.text().catch(() => '')).slice(0, 200);
+        throw Object.assign(new Error(`Brevo từ chối gửi thư (HTTP ${res.status}): ${detail}`), {
+          code: res.status === 401 ? 'EAUTH' : 'EBREVO', responseCode: res.status,
+        });
+      }
+      return;
+    }
     await this.transporter.sendMail({
       from: `"${fromName}" <${fromAddress}>`,
-      to: item.toName ? `"${item.toName}" <${item.toEmail}>` : item.toEmail,
-      subject: item.subject,
-      html: item.bodyHtml,
+      to: toName ? `"${toName}" <${toEmail}>` : toEmail,
+      subject,
+      html,
     });
   }
 }
