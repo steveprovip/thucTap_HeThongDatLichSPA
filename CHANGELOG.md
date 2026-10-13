@@ -3,9 +3,9 @@
 Định dạng theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), phiên bản theo [Semantic Versioning](https://semver.org/lang/vi/).
 Launcher (biểu tượng Hương Sen Salon / `HoYoSalon.bat`) đọc tệp này cho mục **Có gì mới** và **Nhật ký cập nhật**.
 
-## [Chưa phát hành] - 2026-10-13
+## [2.2.0] - 2026-10-13
 
-### Ghi chú test thực tế 13/10
+### Ghi chú test thực tế 13/10 — Kéo thả kiểu Jira, Chia sẻ link 1 chạm & Độ phủ 41 tình huống backlog
 - **Chờ xác nhận:** nút "Xử lý" đổi thành "Chi tiết".
 - **Lịch ngày kiểu Jira:** thêm chế độ **Bảng Kanban** — mỗi trạng thái một cột, kéo thẻ để xác nhận / check-in / bắt đầu / hoàn tất / không đến / huỷ (huỷ & từ chối hỏi lý do; bước sai luồng bị chặn kèm lời giải thích); trên **dòng thời gian** kéo khối lịch sang thợ khác / giờ khác (bắt bước 15 phút, hỏi xác nhận, máy chủ kiểm tra kỹ năng & giờ trống, khách nhận email). Dùng được chuột, cảm ứng, bàn phím.
 - **Bảng ca làm kiểu Jira:** kéo viên ca sang ô khác để chuyển (đổi người / đổi ngày), giữ Ctrl để sao chép; chặn chồng ca, ngoài giờ mở cửa, ca còn lịch hẹn.
