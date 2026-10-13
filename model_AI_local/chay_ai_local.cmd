@@ -35,6 +35,14 @@ if "!CODE!"=="200" (
   goto :end
 )
 
+rem Launcher và backend có thể cùng bật AI một lúc (model đang nạp, cổng chưa mở): chỉ một nơi được bật trong 2 phút,
+rem tránh nạp model 2 lần làm tràn VRAM card 4 GB
+powershell -NoProfile -Command "$f=Join-Path $env:TEMP 'salon_ai_starting.lock'; if((Test-Path $f) -and ((Get-Date)-(Get-Item $f).LastWriteTime).TotalSeconds -lt 120){exit 1}; Set-Content $f $PID; exit 0" >nul 2>nul
+if errorlevel 1 (
+  echo [OK] AI local đang được bật ở nơi khác — chờ khoảng 30 giây là sẵn sàng.
+  goto :end
+)
+
 rem ---- cấu hình theo VRAM của card NVIDIA (không có card NVIDIA: coi như máy nhỏ)
 set "VRAM=0"
 where nvidia-smi >nul 2>nul && for /f "tokens=1" %%M in ('nvidia-smi --query-gpu^=memory.total --format^=csv^,noheader^,nounits 2^>nul') do if !VRAM! EQU 0 set "VRAM=%%M"
@@ -65,9 +73,22 @@ echo   API      : http://localhost:%PORT%/v1   (model "%ALIAS%")
 echo   Cấu hình : VRAM !VRAM! MB ^| ngữ cảnh !CTX! ^| !GPU_ARGS!
 echo   GIỮ CỬA SỔ NÀY MỞ. Đóng cửa sổ = tắt AI local (Trợ lý tự quay về chế độ luật).
 echo ============================================================
+for /f %%T in ('powershell -NoProfile -Command "[DateTimeOffset]::Now.ToUnixTimeSeconds()"') do set "T0=%%T"
 "!SERVER!" -m "%MODEL_FILE%" --host 127.0.0.1 --port %PORT% -a %ALIAS% -c !CTX! -fa on -ctk q8_0 -ctv q8_0 -np 1 -rea off !GPU_ARGS!
+set "RC=!ERRORLEVEL!"
+for /f %%T in ('powershell -NoProfile -Command "[DateTimeOffset]::Now.ToUnixTimeSeconds()"') do set "T1=%%T"
+set "RAN=0"
+if defined T0 if defined T1 set /a "RAN=T1-T0"
+rem Laptop không có card hợp bản CUDA / Vulkan, driver cũ, thiếu VRAM: dừng NGAY lúc khởi động (< 90 giây) -> chạy lại
+rem bằng CPU thay vì để Trợ lý mất AI. Dừng sau khi đã chạy lâu (tắt máy / tắt tay) thì không tự bật lại.
+if not defined GPU_LAYERS if not "!RC!"=="0" if !RAN! LSS 90 (
+  echo.
+  echo [LƯU Ý] Bộ chạy dùng card đồ hoạ dừng ^(mã !RC!^) — chạy lại bằng CPU ^(chậm hơn nhưng vẫn dùng được^) ...
+  "!SERVER!" -m "%MODEL_FILE%" --host 127.0.0.1 --port %PORT% -a %ALIAS% -c 4096 -ctk q8_0 -ctv q8_0 -np 1 -rea off -ngl 0
+  set "RC=!ERRORLEVEL!"
+)
 echo.
-echo [LƯU Ý] Máy chủ AI đã dừng (mã %ERRORLEVEL%). Nếu báo thiếu bộ nhớ GPU: set GPU_LAYERS=20 rồi chạy lại;
+echo [LƯU Ý] Máy chủ AI đã dừng (mã !RC!). Nếu báo thiếu bộ nhớ GPU: set GPU_LAYERS=20 rồi chạy lại;
 echo     nếu card không hợp bản CUDA: xoá thư mục runtime rồi chạy "tai_model_local.cmd vulkan".
 goto :fail
 

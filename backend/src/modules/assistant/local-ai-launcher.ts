@@ -38,7 +38,8 @@ export function launchLocalAi(dir: string, port = 11434): boolean {
   try {
     const child = spawn('powershell.exe', [
       '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command',
-      `Start-Process -FilePath 'cmd.exe' -ArgumentList '/d','/c','${LOCAL_AI_SCRIPT}' -WorkingDirectory '${quoted}' -WindowStyle Hidden`,
+      // Đường dẫn tuyệt đối: máy bật NoDefaultCurrentDirectoryInExePath thì cmd không tìm "chay_ai_local.cmd" trong thư mục hiện tại
+      `Start-Process -FilePath 'cmd.exe' -ArgumentList '/d','/c','"${join(dir, LOCAL_AI_SCRIPT).replace(/'/g, "''")}"' -WorkingDirectory '${quoted}' -WindowStyle Hidden`,
     ], { windowsHide: true, stdio: 'ignore', env: { ...process.env, SALON_NO_PAUSE: '1', PORT: String(port), AI_PORT: String(port) } });
     child.on('error', () => undefined);
     child.unref();

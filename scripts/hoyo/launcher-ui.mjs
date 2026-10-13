@@ -27,6 +27,7 @@ import { buildLogBundle, deviceInfo, deviceInfoText, tailFile } from '../lib/dia
 import { BANKS, buildShopUpdates, readShopConfig, upsertEnv } from '../lib/shop-config.mjs';
 import { readinessChecks } from '../lib/env-check.mjs';
 import { ensureToolPath, macAppBrowsers } from '../lib/platform.mjs';
+import { aiUp, localAiStatus } from '../lib/local-ai.mjs';
 
 ensureToolPath(); // macOS mở từ Finder không có PATH của Terminal
 
@@ -93,6 +94,7 @@ const httpStatus = (url, timeoutMs = 2000) => new Promise((resolve) => {
 
 async function appStatus() {
   const run = readJson(RUN_STATE, null);
+  const ai = { ...localAiStatus(ROOT), up: await aiUp() };
   const mode = run?.mode ?? settings().mode;
   const [api, web] = await Promise.all([
     httpStatus(`http://127.0.0.1:${API_PORT}/health`),
@@ -106,6 +108,7 @@ async function appStatus() {
     mode,
     apiStatus: api,
     url: mode === 'serve' ? `http://localhost:${API_PORT}` : `http://localhost:${WEB_PORT}`,
+    ai,
   };
 }
 

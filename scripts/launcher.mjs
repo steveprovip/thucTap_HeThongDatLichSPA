@@ -40,6 +40,7 @@ import { networkInterfaces } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { composeServices, ensureToolPath } from './lib/platform.mjs';
+import { ensureLocalAi } from './lib/local-ai.mjs';
 import { adoptRepo, gitLogin } from './lib/git-repair.mjs';
 import { classifyGitError, problemOf } from './lib/version.mjs';
 import { cwdInside, mentionsRoot, parseNetstatListeners, parsePidList } from './lib/ports.mjs';
@@ -613,6 +614,8 @@ async function start() {
   if (rc !== 0) return 1;
   log(`      Cổng ${API_PORT} và ${WEB_PORT} đang trống.`);
   if (!(await timed('Nạp dữ liệu mẫu', async () => seedDatabase()))) return 1;
+  // AI local 1 chạm: thiếu model / bộ chạy thì tự tải ở nền, có rồi thì bật — không chặn việc mở hệ thống
+  await ensureLocalAi(ROOT, log);
   saveTimings('dev');
   printBanner();
   return run();
@@ -1114,6 +1117,7 @@ async function serve() {
     return 1;
   }
   if (built) await swapNext();
+  await ensureLocalAi(ROOT, log);
   saveTimings('serve');
   log(`      Tổng thời gian chuẩn bị: ${timings.map((t) => `${t.name} ${t.sec}s`).join(' · ')}`);
   printServerBanner();
