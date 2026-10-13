@@ -7,7 +7,18 @@ Trợ lý vận hành (chủ tiệm, lễ tân) và Trợ lý tư vấn sắc đ
 > của tiệm). Bật lên là backend **tự phát hiện** trong khoảng 10 giây và chuyển câu hỏi sang mô hình — không cần sửa
 > `.env`, không cần khởi động lại.
 
-## Bật AI local (2 bước)
+## Bật AI local: 1 click — chỉ cần mở **HoYoSalon**
+
+Bấm **BẮT ĐẦU** trong HoYoSalon (hoặc lối tắt "Hương Sen Salon") là Launcher tự lo AI local, không cần chạy tệp nào bên dưới:
+
+- **Máy mới clone** (laptop, máy thứ hai — model và bộ chạy không nằm trên GitHub): tự tải model ~2,6 GB + bộ chạy hợp
+  card đồ hoạ **ở nền, ẩn**, tải tiếp được khi mất mạng; tải xong **tự bật AI**. Trong lúc tải, Launcher hiện
+  "AI local: đang tải model x%" và trợ lý trả lời bằng luật. Cần ~3,5 GB trống trên ổ đĩa (thiếu thì Launcher báo).
+- **Đã có model**: tự bật AI ẩn khi khởi động; backend cũng tự bật lại nếu AI tắt.
+- Card đồ hoạ không chạy được bản GPU (driver cũ, card yếu, laptop không card rời) → tự chạy lại bằng **CPU**.
+- Nhật ký tải / chạy: `logs\ai-local.log`. Tắt tự động: `AI_LOCAL_AUTOSTART=0` hoặc `AI_PROVIDER=off` trong `backend\.env`.
+
+## Bật AI local thủ công (2 bước — chỉ khi cần)
 
 | Bước | Việc làm | Ghi chú |
 | --- | --- | --- |

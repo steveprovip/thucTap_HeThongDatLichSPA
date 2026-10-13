@@ -368,6 +368,11 @@ function render() {
     hero.classList.add('running');
     status = `Hệ thống đang chạy (${MODE_LABEL[app.mode]}) tại ${app.url}`;
     led.className = 'led on';
+    // AI local 1 chạm: Launcher tự tải model ở nền rồi bật AI
+    const ai = app.ai || {};
+    if (ai.up) status += ' · AI local: sẵn sàng';
+    else if (ai.downloading) status += ` · AI local: đang tải model ${ai.percent}% (trợ lý tạm trả lời bằng luật)`;
+    else if (ai.haveModel) status += ' · AI local: đang bật…';
     if (v.updateAvailable && !v.canUpdate) status += ` · Có bản ${esc(v.latest || 'mới')} trên kho mã (máy đang ở nhánh ${esc(v.branch)}, chỉ nhánh main tự cập nhật).`;
   }
   if (!busy && v.problem) status += ` · ⚠ ${v.problem.message} Mở ⚙ > Thông tin & Chẩn đoán để sửa.`;

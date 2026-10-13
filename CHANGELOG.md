@@ -3,6 +3,13 @@
 Định dạng theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), phiên bản theo [Semantic Versioning](https://semver.org/lang/vi/).
 Launcher (biểu tượng Hương Sen Salon / `HoYoSalon.bat`) đọc tệp này cho mục **Có gì mới** và **Nhật ký cập nhật**.
 
+## [2.1.1] - 2026-10-13
+
+### AI local 1 chạm trên mọi máy (sửa lỗi laptop không chạy được AI)
+- HoYoSalon tự tải model Spark-X2.5-4B + bộ chạy llama.cpp ở nền (ẩn, tải tiếp được, kiểm tra ổ đĩa trống) trên máy mới clone, tải xong tự bật AI; máy đã có model thì tự bật AI ngay khi khởi động. Launcher hiện tiến độ "AI local: đang tải model x%" / "sẵn sàng".
+- Sửa lỗi không bật được AI trên máy bật `NoDefaultCurrentDirectoryInExePath` (cmd không tìm `chay_ai_local.cmd` theo đường dẫn tương đối) — dùng đường dẫn tuyệt đối cả ở Launcher lẫn backend.
+- Bộ chạy GPU dừng ngay khi khởi động (driver cũ, card không hợp, thiếu VRAM) → tự chạy lại bằng CPU; khoá chống bật AI hai lần cùng lúc (tránh tràn VRAM card 4 GB).
+
 ## [2.1.0] - 2026-10-12
 
 ### Trợ lý AI — trả lời đúng, không gợi ý linh tinh
