@@ -165,7 +165,7 @@ export interface CustomerReply {
 
 /** Nhu cầu → từ khoá (không dấu). Khớp với tên / nhóm / mô tả dịch vụ trong danh mục THẬT của tiệm. */
 const NEEDS: { label: string; ask: RegExp; words: string[]; cat?: RegExp }[] = [
-  { label: 'tóc', ask: /\b(toc|cat|goi dau|nhuom|uon|duoi|phuc hoi|hu ton|xoan|tay toc|highlight|balayage|ombre|phu bac|toc bac|keratin|olaplex|rung toc|barber|rau)\b/, words: ['toc', 'cat', 'goi', 'nhuom', 'uon', 'duoi', 'phuc hoi', 'hap', 'barber', 'rau'] },
+  { label: 'tóc', ask: /\b(toc|cat|goi dau|nhuom|uon|duoi|phuc hoi|hu ton|xoan|tay toc|highlight|balayage|ombre|phu bac|toc bac|keratin|olaplex|rung toc|barber|rau)\b/, words: ['toc', 'cat', 'goi', 'nhuom', 'uon', 'duoi', 'phuc hoi', 'hap', 'barber', 'rau'], cat: /\b(toc|uon|nhuom|phuc hoi|goi dau)\b/ },
   { label: 'da', ask: /\b(da(?! nong)|da mat|mat na|mun|tham mun|lam sang|duong da|facial|cham soc da|lo chan long|kho da|da dau|cap am|dien di|peel|tre hoa|vitamin c)\b/, words: ['da', 'mat', 'facial', 'mun', 'duong', 'sang', 'cap am', 'peel', 'collagen'], cat: /\bcham soc da\b|\bskin\b/ },
   { label: 'massage', ask: /\b(massage|mat xa|matxa|thu gian|dau lung|moi vai|co vai gay|vai gay|body|xong hoi|da nong|bam huyet|tam trang|phi thuyen|ngam chan)\b/, words: ['massage', 'mat xa', 'thu gian', 'body', 'vai gay', 'xong', 'da nong', 'bam huyet', 'tam trang'], cat: /\b(massage|body)\b/ },
   { label: 'móng', ask: /\b(nail|mong|son gel|son mong|ve mong|mong tay|mong chan|dap bot|up mong|manicure|pedicure)\b/, words: ['nail', 'mong', 'son', 'manicure', 'pedicure'], cat: /\b(nail|mong)\b/ },
@@ -176,6 +176,8 @@ const NEEDS: { label: string; ask: RegExp; words: string[]; cat?: RegExp }[] = [
 /** Triệu chứng cụ thể → dịch vụ chuyên trị (trọng số cao hơn nhu cầu chung "tóc" / "da"). */
 const SYMPTOMS: { ask: RegExp; words: string[] }[] = [
   { ask: /\b(kho xo|xo roi|hu ton|che ngon|gay rung|toc yeu|toc kho|phuc hoi|nhuom nhieu|tay nhieu|toc xo|xo qua|bi xo|mem muot|suon muot|bong muot|muot ma|xo cung)\b/, words: ['phuc hoi', 'hap', 'u', 'duong'] },
+  // "chăm sóc tóc" (nút nhanh "Tóc") = phục hồi / hấp / gội dưỡng, không phải mọi dịch vụ có chữ "chăm sóc"
+  { ask: /\b(cham soc toc|duong toc)\b/, words: ['phuc hoi', 'hap', 'duong'] },
   { ask: /\b(mun|tham mun|da dau|lo chan long)\b/, words: ['mun', 'tri mun', 'lam sach'] }, // không dùng "tri" trơn: khớp nhầm "trị gàu"
   { ask: /\b(moi|dau lung|co vai gay|vai gay|met moi|cang thang|stress|mat ngu|thu gian)\b/, words: ['massage', 'vai gay', 'bam huyet', 'body'] }, // không dùng 'dưỡng sinh': kéo 'Gội đầu dưỡng sinh' vào câu đau lưng
   { ask: /\b(du tiec|di tiec|dam cuoi|chup anh|su kien)\b/, words: ['trang diem', 'tiec'] },
@@ -189,6 +191,12 @@ const STOP = new Set(['toi', 'minh', 'em', 'anh', 'chi', 'ban', 'muon', 'can', '
   'nong', 'lanh', 'dep', 'tot', 'xau', 'nhanh', 'lau', 'moi', 'cu', 'nho', 'lon', 'khac', 'nhau', 'nen', 'hon', 'nhat', 'kieu', 'loai',
   // từ chỉ thời gian: "THÁNG sau mình cưới" (thang) từng khớp "Duỗi THẲNG"
   'thang', 'tuan', 'ngay', 'sau', 'truoc', 'nay', 'mai', 'qua', 'gio', 'buoi', 'luc', 'chieu', 'sang', 'trua']);
+/**
+ * Từ chung chỉ khi khớp TÊN dịch vụ: "Tư vấn CHĂM SÓC tóc" từng khớp "CHĂM SÓC móng…", "CHĂM SÓC da…" (+8 điểm theo tên)
+ * → gợi ý nail / da cho câu hỏi tóc. Cụm "sóc da", "sóc móng" vẫn khớp (chỉ bỏ cụm mà cả 2 từ đều là từ chung).
+ */
+const NAME_FILLER = new Set(['tu', 'van', 'cham', 'soc']);
+const skipName = (t: string): boolean => STOP.has(t) || NAME_FILLER.has(t);
 
 const textOf = (s: CatalogItem): string => fold(`${s.name} ${s.categoryName} ${s.description ?? ''}`);
 
@@ -221,13 +229,22 @@ export function matchServices(message: string, catalog: CatalogItem[], limit = 4
   const needs = NEEDS.filter((n) => n.ask.test(m));
   const symptoms = SYMPTOMS.filter((x) => x.ask.test(m));
   const all = m.split(/[^a-z0-9]+/).filter(Boolean);
-  const tokens = all.filter((t) => t.length >= 2 && !STOP.has(t));
+  const tokens = all.filter((t) => t.length >= 2 && !skipName(t));
   // Cụm 2 từ liền nhau ("da nong", "vai gay") khớp tên dịch vụ: chính xác hơn từ đơn, kể cả khi từng từ là từ chung
-  const bigrams = all.slice(0, -1).map((t, i) => [t, all[i + 1]]).filter(([a, b]) => !(STOP.has(a) && STOP.has(b))).map(([a, b]) => `${a} ${b}`);
+  const bigrams = all.slice(0, -1).map((t, i) => [t, all[i + 1]]).filter(([a, b]) => !(skipName(a) && skipName(b))).map(([a, b]) => `${a} ${b}`);
+  // Câu chỉ nêu NHU CẦU chung ("massage thư giãn", "tư vấn chăm sóc tóc") → chỉ gợi ý dịch vụ THUỘC nhóm của nhu cầu đó.
+  // Dịch vụ nhóm khác chỉ giữ khi câu còn chữ riêng (ngoài từ chỉ nhu cầu) trùng tên nó: "massage mặt" → "Massage mặt…" (nhóm da).
+  const cats = needs.length && needs.every((n) => n.cat) && !/\b(combo|goi|tron goi|co dau|cuoi|tiet kiem|vip)\b/.test(m)
+    ? needs.map((n) => n.cat!) : [];
+  const inCats = (s: CatalogItem): boolean => cats.some((c) => c.test(fold(s.categoryName)));
+  const scoped = !strict && catalog.some(inCats);
+  const extra = needs.reduce((acc, n) => acc.replace(new RegExp(n.ask.source, 'g'), ' '), m)
+    .split(/[^a-z0-9]+/).filter((t) => t.length >= 3 && !skipName(t));
   const scored = catalog.map((s) => {
     const t = textOf(s);
     const name = fold(s.name);
     const words = new Set(name.split(/[^a-z0-9]+/));
+    if (scoped && !inCats(s) && !extra.some((w) => words.has(w))) return { s, score: 0 };
     // Điểm THEO TÊN: đúng tên 10 · cụm 2 từ 4 · từ đặc trưng ≥ 5 chữ ("keratin", "massage") 4 · từ ngắn 3–4 chữ 2.
     // Bỏ dấu làm nhiều từ ngắn trùng nhau ("mất"/"mặt" = mat, "thứ"/"thư" = thu, "gói"/"gội" = goi) → một từ ngắn KHÔNG đủ.
     let byName = name.length >= 4 && m.includes(name) ? 10 : 0;
@@ -250,7 +267,8 @@ export function matchServices(message: string, catalog: CatalogItem[], limit = 4
     // Dịch vụ THUỘC nhóm đúng nhu cầu ("làm đẹp da mặt" → nhóm Chăm sóc da, không phải "Cạo MẶT & tỉa râu")
     for (const n of needs) if (n.cat?.test(fold(s.categoryName))) score += 4;
     if (byName <= 0 && COMBO_RE.test(name) && !/\b(combo|goi|tron goi|co dau|cuoi|tiet kiem|vip)\b/.test(m)) score -= 5;
-    if (byName <= 0 && /\btre em\b/.test(name) && !/\btre em\b/.test(m)) score -= 3;
+    // (cả khi đã khớp tên: điểm nhóm +4 từng đẩy "Cắt tóc trẻ em" qua ngưỡng 60% trong câu "cắt tóc" chung)
+    if (/\btre em\b/.test(name) && !/\btre em\b/.test(m)) score -= 3;
     const inName = (w: string) => new RegExp(`\\b${w}\\b`).test(name);
     for (const sy of symptoms) if (sy.words.some(inName)) score += 10; else if (sy.words.some(has)) score += 4;
     return { s, score };

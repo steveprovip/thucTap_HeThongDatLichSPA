@@ -414,3 +414,34 @@ describe('Nhập vai khách — vòng 7 (va chạm khi bỏ dấu, câu dẫn so
     expect(names(r)[0]).toMatch(/^Cắt tóc/);
   });
 });
+
+/**
+ * Nút chủ đề nhanh của widget (frontend/src/components/CustomerAiAssistant.tsx · TOPICS). Lỗi thật: "Tư vấn chăm sóc tóc" gợi ý
+ * "Chăm sóc móng & da tay", "Chăm sóc da … Vitamin C / HA" vì chữ "chăm sóc" được tính là khớp tên dịch vụ.
+ */
+describe('Nút chủ đề nhanh → chỉ gợi ý dịch vụ đúng nhóm', () => {
+  const TOPICS: [string, string[]][] = [
+    ['Tư vấn chăm sóc tóc', ['Cắt & tạo kiểu tóc', 'Uốn - Nhuộm - Phục hồi', 'Gội đầu dưỡng sinh']],
+    ['Tư vấn chăm sóc da', ['Chăm sóc da']],
+    ['Massage thư giãn', ['Massage & Body']],
+    ['Tư vấn làm móng', ['Nail - Chăm sóc móng']],
+    ['Tư vấn trang điểm dự tiệc', ['Trang điểm & Nối mi']],
+  ];
+  it.each(TOPICS)('"%s" → %j', (q, cats) => {
+    const r = customerRuleReply(q, catalog, [], facts, new Date('2026-10-12T05:00:00Z'), { today: TODAY });
+    expect(r.intent).toBe('need');
+    expect(r.suggestions.length).toBeGreaterThan(0);
+    expect(r.suggestions.map((s) => s.categoryName).filter((c) => !cats.includes(c))).toEqual([]);
+    // Danh sách trong câu trả lời trùng thẻ gợi ý — không kể dịch vụ nhóm khác
+    const listed = catalog.filter((s) => r.answer.includes(`• ${s.name} —`));
+    expect(listed.map((s) => s.id).sort()).toEqual(r.suggestions.map((s) => s.id).sort());
+  });
+  it('"Tư vấn chăm sóc tóc" ưu tiên phục hồi / dưỡng tóc', () => {
+    const r = customerRuleReply('Tư vấn chăm sóc tóc', catalog, [], facts, undefined, { today: TODAY });
+    expect(r.suggestions[0].name).toMatch(/Phục hồi|Hấp dầu|Gội/);
+  });
+  it('nêu chữ riêng của dịch vụ nhóm khác vẫn giữ: "massage mặt" → Massage mặt nâng cơ', () => {
+    expect(customerRuleReply('massage mặt', catalog, [], facts, undefined, { today: TODAY }).suggestions.map((s) => s.name))
+      .toContain('Massage mặt nâng cơ thư giãn');
+  });
+});
