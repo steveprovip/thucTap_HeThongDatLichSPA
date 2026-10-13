@@ -3,6 +3,13 @@
 Định dạng theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), phiên bản theo [Semantic Versioning](https://semver.org/lang/vi/).
 Launcher (biểu tượng Hương Sen Salon / `HoYoSalon.bat`) đọc tệp này cho mục **Có gì mới** và **Nhật ký cập nhật**.
 
+## [2.1.1] - 2026-10-13
+
+### AI local 1 chạm trên mọi máy (sửa lỗi laptop không chạy được AI)
+- HoYoSalon tự tải model Spark-X2.5-4B + bộ chạy llama.cpp ở nền (ẩn, tải tiếp được, kiểm tra ổ đĩa trống) trên máy mới clone, tải xong tự bật AI; máy đã có model thì tự bật AI ngay khi khởi động. Launcher hiện tiến độ "AI local: đang tải model x%" / "sẵn sàng".
+- Sửa lỗi không bật được AI trên máy bật `NoDefaultCurrentDirectoryInExePath` (cmd không tìm `chay_ai_local.cmd` theo đường dẫn tương đối) — dùng đường dẫn tuyệt đối cả ở Launcher lẫn backend.
+- Bộ chạy GPU dừng ngay khi khởi động (driver cũ, card không hợp, thiếu VRAM) → tự chạy lại bằng CPU; khoá chống bật AI hai lần cùng lúc (tránh tràn VRAM card 4 GB).
+
 ## [2.1.0] - 2026-10-12
 
 ### Trợ lý AI — trả lời đúng, không gợi ý linh tinh
@@ -35,11 +42,6 @@ Launcher (biểu tượng Hương Sen Salon / `HoYoSalon.bat`) đọc tệp này
 - Trang **Cải tiến Trợ lý AI**: đề xuất học chờ duyệt (từ AI viết lại / khách tự hỏi lại), dạy cụm từ / cả câu / **câu trả lời soạn sẵn** cho câu hỏi ngoài dữ liệu ("chỗ để xe"), câu chưa trả lời tốt, phản hồi 👍 / 👎 của khách, số câu AI bịa số liệu bị chặn.
 - Câu dẫn tư vấn soạn sẵn theo nhu cầu (AI 4B viết câu dẫn sai nghĩa 3/6 lượt); bật lại câu dẫn của AI bằng `AI_LLM_LEAD=1`.
 - Bộ chấm điểm `npm run eval:ai:full`: 45 kịch bản / 135 lượt gồm biến thể không dấu + viết tắt (kiểm thử bất biến kiểu CheckList), AI local đạt pass^3 = 100%.
-
-### AI local 1 click trên mọi máy (sửa lỗi laptop không chạy được AI)
-- HoYoSalon tự tải model Spark-X2.5-4B + bộ chạy llama.cpp ở nền (ẩn, tải tiếp được, kiểm tra ổ đĩa trống) trên máy mới clone, tải xong tự bật AI; máy đã có model thì tự bật AI ngay khi khởi động. Launcher hiện tiến độ "AI local: đang tải model x%" / "sẵn sàng".
-- Sửa lỗi không bật được AI trên máy bật `NoDefaultCurrentDirectoryInExePath` (cmd không tìm `chay_ai_local.cmd` theo đường dẫn tương đối) — dùng đường dẫn tuyệt đối cả ở Launcher lẫn backend.
-- Bộ chạy GPU dừng ngay khi khởi động (driver cũ, card không hợp, thiếu VRAM) → tự chạy lại bằng CPU; khoá chống bật AI hai lần cùng lúc (tránh tràn VRAM card 4 GB).
 
 ### Hiệu năng & chịu tải
 - 1000 khách hỏi trợ lý cùng lúc: 100% được trả lời; khi có mô hình 1 luồng, p95 giảm từ 81 giây xuống 1,4 giây (cổng chặn đồng thời, gộp câu trùng, bộ nhớ đệm câu trả lời).
