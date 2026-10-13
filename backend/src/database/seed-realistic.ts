@@ -409,7 +409,7 @@ async function upsertCustomers(client: Client, n: number): Promise<{ added: numb
 }
 
 /** Lịch mẫu của seed.sql: mã = upper(md5(ngày|thợ|giờ)) — nhận diện CHÍNH XÁC, không đụng lịch thật. */
-const LEGACY_CODE = `a.code = upper(substr(md5(to_char(a.start_at AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD') || '|' || a.stylist_id::text
+export const LEGACY_CODE = `a.code = upper(substr(md5(to_char(a.start_at AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD') || '|' || a.stylist_id::text
   || '|' || to_char(a.start_at AT TIME ZONE 'Asia/Ho_Chi_Minh', 'HH24:MI:SS')), 1, 8))`;
 
 /**
@@ -831,11 +831,14 @@ async function main(): Promise<void> {
   try {
     const t0 = Date.now();
     console.log(`> Nạp dữ liệu thực tế${scale ? ' (quy mô đo hiệu năng)' : ''} ...`);
+    const { ageThenLog, scenariosThenLog } = await import('./seed-scenarios');
+    await ageThenLog(client);
     const report = await seedRealistic(client, {
       customers: scale ? 10_000 : 900,
       historyDays: daysArg ? Number(daysArg.slice(7)) : scale ? 365 : 120,
     });
     console.log(`  Xong sau ${((Date.now() - t0) / 1000).toFixed(1)} giây:`, report);
+    await scenariosThenLog(client);
     const { rows } = await client.query(
       `SELECT (SELECT COUNT(*) FROM services WHERE is_active) AS services, (SELECT COUNT(*) FROM stylists WHERE is_active) AS stylists,
               (SELECT COUNT(*) FROM customers) AS customers, (SELECT COUNT(*) FROM appointments) AS appointments,
