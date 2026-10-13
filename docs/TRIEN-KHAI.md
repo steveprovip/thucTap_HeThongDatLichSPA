@@ -215,7 +215,13 @@ Trong LAN, luồng SSE chạy trực tiếp (chấm **Trực tiếp**). Nên gá
 
 Đường hầm chỉ cần máy bàn chủ động kết nối ra Cloudflare, **không phải mở cổng trên router**.
 
-**Cách A, Quick Tunnel (miễn phí hoàn toàn, không cần tài khoản hay tên miền):** chạy `scripts\windows\start_tunnel.bat` (sau khi `scripts\windows\start_server.bat` đã chạy). Cần có `cloudflared.exe`: tải
+**Cách nhanh nhất — 1 chạm trong HoYoSalon:** bấm **BẮT ĐẦU**, rồi menu **⋯ → Chia sẻ link** (hoặc ⚙ → tab *Chia sẻ link*) →
+**Tạo link công khai**. Launcher tự tải `cloudflared` chính chủ của Cloudflare (lần đầu ~1 phút), mở đường hầm và hiện link
+`https://….trycloudflare.com` kèm **mã QR** để quét bằng điện thoại; đóng Launcher vẫn giữ link, bấm **Đóng link** để tắt.
+Nếu tài khoản mẫu còn mật khẩu mặc định (README), Launcher cảnh báo và bắt xác nhận trước khi mở ra Internet.
+Chạy được cả chế độ trình diễn (Vite 5173) lẫn chế độ máy chủ (cổng 3000).
+
+**Cách A, Quick Tunnel bằng dòng lệnh (miễn phí hoàn toàn, không cần tài khoản hay tên miền):** chạy `scripts\windows\start_tunnel.bat` (sau khi `scripts\windows\start_server.bat` đã chạy). Cần có `cloudflared.exe`: tải
 [bản Windows 64-bit](https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe), đổi tên thành `cloudflared.exe`, đặt vào `C:\Cloudflared\bin` hoặc thư mục `tools\` của dự án.
 Màn hình in địa chỉ dạng `https://….trycloudflare.com`; mở nó trên laptop hoặc điện thoại. Giới hạn do Cloudflare nêu rõ:
 

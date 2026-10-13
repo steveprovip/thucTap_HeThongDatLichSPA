@@ -99,7 +99,7 @@ export function PendingPage() {
               <td>{a.customer?.fullName ?? '—'}<span className="block text-xs text-ink-muted">{a.customer?.phone}</span></td>
               <td>{(a.services ?? []).map(s => s.name).join(', ')}<span className="block text-xs text-ink-muted">{formatDuration(a.totalDurationMinutes)}</span></td>
               <td>{a.stylist?.fullName ?? 'Thợ bất kỳ'}</td><td><StatusBadge status={a.status} /></td>
-              <td><div className="flex gap-1"><Button size="sm" onClick={() => setSelected(a)}>Xử lý</Button><Button size="sm" variant="outline" onClick={() => confirm(a)}>Xác nhận</Button></div></td>
+              <td><div className="flex gap-1"><Button size="sm" onClick={() => setSelected(a)}>Chi tiết</Button><Button size="sm" variant="outline" onClick={() => confirm(a)}>Xác nhận</Button></div></td>
             </tr>)}</tbody>
           </table>
         </div>
@@ -120,7 +120,7 @@ export function PendingPage() {
                 <StatusBadge status={a.status} />
               </div>
               <div className="mt-3 flex gap-2">
-                <Button size="sm" onClick={() => setSelected(a)}>Xử lý</Button>
+                <Button size="sm" onClick={() => setSelected(a)}>Chi tiết</Button>
                 <Button
                   size="sm" variant="outline"
                   onClick={() => confirm(a)}

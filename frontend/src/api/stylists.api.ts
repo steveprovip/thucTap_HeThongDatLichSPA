@@ -43,6 +43,10 @@ export const stylistsApi = {
   async updateShift(id: string, payload: Partial<ShiftPayload>): Promise<Shift> {
     return unwrap<Shift>(await api.patch(`/shifts/${id}`, payload));
   },
+  /** Kéo thả trên Bảng ca: chuyển ca sang thợ / ngày khác, hoặc sao chép (`copy`). */
+  async moveShift(id: string, payload: { stylistId?: string; workDate?: string; copy?: boolean }): Promise<Shift> {
+    return unwrap<Shift>(await api.patch(`/shifts/${id}/move`, payload));
+  },
   async removeShift(id: string): Promise<void> {
     await api.delete(`/shifts/${id}`);
   },

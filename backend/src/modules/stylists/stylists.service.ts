@@ -25,7 +25,7 @@ import { computeDayCoverage, CoverageShift, CoverageTimeOff, DayCoverage, rankGa
 import { WorkingHoursService } from '../working-hours/working-hours.service';
 import {
   CopyWeekDto, CreateShiftsDto, CreateStylistDto, CreateTimeOffDto, ShiftItemDto,
-  UpdateShiftDto, UpdateStylistDto,
+  MoveShiftDto, UpdateShiftDto, UpdateStylistDto,
 } from './dto/stylist.dto';
 
 export interface StylistView {
@@ -578,6 +578,55 @@ export class StylistsService {
   }
 
   /** S2-01: xoá ca đang có lịch hẹn bên trong thì bị chặn, liệt kê các lịch liên quan. */
+  /**
+   * Kéo thả ca (ghi chú test 13/10): chuyển ca sang thợ / ngày khác, hoặc sao chép. Cùng kiểm tra như tạo ca: nằm trong
+   * giờ mở cửa ngày đích, không chồng ca khác của thợ đích (EXCLUDE ở CSDL chặn lần nữa khi hai người kéo cùng lúc),
+   * thợ đích đang làm việc. Chuyển (không sao chép) ca đang có lịch hẹn bên trong thì không được — lịch sẽ mất thợ.
+   */
+  async moveShift(id: string, dto: MoveShiftDto): Promise<ShiftView> {
+    const shift = await this.shiftRepo.findOne({ where: { id } });
+    if (!shift) throw new NotFoundException(MSG.SHIFT_NOT_FOUND);
+    const targetStylistId = dto.stylistId ?? shift.stylistId;
+    const workDate = dto.workDate ?? String(shift.workDate);
+    if (!dto.copy && targetStylistId === shift.stylistId && workDate === String(shift.workDate)) {
+      const st = await this.stylistRepo.findOne({ where: { id: shift.stylistId } });
+      return this.shiftView(shift, st?.fullName ?? '');
+    }
+    const target = await this.stylistRepo.findOne({ where: { id: targetStylistId } });
+    if (!target) throw new NotFoundException(MSG.STYLIST_NOT_FOUND);
+    if (!target.isActive) throw new BadRequestException(MSG.STYLIST_INACTIVE);
+
+    const item: ShiftItemDto = {
+      workDate, startTime: trimSeconds(shift.startTime), endTime: trimSeconds(shift.endTime),
+      breakStart: shift.breakStart ? trimSeconds(shift.breakStart) : null, breakEnd: shift.breakEnd ? trimSeconds(shift.breakEnd) : null,
+    };
+    await this.assertWithinSalonHours(item);
+    await this.assertNoShiftOverlap(targetStylistId, [{
+      ...(dto.copy || targetStylistId !== shift.stylistId ? {} : { id: shift.id }),
+      workDate, startTime: item.startTime, endTime: item.endTime, note: shift.note,
+    }]);
+
+    if (dto.copy) {
+      const created = await this.shiftRepo.save(this.shiftRepo.create({
+        stylistId: targetStylistId, workDate, startTime: item.startTime, endTime: item.endTime,
+        breakStart: item.breakStart ?? null, breakEnd: item.breakEnd ?? null, note: shift.note,
+      }));
+      return this.shiftView(created, target.fullName);
+    }
+    const inside = await this.appointmentsInsideShift(shift);
+    if (inside.length) {
+      throw new ConflictException({
+        message: `Ca này đang có ${inside.length} lịch hẹn (${inside.map((a) => `${a.code} ${toTimeString(a.startAt)}`).join(', ')}). `
+          + 'Hãy chuyển các lịch đó sang thợ khác (Chuyển lịch hàng loạt / kéo trên Lịch ngày) trước, hoặc giữ Ctrl khi thả để SAO CHÉP ca.',
+        code: ERROR_CODES.SHIFT_HAS_APPOINTMENTS,
+      });
+    }
+    shift.stylistId = targetStylistId;
+    shift.workDate = workDate as unknown as StylistShift['workDate'];
+    const saved = await this.shiftRepo.save(shift);
+    return this.shiftView(saved, target.fullName);
+  }
+
   async removeShift(id: string): Promise<{ success: boolean }> {
     const shift = await this.shiftRepo.findOne({ where: { id } });
     if (!shift) throw new NotFoundException(MSG.SHIFT_NOT_FOUND);

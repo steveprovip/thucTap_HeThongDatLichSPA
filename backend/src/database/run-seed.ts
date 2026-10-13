@@ -14,6 +14,7 @@ import { describeDb, resolveDbConnection } from '../config/db-connection';
 import { connectWithRetry, hintFor, PgError } from './db-tools';
 import { runMigrations } from './migrate';
 import { cleanupJunk, seedRealistic, seedRealisticCustomers } from './seed-realistic';
+import { ageThenLog, scenariosThenLog } from './seed-scenarios';
 import { readSeedSql } from './sql-files';
 
 loadEnv();
@@ -58,9 +59,12 @@ async function main(): Promise<void> {
     if (realistic) {
       console.log('> Nạp dữ liệu thực tế (seed-realistic) ...');
       const t0 = Date.now();
+      await ageThenLog(client);
       const r = await seedRealistic(client);
       console.log(`  Xong sau ${((Date.now() - t0) / 1000).toFixed(1)} giây: +${r.customersAdded} khách, +${r.shiftsAdded} ca, `
         + `+${r.appointmentsAdded} lịch hẹn, +${r.invoicesAdded} phiếu, dọn ${Object.values(r.removed).reduce((a, b) => a + b, 0)} bản ghi rác.`);
+      // Ghi chú test 13/10: đủ tình huống để test hết 39 user story (kiểm tra: npm run seed:check)
+      await scenariosThenLog(client);
     }
 
     const counts = await client.query(

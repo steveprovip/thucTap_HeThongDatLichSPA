@@ -72,6 +72,9 @@ export default defineConfig(({ command }) => ({
     strictPort: true,
     host: true,
     open: false,
+    // Ghi chú test 13/10 — HoYoSalon > Chia sẻ link (Cloudflare Quick Tunnel) ở chế độ trình diễn: cho phép tên miền tạm
+    // *.trycloudflare.com (Vite chặn Host lạ để chống DNS rebinding)
+    allowedHosts: ['.trycloudflare.com'],
     proxy: {
       '/api': backendProxy(),
       '/uploads': backendProxy(),

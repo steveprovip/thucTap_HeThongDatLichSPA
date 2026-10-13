@@ -1,9 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { CalendarX2, RefreshCw, UserPlus } from 'lucide-react';
+import {
+  DndContext, KeyboardSensor, PointerSensor, TouchSensor, pointerWithin, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent,
+} from '@dnd-kit/core';
+import { CalendarX2, Columns3, GanttChart, RefreshCw, UserPlus } from 'lucide-react';
 import { appointmentsApi, getErrorMessage } from '@/api';
 import type { Appointment, DayTimeline } from '@/types';
-import { Button, DateNav, SectionTitle, StylistAvatar, TimelineSkeleton } from '@/components';
+import { Button, ConfirmDialog, DateNav, SectionTitle, StylistAvatar, TimelineSkeleton } from '@/components';
+import { minutesToHHmm, snapStart, TIMELINE_DRAGGABLE } from '@/utils/dragRules';
 import { STATUS_BLOCK, STATUS_DOT, STATUS_LABELS, STATUS_STYLES } from '@/utils/constants';
 import { timeToMinutes, todayISO } from '@/utils/format';
 import { overrunInfo } from '@/utils/opsHelpers';
@@ -13,6 +17,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 import { AppointmentDrawer } from './AppointmentDrawer';
 import { WalkInModal } from './WalkInPage';
+import { DayBoard } from './DayBoard';
 
 /** Số phút từ nửa đêm theo giờ tiệm (Asia/Ho_Chi_Minh), không phụ thuộc múi giờ máy. */
 const salonNowMinutes = (ms: number): number => {
@@ -31,6 +36,42 @@ type ColorBy = 'stylist' | 'status';
 const readColorBy = (): ColorBy => {
   try { return localStorage.getItem(COLOR_KEY) === 'status' ? 'status' : 'stylist'; } catch { return 'stylist'; }
 };
+
+const VIEW_KEY = 'salon.dayView';
+type DayView = 'timeline' | 'board';
+const readView = (): DayView => {
+  try { return localStorage.getItem(VIEW_KEY) === 'board' ? 'board' : 'timeline'; } catch { return 'timeline'; }
+};
+
+/** Cột thợ nhận thả (đổi thợ). */
+function DropColumn({ id, children, className, style }: { id: string; children: ReactNode; className: string; style: CSSProperties }) {
+  const { setNodeRef, isOver } = useDroppable({ id });
+  return <div ref={setNodeRef} className={`${className} ${isOver ? 'bg-teal-50/60' : ''}`} style={style}>{children}</div>;
+}
+
+/**
+ * Khối lịch kéo được (ghi chú test 13/10 — đổi thợ / dời giờ kiểu Jira): kéo ngang sang cột thợ khác, kéo dọc để dời giờ,
+ * bắt bước 15 phút; trong lúc kéo hiện giờ mới. Bấm (không kéo) vẫn mở chi tiết như cũ.
+ */
+function TimelineBlock({ id, enabled, slotH, startMin, label, className, style, title, onOpen, children }: {
+  id: string; enabled: boolean; slotH: number; startMin: number; label: (m: number) => string; className: string;
+  style: CSSProperties; title: string; onOpen: () => void; children: ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id, disabled: !enabled });
+  const dy = transform ? Math.round(transform.y / slotH) * slotH : 0;
+  return (
+    <button ref={setNodeRef} type="button" onClick={onOpen} title={title} {...(enabled ? { ...listeners, ...attributes } : {})}
+            className={`${className} ${enabled ? 'cursor-grab touch-none active:cursor-grabbing' : ''} ${isDragging ? 'z-[30] opacity-90 shadow-xl ring-2 ring-teal-500' : ''}`}
+            style={{ ...style, ...(transform ? { transform: `translate3d(${transform.x}px, ${dy}px, 0)` } : {}) }}>
+      {isDragging && (
+        <span className="absolute -top-5 left-0 rounded bg-teal-600 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow">
+          → {label(startMin + Math.round((transform?.y ?? 0) / slotH) * 15)}
+        </span>
+      )}
+      {children}
+    </button>
+  );
+}
 
 /** S3-01: lịch cả ngày dạng cột theo từng thợ, trục dọc chia theo 15 phút. */
 export function DayTimelinePage() {
@@ -53,6 +94,18 @@ export function DayTimelinePage() {
     try { localStorage.setItem(COLOR_KEY, v); } catch { /* chế độ riêng tư: chỉ nhớ trong phiên */ }
   };
   const colors = useMemo(() => stylistColorMap(data?.columns.map((c) => c.stylistId) ?? []), [data]);
+  /** Ghi chú test 13/10: thêm chế độ Bảng Kanban (kéo thẻ đổi trạng thái kiểu Jira) bên cạnh dòng thời gian. */
+  const [view, setViewState] = useState<DayView>(readView);
+  const setView = (v: DayView) => {
+    setViewState(v);
+    try { localStorage.setItem(VIEW_KEY, v); } catch { /* chế độ riêng tư */ }
+  };
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 6 } }),
+    useSensor(KeyboardSensor),
+  );
+  const [move, setMove] = useState<{ a: Appointment; stylistId: string; stylistName: string; time: string } | null>(null);
 
   /** Đổi ngày và giữ ?date= trên URL để quay lại / chia sẻ đúng ngày đang xem. */
   const setDate = useCallback((d: string) => {
@@ -96,13 +149,15 @@ export function DayTimelinePage() {
 
   // Cuộn tới giờ hiện tại MỘT lần khi mở lịch hôm nay (không giật khi dữ liệu tự làm mới)
   const scrolledFor = useRef<string | null>(null);
+  // Quay lại từ Bảng Kanban: lưới dựng mới → cuộn lại tới giờ hiện tại
+  useEffect(() => { scrolledFor.current = null; }, [view]);
   useEffect(() => {
-    if (!data || date !== todayISO() || !scrollRef.current || scrolledFor.current === date) return;
+    if (view !== 'timeline' || !data || date !== todayISO() || !scrollRef.current || scrolledFor.current === date) return;
     scrolledFor.current = date;
     const openMin = timeToMinutes(data.salonOpen);
     const offset = ((salonNowMinutes(Date.now()) - openMin) / STEP) * SLOT_H - 120;
     scrollRef.current.scrollTop = Math.max(0, offset);
-  }, [data, date]);
+  }, [data, date, view]);
 
   const rows = useMemo(() => {
     if (!data) return [] as string[];
@@ -145,9 +200,19 @@ export function DayTimelinePage() {
     <div className="space-y-3">
       <SectionTitle
         title="Lịch hẹn trong ngày"
-        description="Mỗi thợ là một cột, trục dọc chia theo 15 phút. Bấm vào một lịch để xử lý."
+        description={view === 'board'
+          ? 'Mỗi trạng thái là một cột: kéo thẻ để xác nhận, check-in, bắt đầu, hoàn tất. Bấm thẻ để xem chi tiết.'
+          : 'Mỗi thợ là một cột, trục dọc 15 phút. Kéo khối lịch sang thợ khác / giờ khác để đổi lịch; bấm để xem chi tiết.'}
         action={
           <div className="flex flex-wrap gap-2">
+            <div role="radiogroup" aria-label="Kiểu xem" className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 text-xs shadow-sm">
+              {([['timeline', 'Dòng thời gian', <GanttChart key="t" size={14} />], ['board', 'Bảng Kanban', <Columns3 key="b" size={14} />]] as const).map(([v, label, icon]) => (
+                <button key={v} type="button" role="radio" aria-checked={view === v} onClick={() => setView(v)}
+                        className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 font-medium transition ${view === v ? 'bg-teal-600 text-white' : 'text-ink-soft hover:bg-slate-50'}`}>
+                  {icon}{label}
+                </button>
+              ))}
+            </div>
             <Button variant="outline" size="sm" icon={<RefreshCw size={15} />} onClick={() => load(date)}>
               Làm mới
             </Button>
@@ -174,7 +239,7 @@ export function DayTimelinePage() {
           {Object.values(data.summary).every((v) => v === 0) && (
             <span className="text-sm text-ink-muted">Chưa có lịch hẹn nào trong ngày này.</span>
           )}
-          <div role="radiogroup" aria-label="Tô màu khối lịch" className="ml-auto inline-flex rounded-lg border border-slate-200 bg-white p-0.5 text-xs shadow-sm">
+          <div role="radiogroup" aria-label="Tô màu khối lịch" className={`ml-auto ${view === 'board' ? 'hidden' : 'inline-flex'} rounded-lg border border-slate-200 bg-white p-0.5 text-xs shadow-sm`}>
             {([['stylist', 'Màu theo thợ'], ['status', 'Màu theo trạng thái']] as const).map(([v, label]) => (
               <button key={v} type="button" role="radio" aria-checked={colorBy === v} onClick={() => setColorBy(v)}
                       className={`rounded-md px-2.5 py-1 font-medium transition ${colorBy === v ? 'bg-teal-600 text-white' : 'text-ink-soft hover:bg-slate-50'}`}>
@@ -193,6 +258,8 @@ export function DayTimelinePage() {
           <p className="mt-2 font-semibold">Tiệm đóng cửa ngày này</p>
           <p className="mt-1 text-sm text-ink-muted">{data.closedReason}</p>
         </div>
+      ) : view === 'board' && data.columns.length > 0 ? (
+        <DayBoard columns={data.columns} onOpen={setSelected} onChanged={() => { void load(date, true); }} />
       ) : data.columns.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-12 text-center">
           <p className="font-semibold">Chưa có thợ nào đang làm việc</p>
@@ -201,6 +268,15 @@ export function DayTimelinePage() {
         <div aria-busy={switching}
              className={`overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-card transition-opacity ${switching ? 'opacity-60' : ''}`}>
           <div ref={scrollRef} className="thin-scroll max-h-[calc(100vh-280px)] overflow-auto">
+            <DndContext sensors={sensors} collisionDetection={pointerWithin} onDragEnd={(e: DragEndEvent) => {
+              const a = data.columns.flatMap((c) => c.appointments).find((x) => x.id === e.active.id);
+              const target = e.over ? data.columns.find((c) => `col:${c.stylistId}` === e.over!.id) : null;
+              if (!a || !target) return;
+              const start = snapStart(timeToMinutes(a.startTime), e.delta.y, SLOT_H, STEP, openMin, closeMin, a.totalDurationMinutes);
+              const time = minutesToHHmm(start);
+              if (target.stylistId === a.stylist.id && time === a.startTime) return;
+              setMove({ a, stylistId: target.stylistId, stylistName: target.stylistName, time });
+            }}>
             <div className="flex min-w-max lg:min-w-full">
               {/* Cột giờ, dính bên trái */}
               <div className="sticky left-0 z-20 w-16 shrink-0 border-r border-slate-100 bg-white">
@@ -245,7 +321,7 @@ export function DayTimelinePage() {
                     </span>
                   </div>
 
-                  <div className="off-shift relative" style={{ height: gridHeight }}>
+                  <DropColumn id={`col:${col.stylistId}`} className="off-shift relative" style={{ height: gridHeight }}>
                     {/* Khoảng thợ có mặt: nền trắng */}
                     {col.workingBlocks.map((b, i) => (
                       <div
@@ -296,15 +372,21 @@ export function DayTimelinePage() {
                       const overRing = over.level === 'danger' ? 'z-[6] ring-2 ring-red-500 ring-offset-1 animate-pulse-subtle'
                         : over.level === 'warn' ? 'ring-2 ring-amber-400' : '';
                       return (
-                      <button
+                      <TimelineBlock
                         key={a.id}
-                        onClick={() => setSelected(a)}
+                        id={a.id}
+                        enabled={canWalkIn && TIMELINE_DRAGGABLE.includes(a.status)}
+                        slotH={SLOT_H}
+                        startMin={timeToMinutes(a.startTime)}
+                        label={minutesToHHmm}
+                        onOpen={() => setSelected(a)}
                         className={`absolute inset-x-1 z-[5] overflow-hidden rounded-md border-l-4 px-2 py-1 text-left
                                     animate-fade-in text-[11px] leading-tight shadow-sm ring-1 ring-slate-900/[0.04] transition-all duration-200 hover:z-[6] hover:-translate-y-px hover:shadow-md active:scale-[0.98]
                                     ${tone} ${overRing} ${flashId === a.id ? 'z-[6] animate-pulse-subtle ring-2 ring-teal-500 ring-offset-1' : ''}`}
                         style={{ top: topOf(a.startTime) + 1, height: heightOf(a.totalDurationMinutes) - 2, animationDelay: `${index * 40}ms` }}
                         title={`${a.startTime}–${a.endTime} · ${a.customer.fullName} · ${a.services.map((s) => s.name).join(', ')} · ${STATUS_LABELS[a.status]}`
-                          + (over.level !== 'none' ? ` · Quá thời lượng chuẩn ${over.overMinutes} phút${over.level === 'danger' ? ' — các lịch sau có nguy cơ trễ' : ''}` : '')}
+                          + (over.level !== 'none' ? ` · Quá thời lượng chuẩn ${over.overMinutes} phút${over.level === 'danger' ? ' — các lịch sau có nguy cơ trễ' : ''}` : '')
+                          + (canWalkIn && TIMELINE_DRAGGABLE.includes(a.status) ? ' · Kéo để đổi thợ / dời giờ' : '')}
                       >
                         <span className="flex items-center gap-1 truncate font-semibold">
                         {colorBy === 'stylist' && a.status !== 'in_progress' && (
@@ -326,17 +408,49 @@ export function DayTimelinePage() {
                         {a.isLate && a.totalDurationMinutes >= 45 && (
                           <span className="block font-semibold">Trễ {a.lateMinutes}′</span>
                         )}
-                      </button>
+                      </TimelineBlock>
                       );
                     })}
-                  </div>
+                  </DropColumn>
                 </div>
               ))}
             </div>
+            </DndContext>
           </div>
         </div>
       )}
 
+      <ConfirmDialog
+        open={!!move}
+        title="Đổi lịch hẹn?"
+        message={move ? (
+          <>
+            <p className="font-semibold text-ink">{move.a.customer.fullName} · {move.a.services.map((x) => x.name).join(', ')}</p>
+            <p className="mt-1">
+              {move.a.stylist.fullName} <strong>{move.a.startTime}</strong> → {move.stylistName} <strong>{move.time}</strong>
+            </p>
+            <p className="mt-1 text-xs">Hệ thống kiểm tra kỹ năng thợ và giờ trống; khách nhận email báo lịch mới.</p>
+          </>
+        ) : ''}
+        confirmLabel="Đổi lịch"
+        onClose={() => setMove(null)}
+        onConfirm={async () => {
+          if (!move) return;
+          try {
+            await appointmentsApi.reschedule(move.a.id, {
+              ...(move.stylistId !== move.a.stylist.id ? { stylistId: move.stylistId } : {}),
+              ...(move.time !== move.a.startTime ? { time: move.time } : {}),
+            });
+            toast.success(`Đã đổi lịch ${move.a.customer.fullName} sang ${move.stylistName} lúc ${move.time}`);
+            setFlashId(move.a.id);
+            window.setTimeout(() => setFlashId((x) => (x === move.a.id ? null : x)), 4000);
+          } catch (e) {
+            toast.error(getErrorMessage(e));
+          } finally {
+            void load(date, true);
+          }
+        }}
+      />
       <AppointmentDrawer
         appointment={selected}
         onClose={() => setSelected(null)}

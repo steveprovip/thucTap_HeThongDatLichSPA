@@ -28,6 +28,7 @@ import { BANKS, buildShopUpdates, readShopConfig, upsertEnv } from '../lib/shop-
 import { readinessChecks } from '../lib/env-check.mjs';
 import { ensureToolPath, macAppBrowsers } from '../lib/platform.mjs';
 import { aiUp, localAiStatus } from '../lib/local-ai.mjs';
+import { demoAccountsExposed, qrDataUri, shareStatus, startShare, stopShare } from '../lib/share-link.mjs';
 
 ensureToolPath(); // macOS mở từ Finder không có PATH của Terminal
 
@@ -399,6 +400,26 @@ const routes = {
     }, 4000).unref();
     return { ok: true };
   },
+  // Ghi chú test 13/10: link công khai mở trên mọi thiết bị (Cloudflare Quick Tunnel) — 1 chạm
+  'GET /api/share': async () => {
+    const s = shareStatus(ROOT);
+    return { sharing: !!s, ...(s ?? {}), qr: s ? await qrDataUri(ROOT, s.url) : null };
+  },
+  'POST /api/share/start': async (body) => {
+    const st = await appStatus();
+    if (!st.running) throw Object.assign(new Error('Hãy bấm BẮT ĐẦU cho hệ thống chạy trước, rồi mới chia sẻ link.'), { status: 400 });
+    if (!shareStatus(ROOT)) {
+      const demo = await demoAccountsExposed(ROOT);
+      if (demo.exposed && body.acceptDemo !== true) {
+        return { needConfirm: true, emails: demo.emails };
+      }
+    }
+    // Chế độ máy chủ: NestJS phục vụ cả giao diện ở cổng 3000; trình diễn: Vite 5173 (chuyển tiếp /api sang 3000)
+    const target = st.mode === 'serve' ? `http://localhost:${API_PORT}` : `http://localhost:${WEB_PORT}`;
+    const s = await startShare(ROOT, target, (m) => launcherLog.write(`[share] ${m}\n`));
+    return { sharing: true, ...s, qr: await qrDataUri(ROOT, s.url) };
+  },
+  'POST /api/share/stop': async () => stopShare(ROOT),
   'POST /api/open': async (body) => {
     const st = await appStatus();
     if (body.target === 'backups') { mkdirSync(join(ROOT, 'backups'), { recursive: true }); openUrl(join(ROOT, 'backups')); return { ok: true }; }

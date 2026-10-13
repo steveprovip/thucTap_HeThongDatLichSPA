@@ -11,6 +11,7 @@
     "start:prod": "node dist/main.js",
     "seed": "ts-node -r tsconfig-paths/register src/database/run-seed.ts",
     "seed:realistic": "ts-node -r tsconfig-paths/register src/database/seed-realistic.ts",
+    "seed:check": "ts-node -r tsconfig-paths/register src/database/seed-coverage.ts",
     "seed:scale": "ts-node -r tsconfig-paths/register src/database/seed-realistic.ts --scale",
     "bench:scale": "ts-node -r tsconfig-paths/register src/database/bench-scale.ts",
     "bootstrap": "ts-node -r tsconfig-paths/register src/database/run-bootstrap.ts",

@@ -2,6 +2,8 @@
  * Thư viện ảnh HD cho dịch vụ & chuyên viên.
  * Mỗi dịch vụ / thợ có ảnh riêng — không dùng chung một ảnh cho cả danh mục.
  *
+ * Ghi chú test 13/10: ưu tiên ảnh người Việt / châu Á, bối cảnh Việt (áo dài, gội đầu dưỡng sinh, tiệm tóc Việt) — chọn bằng mắt
+ * trên Unsplash (giấy phép Unsplash, miễn phí), không dùng ảnh Unsplash+ trả phí.
  * TOÀN BỘ mã ảnh dưới đây đã được kiểm tra tải được thật (28/09/2026). Ảnh cũ
  * `photo-1512290900672-1f5be661f061` (trị mụn) đã bị Unsplash gỡ → gây khung ảnh trống, nay đã thay.
  * Nếu sau này một ảnh bị gỡ, SmartImage tự thử ảnh dự phòng cùng chủ đề (KIND_ALTERNATES)
@@ -12,23 +14,23 @@ import type { StylistGender } from '@/types';
 const u = (id: string, w = 800, q = 80) => `https://images.unsplash.com/photo-${id}?w=${w}&q=${q}&auto=format&fit=crop`;
 
 export const IMAGES = {
-  hair_cut_men: u('1503951914875-452162b0f3f1'),
-  hair_cut_women: u('1560066984-138dadb4c035'),
-  hair_dye_balayage: u('1522337360788-8b13dee7a37e'),
-  hair_perm_curly: u('1580618672591-eb180b1a973f'),
-  hair_treatment: u('1527799820374-dcf8d9d4a388'),
-  hair_styling: u('1582095133179-bfd08e2fc6b3'),
-  spa_head_wash: u('1540555700478-4be289fbecef'),
-  spa_massage_neck: u('1519823551278-64ac92734fb1'),
+  hair_cut_men: u('1520338661084-680395057c93'),
+  hair_cut_women: u('1700760934268-8aa0ef52ce0a'),
+  hair_dye_balayage: u('1676693802700-9092152be879'),
+  hair_perm_curly: u('1599407365109-d62ea7d81a42'),
+  hair_treatment: u('1724079495338-ad0dd3966237'),
+  hair_styling: u('1676697090418-7266790a0d24'),
+  spa_head_wash: u('1672642150262-6edcbffa463e'),
+  spa_massage_neck: u('1570174006382-148305ce4972'),
   spa_hot_stone: u('1600334129128-685c5582fd35'),
-  skin_facial_care: u('1570172619644-dfd03ed5d881'),
-  skin_acne_treatment: u('1552693673-1bf958298935'),
+  skin_facial_care: u('1647004692483-c5d942fe1137'),
+  skin_acne_treatment: u('1731355771317-b2ab72c79124'),
   skin_mask: u('1616394584738-fc6e612e71b9'),
   skin_serum: u('1573461160327-b450ce3d8e7f'),
   nail_art_spa: u('1632345031435-8727f6897d53'),
   nail_polish: u('1610992015732-2449b76344bc'),
   nail_care: u('1519014816548-bf5fe059798b'),
-  makeup_party: u('1487412947147-5cebf100ffc2'),
+  makeup_party: u('1638959882708-9503b1cd595f'),
   makeup_products: u('1522335789203-aabd1fc54bc9'),
   combo_vip: u('1562322140-8baeececf3df'),
   spa_relax_wash: u('1600334089648-b0d9d3028eb2'),
@@ -40,11 +42,11 @@ export const IMAGES = {
 export type ImageKey = keyof typeof IMAGES;
 
 export const STYLIST_PHOTOS = {
-  stylist_1: u('1534528741775-53994a69daeb', 400),
-  stylist_2: u('1507003211169-0a1dd7228f2d', 400),
-  stylist_3: u('1517841905240-472988babdf9', 400),
-  stylist_4: u('1500648767791-00dcc994a43e', 400),
-  stylist_5: u('1494790108377-be9c29b29330', 400),
+  stylist_1: u('1589525231707-f2de2428f59c', 400),
+  stylist_2: u('1758600432277-5c76801e584a', 400),
+  stylist_3: u('1599231666334-ca0dbd7ad2da', 400),
+  stylist_4: u('1720501828093-c792c10e3f0b', 400),
+  stylist_5: u('1619235327941-c0e47a3ac74a', 400),
 } as const;
 
 /** Ảnh cố định cho thợ mẫu (khớp giới tính theo tên). */

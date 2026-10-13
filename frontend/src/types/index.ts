@@ -703,6 +703,18 @@ export interface CustomerAssistantService {
   id: string; name: string; categoryName: string; durationMinutes: number; price: number; priceText: string; description: string | null;
   imageUrl?: string | null;
 }
+/** Trạng thái gửi thư (GET /notifications/mail-status). */
+export interface MailStatus {
+  mode: 'test-inbox' | 'smtp';
+  host: string;
+  fromAddress: string;
+  testInboxUrl: string | null;
+  sent24h: number;
+  failed24h: number;
+  pending: number;
+  lastError: string | null;
+}
+
 export interface CustomerAssistantReply {
   intent: string;
   answer: string;

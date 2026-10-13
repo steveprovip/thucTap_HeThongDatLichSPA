@@ -1,6 +1,6 @@
 {
   "name": "salon-spa-booking",
-  "version": "2.1.1",
+  "version": "2.2.0",
   "private": true,
   "repository": { "type": "git", "url": "https://github.com/steveprovip/thucTap_HeThongDatLichSPA.git" },
   "description": "Hệ thống đặt lịch Salon - Spa: quản lý lịch hẹn, ca làm, thanh toán và báo cáo",
@@ -19,6 +19,7 @@
     "db:seed": "npm run seed --prefix backend",
     "db:seed:realistic": "npm run seed:realistic --prefix backend --",
     "db:seed:scale": "npm run seed:scale --prefix backend --",
+    "seed:check": "npm run seed:check --prefix backend",
     "dev:backend": "npm run start:dev --prefix backend",
     "dev:frontend": "npm run dev --prefix frontend",
     "prestart:all": "node scripts/launcher.mjs prepare",

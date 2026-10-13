@@ -29,3 +29,6 @@ logs/
 .salon-shortcut
 __pycache__/
 *.pyc
+# HoYoSalon > Chia sẻ link: trạng thái đường hầm + cloudflared tự tải
+.salon-share.json
+tools/cloudflared*
