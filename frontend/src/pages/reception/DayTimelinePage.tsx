@@ -5,14 +5,15 @@ import {
 } from '@dnd-kit/core';
 import { CalendarX2, Columns3, GanttChart, RefreshCw, UserPlus } from 'lucide-react';
 import { appointmentsApi, getErrorMessage } from '@/api';
-import type { Appointment, DayTimeline } from '@/types';
+import type { Appointment, AppointmentStatus, DayTimeline } from '@/types';
 import { Button, ConfirmDialog, DateNav, SectionTitle, StylistAvatar, TimelineSkeleton } from '@/components';
 import { minutesToHHmm, snapStart, TIMELINE_DRAGGABLE } from '@/utils/dragRules';
 import { STATUS_BLOCK, STATUS_DOT, STATUS_LABELS, STATUS_STYLES } from '@/utils/constants';
 import { timeToMinutes, todayISO } from '@/utils/format';
 import { overrunInfo } from '@/utils/opsHelpers';
 import { stylistColorMap } from '@/utils/stylistColors';
-import { useAppointmentsSync } from '@/utils/liveSync';
+import { notifyAppointmentsChanged, useAppointmentsSync } from '@/utils/liveSync';
+import { packOverlappingAppointments } from '@/utils/timelineLayout';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 import { AppointmentDrawer } from './AppointmentDrawer';
@@ -145,6 +146,40 @@ export function DayTimelinePage() {
     window.setTimeout(() => setFlashId((id) => (id === a.id ? null : id)), 5000);
     if (a.date !== date) setDate(a.date);
     else void load(date, true);
+  };
+
+  /** Chuyển nhanh trạng thái 1-chạm lạc quan ngay trên lưới lịch ngày (Optimistic UI < 16ms). */
+  const handleQuickStatusAdvance = async (e: React.MouseEvent, a: Appointment) => {
+    e.stopPropagation();
+    let nextStatus: AppointmentStatus | null = null;
+    if (a.status === 'pending') nextStatus = 'confirmed';
+    else if (a.status === 'confirmed') nextStatus = 'arrived';
+    else if (a.status === 'arrived') nextStatus = 'in_progress';
+    else if (a.status === 'in_progress') nextStatus = 'completed';
+    if (!nextStatus || !data) return;
+
+    const previousData = data;
+    setData({
+      ...data,
+      columns: data.columns.map((col) => ({
+        ...col,
+        appointments: col.appointments.map((item) =>
+          item.id === a.id ? { ...item, status: nextStatus! } : item,
+        ),
+      })),
+    });
+
+    try {
+      if (nextStatus === 'confirmed') await appointmentsApi.confirm(a.id);
+      else if (nextStatus === 'arrived') await appointmentsApi.checkIn(a.id);
+      else if (nextStatus === 'in_progress') await appointmentsApi.start(a.id);
+      else if (nextStatus === 'completed') await appointmentsApi.complete(a.id);
+      toast.success(`Đã cập nhật: ${STATUS_LABELS[nextStatus]}`);
+      notifyAppointmentsChanged();
+    } catch (err) {
+      setData(previousData);
+      toast.error(getErrorMessage(err));
+    }
   };
 
   // Cuộn tới giờ hiện tại MỘT lần khi mở lịch hôm nay (không giật khi dữ liệu tự làm mới)
@@ -362,7 +397,10 @@ export function DayTimelinePage() {
                       </>
                     )}
                     {/* Khối lịch hẹn */}
-                    {col.appointments.map((a, index) => {
+                    {packOverlappingAppointments(col.appointments).map((pos, index) => {
+                      const a = pos.item;
+                      const widthPct = 100 / pos.totalLanes;
+                      const leftPct = pos.laneIndex * widthPct;
                       const c = colors.get(col.stylistId);
                       const tone = colorBy === 'stylist' && c
                         ? `${c.soft} ${c.edge} ${c.text} ${a.status === 'cancelled' ? 'line-through opacity-60' : a.status === 'no_show' ? 'opacity-60' : ''}`
@@ -371,6 +409,14 @@ export function DayTimelinePage() {
                       const over = overrunInfo(a, clock);
                       const overRing = over.level === 'danger' ? 'z-[6] ring-2 ring-red-500 ring-offset-1 animate-pulse-subtle'
                         : over.level === 'warn' ? 'ring-2 ring-amber-400' : '';
+                      const nextActionLabel =
+                        canWalkIn && (
+                          a.status === 'pending' ? 'Xác nhận'
+                          : a.status === 'confirmed' ? 'Check-in'
+                          : a.status === 'arrived' ? 'Làm'
+                          : a.status === 'in_progress' ? 'Xong'
+                          : null
+                        );
                       return (
                       <TimelineBlock
                         key={a.id}
@@ -380,21 +426,42 @@ export function DayTimelinePage() {
                         startMin={timeToMinutes(a.startTime)}
                         label={minutesToHHmm}
                         onOpen={() => setSelected(a)}
-                        className={`absolute inset-x-1 z-[5] overflow-hidden rounded-md border-l-4 px-2 py-1 text-left
+                        className={`absolute z-[5] overflow-hidden rounded-md border-l-4 px-2 py-1 text-left
                                     animate-fade-in text-[11px] leading-tight shadow-sm ring-1 ring-slate-900/[0.04] transition-all duration-200 hover:z-[6] hover:-translate-y-px hover:shadow-md active:scale-[0.98]
                                     ${tone} ${overRing} ${flashId === a.id ? 'z-[6] animate-pulse-subtle ring-2 ring-teal-500 ring-offset-1' : ''}`}
-                        style={{ top: topOf(a.startTime) + 1, height: heightOf(a.totalDurationMinutes) - 2, animationDelay: `${index * 40}ms` }}
+                        style={{
+                          top: topOf(a.startTime) + 1,
+                          height: heightOf(a.totalDurationMinutes) - 2,
+                          left: `calc(${leftPct}% + 2px)`,
+                          width: `calc(${widthPct}% - 4px)`,
+                          animationDelay: `${index * 40}ms`,
+                        }}
                         title={`${a.startTime}–${a.endTime} · ${a.customer.fullName} · ${a.services.map((s) => s.name).join(', ')} · ${STATUS_LABELS[a.status]}`
                           + (over.level !== 'none' ? ` · Quá thời lượng chuẩn ${over.overMinutes} phút${over.level === 'danger' ? ' — các lịch sau có nguy cơ trễ' : ''}` : '')
                           + (canWalkIn && TIMELINE_DRAGGABLE.includes(a.status) ? ' · Kéo để đổi thợ / dời giờ' : '')}
                       >
-                        <span className="flex items-center gap-1 truncate font-semibold">
-                        {colorBy === 'stylist' && a.status !== 'in_progress' && (
-                          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${STATUS_DOT[a.status]}`} aria-label={STATUS_LABELS[a.status]} />
-                        )}
-                        {a.status === 'in_progress' && (
-                          <span className="relative flex h-1.5 w-1.5 shrink-0"><span className="animate-ping-soft absolute inline-flex h-full w-full rounded-full bg-cyan-500" /><span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-cyan-600" /></span>
-                        )}{a.startTime} {a.customer.fullName}</span>
+                        <div className="flex items-center justify-between gap-1 min-w-0">
+                          <span className="flex items-center gap-1 truncate font-semibold min-w-0">
+                            {colorBy === 'stylist' && a.status !== 'in_progress' && (
+                              <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${STATUS_DOT[a.status]}`} aria-label={STATUS_LABELS[a.status]} />
+                            )}
+                            {a.status === 'in_progress' && (
+                              <span className="relative flex h-1.5 w-1.5 shrink-0"><span className="animate-ping-soft absolute inline-flex h-full w-full rounded-full bg-cyan-500" /><span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-cyan-600" /></span>
+                            )}
+                            <span className="shrink-0">{a.startTime}</span>
+                            <span className="truncate">{a.customer.fullName}</span>
+                          </span>
+                          {nextActionLabel && pos.totalLanes <= 2 && heightOf(a.totalDurationMinutes) >= 42 && (
+                            <button
+                              type="button"
+                              onClick={(e) => void handleQuickStatusAdvance(e, a)}
+                              className="spa-interactive-btn shrink-0 rounded bg-slate-900/80 px-1.5 py-0.5 text-[9px] font-semibold text-white hover:bg-slate-900 shadow-xs cursor-pointer select-none"
+                              title={`Chuyển nhanh sang: ${nextActionLabel}`}
+                            >
+                              {nextActionLabel} →
+                            </button>
+                          )}
+                        </div>
                         {a.totalDurationMinutes >= 30 && (
                           <span className="block truncate opacity-80">
                             {a.services.map((s) => s.name).join(', ')}

@@ -3,7 +3,18 @@
 @tailwind utilities;
 
 @layer base {
-  :root { --bottom-nav-h: 64px; }
+  :root {
+    --bottom-nav-h: 64px;
+    --spa-bg-ivory: #FAF8F5;
+    --spa-surface: #FFFFFF;
+    --spa-surface-warm: #F5F1EA;
+    --spa-border: #E7E0D6;
+    --spa-gold: #B48A3E;
+    --spa-gold-soft: #F6EFE2;
+    --spa-charcoal: #1C1917;
+    --spa-muted: #78716C;
+    --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  }
   html { -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; }
   body {
     @apply bg-surface-page text-ink font-sans antialiased;
@@ -79,9 +90,25 @@
     background-color: #F8FAFC;
     background-image: repeating-linear-gradient(135deg, rgba(148, 163, 184, 0.14) 0 1px, transparent 1px 9px);
   }
+
+  /* Chuyển động 100% trên GPU Composite (transform, opacity) <= 220ms */
+  .spa-interactive-btn {
+    transition: transform 180ms var(--ease-out-quart, cubic-bezier(0.25, 1, 0.5, 1)),
+                opacity 180ms var(--ease-out-quart, cubic-bezier(0.25, 1, 0.5, 1)),
+                background-color 180ms var(--ease-out-quart, cubic-bezier(0.25, 1, 0.5, 1)),
+                border-color 180ms var(--ease-out-quart, cubic-bezier(0.25, 1, 0.5, 1));
+    will-change: transform, opacity;
+  }
+  .spa-interactive-btn:active:not(:disabled) {
+    transform: scale(0.96);
+  }
+  .spa-row-updated {
+    animation: spaRowHighlight 220ms var(--ease-out-quart, cubic-bezier(0.25, 1, 0.5, 1)) forwards;
+  }
 }
 
 /* ================= Motion system ================= */
+@keyframes spaRowHighlight { 0% { opacity: 0.65; transform: translate3d(0, 2px, 0); } 100% { opacity: 1; transform: translate3d(0, 0, 0); } }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes fadeInScale { from { opacity: 0; transform: translateY(8px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
 @keyframes fadeOnly { from { opacity: 0; } to { opacity: 1; } }

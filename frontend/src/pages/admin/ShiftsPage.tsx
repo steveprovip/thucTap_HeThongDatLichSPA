@@ -13,6 +13,7 @@ import { ShiftRequestsPanel } from './shifts/ShiftRequestsPanel';
 import { CoveragePanel } from './shifts/CoveragePanel';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
+import { useAppointmentsSync } from '@/utils/liveSync';
 
 /** S2-01 + S2-02: xếp ca theo tuần, sao chép tuần, khai báo nghỉ riêng của thợ. */
 export function ShiftsPage() {
@@ -101,8 +102,8 @@ export function ShiftsPage() {
     setAddOpen(true);
   };
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const to = addDaysISO(weekStart, 6);
       const [sty, sh, off, hol, wh] = await Promise.all([
@@ -124,12 +125,14 @@ export function ShiftsPage() {
     } catch (e) {
       toast.error(getErrorMessage(e));
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weekStart, minStaff, toast]);
 
   useEffect(() => { void load(); }, [load]);
+  // Làm mới ngầm khi ca làm / yêu cầu đổi ở màn hình khác mà không làm giật spinner
+  useAppointmentsSync(() => { void load(true); });
 
   /** TASK v3 · NV3: thêm ca một chạm từ popover (ca mẫu đã cắt theo giờ mở cửa). Lỗi → toast, popover giữ nguyên. */
   const quickAdd = async (stylistId: string, date: string, s: QuickShift) => {
