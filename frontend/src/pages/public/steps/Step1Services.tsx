@@ -68,7 +68,7 @@ export function Step1Services() {
           {[{ id: 'all', name: 'Tất cả', n: groups.reduce((a, g) => a + g.services.length, 0) },
             ...groups.map((g) => ({ id: g.categoryId, name: g.categoryName, n: g.services.length }))].map((t) => (
             <button key={t.id} type="button" role="tab" aria-selected={category === t.id} onClick={() => setCategory(t.id)}
-                    className={`inline-flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-xs font-medium transition-[color,background-color,border-color] duration-150 ease-out
+                    className={`inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-xs font-medium transition-[color,background-color,border-color] duration-150 ease-out
                       ${category === t.id ? 'border-teal-800 bg-teal-800 text-white' : 'border-ivory-line bg-white text-slate-700 hover:border-teal-300'}`}>
               {t.name}
               <span className={`rounded-full px-1.5 text-[10px] font-semibold ${category === t.id ? 'bg-white/20' : 'bg-slate-100 text-slate-500'}`}>{t.n}</span>

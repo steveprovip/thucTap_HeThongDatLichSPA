@@ -171,7 +171,7 @@ export function HomePage() {
                 to="/dat-lich"
                 className="btn group min-h-[48px] bg-teal-800 px-6 text-[15px] text-white shadow-[0_10px_24px_-12px_rgba(17,94,89,0.55)] hover:bg-teal-900"
               >
-                <CalendarCheck size={18} /> Đặt Lịch Ngay{" "}
+                <CalendarCheck size={18} /> Đặt lịch ngay{" "}
                 <ArrowRight
                   size={17}
                   className="transition-transform duration-200 ease-out group-hover:translate-x-0.5"
@@ -310,7 +310,7 @@ export function HomePage() {
                       <div className="mt-auto flex items-center justify-between gap-2 pt-2">
                         <span className="min-w-0 truncate text-base font-bold tabular-nums text-slate-900" title={service.priceText}>{service.priceText}</span>
                         <Link to={`/dat-lich?service=${encodeURIComponent(service.id)}`}
-                              className="inline-flex min-h-[40px] shrink-0 items-center gap-1 rounded-full bg-teal-800 px-4 text-xs font-semibold text-white transition-[background-color,transform] duration-150 ease-out hover:bg-teal-900 active:scale-[0.97]">
+                              className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-full bg-teal-800 px-4 text-xs font-semibold text-white transition-[background-color,transform] duration-150 ease-out hover:bg-teal-900 active:scale-[0.97]">
                           Đặt lịch <ArrowRight size={13} className="transition-transform duration-300 group-hover:translate-x-0.5" />
                         </Link>
                       </div>
