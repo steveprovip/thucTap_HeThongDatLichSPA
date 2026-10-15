@@ -12,6 +12,12 @@ Mở bằng Word -> chọn "Yes" khi được hỏi cập nhật trường để
 import os
 import sys
 
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 from docx import Document
 from docx.enum.section import WD_SECTION
 from docx.enum.table import WD_TABLE_ALIGNMENT, WD_CELL_VERTICAL_ALIGNMENT
@@ -1035,6 +1041,22 @@ def chapter4(R: Report):
     R.side_by_side([(os.path.join(SCREENS, "29_slot_hold.jpg"), 7.6), (os.path.join(SCREENS, "30_home_footer.jpg"), 7.6)])
     R.caption("Hình", "Đồng hồ giữ chỗ ở bước Xác nhận và trang chủ với chân trang mới")
 
+    R.h2("Triển khai hạ tầng đám mây 24/7 (v2.2.1)")
+    R.para("Để phục vụ nghiệm thu thực tế và người dùng truy cập mọi lúc mọi nơi mà không cần duy trì máy chủ cục bộ, "
+           "hệ thống đã được thiết lập kiến trúc triển khai đám mây hoàn chỉnh 24/7, kết hợp các thành phần dịch vụ hiện đại:")
+    R.bullets([
+        "**Cloudflare Pages (Giao diện Frontend)**: Triển khai bản dựng tĩnh React 18 + Vite lên mạng lưới CDN toàn cầu tại "
+        "địa chỉ `https://huongsen-salon.pages.dev`, tối ưu tốc độ tải trang dưới 1 giây, tự động kích hoạt triển khai khi đẩy mã nguồn.",
+        "**Render Web Service (Máy chủ Backend API)**: Vận hành NestJS 10 REST API tại `https://salon-spa-api-93d7.onrender.com`, "
+        "kết nối cơ sở dữ liệu qua biến môi trường an toàn, cung cấp đầy đủ các cổng dịch vụ nghiệp vụ, xác thực JWT và kiểm tra sức khoẻ (/health/live).",
+        "**Supabase Database (PostgreSQL 17.11)**: Cơ sở dữ liệu đám mây tại vùng Sydney (ap-southeast-2), quản trị 32 bảng, "
+        "sử dụng Session Pooler bảo đảm khả năng chịu tải kết nối ổn định.",
+        "**Cloudflare Worker Keepalive (Bộ duy trì trực tuyến)**: Vận hành kịch bản cron định kỳ 10 phút/lần gọi tự động vào "
+        "endpoint kiểm tra sức khoẻ của Render, loại bỏ hoàn toàn độ trễ khởi động nguội (cold start), đảm bảo hệ thống phản hồi tức thì 24/7.",
+        "**Tích hợp MCP Servers (Model Context Protocol)**: Thiết lập cấu hình Render MCP và Cloudflare MCP cho phép trợ lý "
+        "giám sát, kiểm tra tài nguyên và nhật ký hệ thống trực tiếp từ môi trường IDE.",
+    ])
+
 
 def chapter5(R: Report):
     R.h1("Kiểm thử, đánh giá và kết luận")
@@ -1150,7 +1172,10 @@ def main():
     chapter4(R)
     chapter5(R)
     R.save()
-    print("Đã tạo:", OUT)
+    try:
+        print("Đã tạo:", OUT)
+    except Exception:
+        print("[OK] Da tao thanh cong:", OUT)
 
 
 if __name__ == "__main__":

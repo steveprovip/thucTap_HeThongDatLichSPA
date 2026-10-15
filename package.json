@@ -2,7 +2,10 @@
   "name": "salon-spa-booking",
   "version": "2.2.1",
   "private": true,
-  "repository": { "type": "git", "url": "https://github.com/steveprovip/thucTap_HeThongDatLichSPA.git" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/steveprovip/thucTap_HeThongDatLichSPA.git"
+  },
   "description": "Hệ thống đặt lịch Salon - Spa: quản lý lịch hẹn, ca làm, thanh toán và báo cáo",
   "engines": {
     "node": ">=20"
@@ -48,7 +51,9 @@
     "docs:report": "python docs/tools/build_report_docx.py && python docs/tools/build_slides_pptx.py",
     "test:scripts": "node --test scripts/lib/test/*.test.mjs",
     "test:frontend": "npm run test --prefix frontend",
-    "check:scripts": "node --check scripts/launcher.mjs && node --check scripts/hoyo/launcher-ui.mjs && node --check scripts/update.mjs && node --check scripts/backup.mjs"
+    "check:scripts": "node --check scripts/launcher.mjs && node --check scripts/hoyo/launcher-ui.mjs && node --check scripts/update.mjs && node --check scripts/backup.mjs",
+    "deploy": "wrangler deploy",
+    "preview": "wrangler dev"
   },
   "devDependencies": {
     "@ai-sdk/anthropic": "^4.0.72",
@@ -62,6 +67,7 @@
     "e2e": "^0.17.0",
     "playwright": "^1.63.0",
     "tsx": "^4.23.15",
+    "wrangler": "^4.151.0",
     "zod": "^4.6.5"
   }
 }
