@@ -34,3 +34,9 @@ __pycache__/
 tools/cloudflared*
 # Triển khai đám mây: chứa chuỗi kết nối CSDL và API key — không bao giờ commit
 deploy/cloud.env
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+!.env.example

@@ -145,22 +145,23 @@ E2E_SUITES = 13
 DEMO_TESTS = 4
 LAUNCHER_TESTS = 4
 ARCHITECTURE = [
-    ("1. Trình bày", "React 18 + Vite", "Trang công khai và quản lý; nhận SSE để làm mới dữ liệu"),
-    ("2. Giao tiếp API", "NestJS 10 Controller, DTO, Guard", "REST/JSON; xác thực JWT; kiểm tra dữ liệu và phân quyền"),
-    ("3. Nghiệp vụ", "NestJS Service", "Tính khung giờ, ngày nghỉ, vòng đời lịch, thanh toán; phát sự kiện sau commit"),
-    ("4. Lưu trữ", "TypeORM Repository + PostgreSQL", "Migration có phiên bản; giao dịch SERIALIZABLE, FOR UPDATE, EXCLUDE"),
+    ("1. Trình bày (Cloud/Local)", "React 18 + Vite (Cloudflare Pages CDN)", "Trang công khai và quản lý; nhận SSE; triển khai đám mây toàn cầu https://huongsen-salon.pages.dev"),
+    ("2. Giao tiếp API", "NestJS 10 (Render Cloud Service)", "REST/JSON, JWT, CORS; triển khai backend 24/7 https://salon-spa-api-93d7.onrender.com"),
+    ("3. Nghiệp vụ & Vận hành", "NestJS Service + Cloudflare Worker", "Tính khung giờ, ca làm, giữ chỗ; Worker cron 10 phút giữ thức API 24/7"),
+    ("4. Lưu trữ", "TypeORM + Supabase PostgreSQL 17", "Migration 32 bảng, Session Pooler cổng 5432, sao lưu tự động pg_dump"),
 ]
 STATS = [
     ("Sprint / User Story / Story Point", "4 / 39 / 165"),
     ("Kiến trúc ứng dụng", "4 tầng: giao diện, API, nghiệp vụ, lưu trữ"),
     ("Phân quyền nhân sự", "4 vai trò; khách đặt lịch công khai"),
-    ("Hạ tầng", "SSE · TypeORM Migration · HoYoSalon Launcher (BẮT ĐẦU / CẬP NHẬT)"),
-    ("Bảng PostgreSQL / Entity TypeORM", "26 / 26"),
+    ("Hạ tầng", "Cloud 24/7 (Cloudflare Pages + Render + Supabase) · SSE · Launcher (BẮT ĐẦU / CẬP NHẬT)"),
+    ("Bảng PostgreSQL / Entity TypeORM", "32 / 32"),
     ("Kiểm thử đơn vị / E2E / Demo + Launcher", f"{UNIT_TESTS} / {E2E_TESTS} ({E2E_SUITES} bộ) / {DEMO_TESTS} + {LAUNCHER_TESTS}"),
 ]
 
 DEMO_ACCOUNTS = [
-    ("Quản trị hệ thống", "admin@salon.vn", "Admin@123"),
+    ("Quản trị hệ thống (Cloud)", "admin@salon.vn", "Admin@123456"),
+    ("Quản trị hệ thống (Local)", "admin@salon.vn", "Admin@123"),
     ("Chủ tiệm", "owner@salon.vn", "Owner@123"),
     ("Lễ tân", "reception@salon.vn", "Reception@123"),
     ("Thợ (5 tài khoản)", "stylist1@salon.vn … stylist5@salon.vn", "Stylist@123"),
@@ -177,6 +178,12 @@ RELEASES = [
     ("04/10/2026", "v1.3.1 – v1.3.5", "Gia cố DTO, giới hạn huỷ lịch, giới tính thợ, launcher 1-click, QA vòng 3–4"),
     ("05/10/2026", "v1.3.6", "Thống nhất số liệu khách, chặn tạo/dời lịch vào ngày nghỉ lễ"),
     ("06/10/2026", "v1.4.0", "HoYoSalon Launcher; tái cấu trúc monorepo; 11 góp ý Mentor Sprint 2 (giữ chỗ 10 phút, AI xếp lịch, AI ngày lễ, thợ tự đăng ký ca…)"),
+    ("07/10/2026", "v1.5.0", "Nhật ký hoạt động chi tiết, tự giải phóng cổng bị chiếm khi khởi động"),
+    ("08/10/2026", "v1.6.0", "Hệ thống đặt lịch Salon Spa hoàn thiện, sao lưu pg_dump tự động"),
+    ("11/10/2026", "v2.0.0", "AI Local Spark-X2.5-4B, phân trang toàn diện, hoá đơn nhiệt K80"),
+    ("12/10/2026", "v2.1.0 – v2.1.1", "AI local 1 chạm, vòng tự cải tiến có duyệt, tự chuyển CPU/GPU"),
+    ("13/10/2026", "v2.2.0", "Kéo thả kiểu Jira cho lịch hẹn và bảng ca làm, QR chia sẻ link 1 chạm"),
+    ("15/10/2026", "v2.2.1", "Triển khai đám mây 24/7 (Cloudflare Pages https://huongsen-salon.pages.dev, Render API https://salon-spa-api-93d7.onrender.com, Supabase DB, Worker giữ thức)"),
 ]
 
 # ---------------------------------------------------------------- Góp ý Mentor Sprint 2 (06/10/2026) -> v1.4.0
