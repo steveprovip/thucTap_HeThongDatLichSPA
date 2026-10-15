@@ -12,6 +12,12 @@ Mỗi slide có ghi chú thuyết trình (Speaker Notes).
 import os
 import sys
 
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 from lxml import etree
 from PIL import Image
 from pptx import Presentation
@@ -785,7 +791,10 @@ def main():
     prs.core_properties.title = D.TITLE_SHORT
     prs.core_properties.author = f"{D.TEAM} – {D.CLASS_CODE}"
     prs.save(OUT)
-    print("Đã tạo:", OUT)
+    try:
+        print("Đã tạo:", OUT)
+    except Exception:
+        print("[OK] Da tao:", OUT)
 
 
 if __name__ == "__main__":
