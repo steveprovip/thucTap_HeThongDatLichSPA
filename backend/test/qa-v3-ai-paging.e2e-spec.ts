@@ -19,6 +19,8 @@ describe('TASK v3 — AI đàm thoại + phân trang Chờ xác nhận', () => {
     app = await createTestApp();
     server = app.getHttpServer();
     ds = app.get(DataSource);
+    // Bộ đếm AI khách theo IP nằm trong CSDL dùng chung: mọi bộ test gọi từ 127.0.0.1 cùng một xô 20 lượt / 10 phút
+    await ds.query(`DELETE FROM rate_limits WHERE scope = 'public_assistant_ip'`);
     owner = (await request(server).post('/api/auth/login').send(ACCOUNTS.owner).expect(200)).body.data.accessToken;
   }, 60000);
   afterAll(async () => { await app?.close(); });
