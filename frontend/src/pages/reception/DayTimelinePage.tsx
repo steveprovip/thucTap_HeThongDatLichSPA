@@ -44,6 +44,18 @@ const readView = (): DayView => {
   try { return localStorage.getItem(VIEW_KEY) === 'board' ? 'board' : 'timeline'; } catch { return 'timeline'; }
 };
 
+/**
+ * Đổi trạng thái MỘT thẻ trong lưới (hàm thuần, dùng cho cả cập nhật lạc quan lẫn hoàn tác).
+ * `onlyIf`: chỉ đổi khi thẻ còn đúng trạng thái này — hoàn tác không ghi đè trạng thái mới hơn vừa đồng bộ từ máy chủ.
+ */
+export const patchStatus = (d: DayTimeline, id: string, status: AppointmentStatus, onlyIf?: AppointmentStatus): DayTimeline => ({
+  ...d,
+  columns: d.columns.map((col) => ({
+    ...col,
+    appointments: col.appointments.map((item) => (item.id === id && (!onlyIf || item.status === onlyIf) ? { ...item, status } : item)),
+  })),
+});
+
 /** Cột thợ nhận thả (đổi thợ). */
 function DropColumn({ id, children, className, style }: { id: string; children: ReactNode; className: string; style: CSSProperties }) {
   const { setNodeRef, isOver } = useDroppable({ id });
@@ -155,18 +167,13 @@ export function DayTimelinePage() {
     else void load(date, true);
   };
 
-  /** Chuyển nhanh trạng thái 1-chạm lạc quan ngay trên lưới lịch ngày (Optimistic UI < 16ms). */
-  /** Đổi trạng thái MỘT thẻ trong lưới (hàm thuần, dùng cho cả cập nhật lạc quan lẫn hoàn tác). */
-  const patchStatus = (d: DayTimeline, id: string, status: AppointmentStatus): DayTimeline => ({
-    ...d,
-    columns: d.columns.map((col) => ({
-      ...col,
-      appointments: col.appointments.map((item) => (item.id === id ? { ...item, status } : item)),
-    })),
-  });
   /** Thẻ đang chờ máy chủ xác nhận — chặn bấm đúp gửi hai lệnh chuyển trạng thái. */
   const advancing = useRef(new Set<string>());
+  /** Ngày đang xem MỚI NHẤT — đối chiếu sau lỗi không tải nhầm ngày cũ nếu lễ tân vừa chuyển ngày trong lúc chờ. */
+  const dateRef = useRef(date);
+  dateRef.current = date;
 
+  /** Chuyển nhanh trạng thái 1-chạm lạc quan ngay trên lưới lịch ngày (Optimistic UI < 16ms). */
   const handleQuickStatusAdvance = async (e: React.MouseEvent, a: Appointment) => {
     e.stopPropagation();
     let nextStatus: AppointmentStatus | null = null;
@@ -189,8 +196,12 @@ export function DayTimelinePage() {
       toast.success(`Đã cập nhật: ${STATUS_LABELS[next]}`);
       // axios interceptor đã phát sự kiện đổi dữ liệu (kênh lịch hẹn) → lưới và các màn hình khác tự tải lại ngầm
     } catch (err) {
-      setData((d) => (d ? patchStatus(d, a.id, a.status) : d));
+      // Chỉ trả lại khi thẻ VẪN hiện trạng thái lạc quan: đồng bộ ngầm có thể đã ghi trạng thái mới hơn của máy chủ
+      // (vd. quầy khác vừa huỷ lịch) — không ghi đè bằng trạng thái lúc bấm.
+      setData((d) => (d ? patchStatus(d, a.id, a.status, next) : d));
       toast.error(getErrorMessage(err));
+      // Ghi lỗi không phát sự kiện đổi dữ liệu → tự tải lại ngầm để khớp máy chủ (cả khi máy khác đã chuyển sang đúng `next`).
+      void load(dateRef.current, true);
     } finally {
       advancing.current.delete(a.id);
     }

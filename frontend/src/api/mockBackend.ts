@@ -512,10 +512,12 @@ const availability = (date: string, serviceIds: string[], stylistId?: string, ex
   const open = hours?.isClosed ? 21 * 60 : minute(hours?.openTime ?? '08:00');
   const close = hours?.isClosed ? 21 * 60 : minute(hours?.closeTime ?? '21:00');
   const candidates = capableStylists(serviceIds).filter(s => !stylistId || s.id === stylistId);
+  // Hôm nay: phải đặt trước hơn 60 phút (giống máy chủ trả `earliestStartMinutes`)
+  const earliest = date === day() ? new Date().getHours() * 60 + new Date().getMinutes() + 61 : Number.NEGATIVE_INFINITY;
   const slots = [];
   for (let m = open; m <= 20 * 60 + 30 && m + duration <= close; m += 15) {
     const time = addMinutes('00:00', m);
-    if (date === day() && m <= new Date().getHours() * 60 + new Date().getMinutes() + 60) continue;
+    if (date === day() && m < earliest) continue;
     // QA-08: thợ KHÔNG có ca trong ngày thì tuyệt đối không nhận lịch (trước đây "không có ca" bị coi là rảnh cả ngày)
     const ids = candidates.filter(s => worksAt(s.id, date, m, duration) && !hasClash(s.id, date, m, duration, excludeId))
       .map(s => s.id);
@@ -529,7 +531,8 @@ const availability = (date: string, serviceIds: string[], stylistId?: string, ex
     slots: shown,
     // Chỉ gợi ý ngày khác khi ngày đang chọn hết chỗ — và là những ngày THẬT SỰ còn khung giờ
     suggestedDates: shown.length || !withSuggestions ? [] : nearestAvailableDates(date, serviceIds, stylistId, 2),
-    longestShiftMinutes: longest, exceedsLongestShift: longest > 0 && duration > longest };
+    longestShiftMinutes: longest, exceedsLongestShift: longest > 0 && duration > longest,
+    earliestStartMinutes: Number.isFinite(earliest) ? earliest : null };
 };
 /** Số lịch hẹn (mọi trạng thái) đang tham chiếu dịch vụ — lớn hơn 0 thì cấm xoá cứng, chỉ được ngừng bán (S1-05). */
 const serviceUsage = (serviceId: string) =>

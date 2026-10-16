@@ -42,6 +42,61 @@ test('Slot Radar: gom theo buổi, độ trống thật, bỏ khung không còn 
   assert.equal(radar.freeLevel(1, 3), 1);
 });
 
+test('Slot Radar hôm nay: mốc đã trôi qua không bị tính là "kín", buổi đã qua ghi "Đã qua"', () => {
+  // Tiệm trống trơn 08:00–20:00, 3 thợ, gói 60 phút; 15:00 server chỉ trả 16:00..19:00 (đã bỏ mốc trước giờ + thời gian đặt trước)
+  const at = (h, m) => `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  const slots = [];
+  for (let t = 16 * 60; t <= 19 * 60; t += 15) slots.push({ time: at(Math.floor(t / 60), t % 60), stylistIds: ['a', 'b', 'c'] });
+  const hours = { open: '08:00', close: '20:00', duration: 60 };
+  const view = plain(radar.buildRadar(slots, { ...hours, now: 15 * 60 }));
+  assert.deepEqual(view.map((s) => s.past), [true, false, false]);
+  assert.equal(radar.capacityLabel(view[0].capacity, view[0].slots.length, view[0].past), 'Đã qua');
+  // Chiều còn 8 mốc 15:00..16:45 chưa qua (giao diện không biết thời gian đặt trước) — 16:00..16:45 trống cả 3 thợ:
+  // 12 / (8 × 3) = 0,5 → "Còn vừa chỗ", không còn "Sắp kín" như khi tính cả các mốc buổi sáng-trưa đã trôi qua
+  assert.equal(view[1].capacity, 0.5);
+  assert.equal(radar.capacityLabel(view[1].capacity, view[1].slots.length, view[1].past), 'Còn vừa chỗ');
+  assert.equal(view[2].capacity, 1);
+  // Ngày khác (không truyền now): giữ cách tính cũ, buổi không còn khung là "Đã kín"
+  const future = plain(radar.buildRadar(slots, hours));
+  assert.deepEqual(future.map((s) => s.past), [false, false, false]);
+  assert.equal(radar.capacityLabel(future[0].capacity, future[0].slots.length, future[0].past), 'Đã kín');
+  assert.equal(future[1].capacity, 4 / 20);
+  // 13:00, chiều kín hết (khung trống đầu tiên 17:00): buổi chiều CHƯA qua → vẫn là "Đã kín"
+  const busy = plain(radar.buildRadar(slots.filter((s) => s.time >= '17:00'), { ...hours, now: 13 * 60 }));
+  assert.deepEqual(busy.map((s) => s.past), [true, false, false]);
+  assert.equal(radar.capacityLabel(busy[1].capacity, busy[1].slots.length, busy[1].past), 'Đã kín');
+  // 09:00, các mốc 10:00..11:30 đã kín, sáng chỉ còn 11:45: KHÔNG được lấy khung trống đầu tiên làm cận dưới
+  // (mẫu số 1 mốc → "Còn nhiều chỗ") — sáng còn 12 mốc 09:00..11:45 chưa qua → 1/12, vẫn là "Sắp kín"
+  const rest = slots.concat(Array.from({ length: 16 }, (_, i) => ({ time: at(12 + Math.floor(i / 4), (i % 4) * 15), stylistIds: ['a', 'b', 'c'] })));
+  for (const [ids, now] of [[['a'], 9 * 60], [['a', 'b', 'c'], 9 * 60], [['a'], 8 * 60 + 30]]) {
+    const morning = plain(radar.buildRadar([{ time: '11:45', stylistIds: ids }, ...rest], { ...hours, now }))[0];
+    assert.equal(morning.slots.length, 1);
+    assert.ok(morning.capacity < 0.3, `sáng chỉ còn 1 mốc phải là "Sắp kín" (now=${now}, thợ=${ids.length}, độ trống=${morning.capacity})`);
+    assert.equal(radar.capacityLabel(morning.capacity, morning.slots.length, morning.past), 'Sắp kín');
+  }
+});
+
+test('Slot Radar hôm nay theo mốc máy chủ (đã cộng thời gian đặt trước 60 phút)', () => {
+  const hours = { open: '08:00', close: '20:00', duration: 60 };
+  const free = (from, to) => {
+    const out = [];
+    for (let t = from; t <= to; t += 15) out.push({ time: `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`, stylistIds: ['a', 'b', 'c'] });
+    return out;
+  };
+  // 15:00 + 60 phút → mốc sớm nhất 16:00: chiều còn 16:00..16:45 trống cả 3 thợ = trống hoàn toàn, không phải "Còn vừa chỗ"
+  const at15 = plain(radar.buildRadar(free(16 * 60, 19 * 60), { ...hours, now: 16 * 60 }));
+  assert.equal(at15[1].capacity, 1);
+  assert.equal(radar.capacityLabel(at15[1].capacity, at15[1].slots.length, at15[1].past), 'Còn nhiều chỗ');
+  // 11:00 + 60 phút → mốc sớm nhất 12:00: buổi sáng (mốc cuối 11:45) đã qua, không phải "Đã kín"
+  const at11 = plain(radar.buildRadar(free(12 * 60, 19 * 60), { ...hours, now: 12 * 60 }));
+  assert.equal(at11[0].past, true);
+  assert.equal(radar.capacityLabel(at11[0].capacity, at11[0].slots.length, at11[0].past), 'Đã qua');
+  // Mốc sớm nhất trùng mốc cuối của buổi (11:45) vẫn đặt được → chưa qua; hết chỗ thì là "Đã kín"
+  const edge = plain(radar.buildRadar(free(12 * 60, 19 * 60), { ...hours, now: 11 * 60 + 45 }));
+  assert.equal(edge[0].past, false);
+  assert.equal(radar.capacityLabel(edge[0].capacity, edge[0].slots.length, edge[0].past), 'Đã kín');
+});
+
 test('Lịch cá nhân: giờ Việt Nam đổi đúng sang UTC (kể cả qua nửa đêm)', () => {
   assert.equal(cal.toUtcStamp('2026-10-17', '09:30'), '20261017T023000Z');
   assert.equal(cal.toUtcStamp('2026-10-17', '06:15'), '20261016T231500Z');

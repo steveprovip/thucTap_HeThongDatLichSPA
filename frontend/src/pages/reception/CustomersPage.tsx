@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { History, Search, Trash2, Users } from 'lucide-react';
 import { customersApi, getErrorMessage } from '@/api';
 import type { Customer, VisitHistoryItem } from '@/types';
@@ -17,7 +17,9 @@ import { useToast } from '@/contexts/ToastContext';
 export function CustomersPage() {
   // Bảng lệnh (Ctrl + K) mở thẳng hồ sơ khách qua ?q=<SĐT / tên>
   const [params] = useSearchParams();
-  const [q, setQ] = useState(() => params.get('q') ?? '');
+  const urlQ = params.get('q') ?? '';
+  const navKey = useLocation().key;
+  const [q, setQ] = useState(urlQ);
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(20);
   const [data, setData] = useState<{ items: Customer[]; total: number; totalPages: number } | null>(null);
@@ -31,6 +33,10 @@ export function CustomersPage() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const isOwner = useAuth().user?.role === 'owner';
   const toast = useToast();
+
+  // Đang ở sẵn trang này mà chọn khách trong bảng lệnh: chỉ ?q= đổi nên trang KHÔNG dựng lại — theo URL mỗi lần điều hướng
+  // (kể cả chọn lại đúng khách cũ sau khi đã gõ ô tìm khác: cùng URL nhưng `key` điều hướng mới).
+  useEffect(() => { setQ(urlQ); setPage(1); }, [urlQ, navKey]);
 
   const load = useCallback(async () => {
     setLoading(true);

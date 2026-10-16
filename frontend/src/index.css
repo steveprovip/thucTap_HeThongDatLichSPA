@@ -43,6 +43,10 @@
     --shadow-card: 0 4px 20px -2px rgba(0, 0, 0, 0.05), 0 2px 6px -1px rgba(0, 0, 0, 0.02);
     --shadow-card-hover: 0 12px 32px -6px rgba(15, 23, 42, 0.10), 0 4px 10px -2px rgba(15, 23, 42, 0.04);
     --shadow-pop: 0 24px 48px -12px rgba(15, 23, 42, 0.18);
+    /* Bóng khi rê .lift / .hover-lift và độ đậm bôi chọn chữ: giữ đúng giá trị giao diện sáng cũ */
+    --shadow-lift: 0 16px 40px -12px rgba(15, 23, 42, 0.16), 0 4px 10px -4px rgba(15, 23, 42, 0.06);
+    --shadow-hover-lift: 0 10px 15px -3px rgba(15, 23, 42, 0.08), 0 4px 6px -4px rgba(15, 23, 42, 0.06);
+    --selection-alpha: 0.16;
   --slate-50: 248 250 252;
   --slate-100: 241 245 249;
   --slate-200: 226 232 240;
@@ -286,6 +290,9 @@
       --shadow-card: inset 0 1px 0 rgba(255, 255, 255, 0.03), 0 10px 30px -14px rgba(0, 0, 0, 0.7);
       --shadow-card-hover: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 22px 48px -18px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(212, 175, 55, 0.14);
       --shadow-pop: 0 32px 72px -20px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 255, 255, 0.05);
+      --shadow-lift: var(--shadow-card-hover);
+      --shadow-hover-lift: var(--shadow-card-hover);
+      --selection-alpha: 0.2;
       scrollbar-color: rgb(var(--slate-300)) transparent;
       --slate-50: 20 28 35;
       --slate-100: 24 33 42;
@@ -527,7 +534,7 @@
   :focus-visible { @apply outline-none ring-2 ring-teal-500/40 ring-offset-2 ring-offset-white; }
   input[type='date'], input[type='time'] { color-scheme: light; }
   /* Bề mặt trình duyệt cũng mang màu thương hiệu: bôi chọn chữ, con trỏ nhập */
-  ::selection { background: rgb(var(--teal-600) / 0.2); color: inherit; }
+  ::selection { background: rgb(var(--teal-600) / var(--selection-alpha)); color: inherit; }
   input, textarea { caret-color: rgb(var(--teal-700)); }
 }
 
@@ -670,8 +677,8 @@
 /* Hiệu ứng nhấc thẻ khi rê chuột */
 .lift { transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s ease, border-color 0.2s ease; }
 @media (hover: hover) {
-  .lift:hover { transform: translateY(-3px); box-shadow: var(--shadow-card-hover); }
-  .hover-lift:hover { transform: translateY(-4px); box-shadow: var(--shadow-card-hover); }
+  .lift:hover { transform: translateY(-3px); box-shadow: var(--shadow-lift); }
+  .hover-lift:hover { transform: translateY(-4px); box-shadow: var(--shadow-hover-lift); }
 }
 .press { transition: transform 0.15s ease; }
 .press:active { transform: scale(0.98); }
@@ -690,9 +697,11 @@
 .thin-scroll::-webkit-scrollbar { height: 8px; width: 8px; }
 .thin-scroll::-webkit-scrollbar-thumb { @apply bg-slate-300 rounded-full; }
 .thin-scroll::-webkit-scrollbar-track { @apply bg-transparent; }
-.thin-scroll { scrollbar-width: thin; scrollbar-color: rgb(var(--slate-300)) transparent; }
 /* Thanh cuộn toàn trang ở Noir: mảnh, ánh vàng khi rê */
 @media screen {
+  /* Chỉ Noir: đặt scrollbar-width/color làm Chrome 121+ bỏ qua ::-webkit-scrollbar 8px bo tròn của giao diện sáng.
+   * :where() = độ ưu tiên 0 để [scrollbar-width:none] (dải ngày ẩn thanh cuộn) vẫn thắng. */
+  :where(:root[data-theme='noir'] .thin-scroll) { scrollbar-width: thin; scrollbar-color: rgb(var(--slate-300)) transparent; }
   :root[data-theme='noir'] ::-webkit-scrollbar { width: 10px; height: 10px; }
   :root[data-theme='noir'] ::-webkit-scrollbar-thumb { background: rgb(var(--slate-300)); border-radius: 999px; border: 3px solid rgb(var(--canvas)); }
   :root[data-theme='noir'] ::-webkit-scrollbar-thumb:hover { background: rgb(var(--gold) / 0.55); }

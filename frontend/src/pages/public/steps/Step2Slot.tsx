@@ -5,6 +5,7 @@ import type { Availability } from '@/types';
 import { Button, Skeleton } from '@/components';
 import { addDaysISO, formatDuration, formatWeekdayDate, todayISO } from '@/utils/format';
 import { buildRadar, capacityLabel, freeLevel, type SessionKey } from '@/utils/slotRadar';
+import { salonNow } from '@/utils/salonClock';
 import { useSalonInfo } from '@/utils/salonInfo';
 import { playCue } from '@/utils/sound';
 import { useBooking } from '@/contexts/BookingContext';
@@ -17,6 +18,10 @@ const SESSION_ICON: Record<SessionKey, ReactNode> = {
 };
 const WEEKDAY = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
 const dowOf = (d: string): number => new Date(`${d}T00:00:00Z`).getUTCDay();
+const cartKeyOf = (list: { id: string }[]): string => list.map((s) => s.id).join(',');
+
+/** Kết quả tra giờ trống, gắn với giỏ dịch vụ và lượt tải đã sinh ra nó (không đối chiếu giờ đã chọn với dữ liệu cũ). */
+type LoadedAvailability = Availability & { cartKey: string; seq: number };
 
 function addMinutesLabel(time: string, minutes: number): string {
   const [h, m] = time.split(':').map(Number);
@@ -32,7 +37,7 @@ function addMinutesLabel(time: string, minutes: number): string {
  */
 export function Step2Slot() {
   const { selected, date, setDate, time, setTime, totalDuration, setStylistId } = useBooking();
-  const [data, setData] = useState<Availability | null>(null);
+  const [data, setData] = useState<LoadedAvailability | null>(null);
   const [loading, setLoading] = useState(false);
   const [lostTime, setLostTime] = useState<string | null>(null);
   const toast = useToast();
@@ -47,10 +52,11 @@ export function Step2Slot() {
   const load = useCallback(async (d: string) => {
     if (!d || selected.length === 0) return;
     const my = ++seq.current;
+    const key = cartKeyOf(selected);
     setLoading(true);
     try {
       const next = await publicApi.availability(d, selected.map((s) => s.id));
-      if (my === seq.current) setData(next);
+      if (my === seq.current) setData({ ...next, cartKey: key, seq: my });
     } catch (e) {
       if (my === seq.current) { toast.error(getErrorMessage(e)); setData(null); }
     } finally {
@@ -60,21 +66,29 @@ export function Step2Slot() {
 
   useEffect(() => { void load(date); }, [date, load]);
 
-  // Giờ đã chọn (bản nháp cũ, trợ lý điền sẵn, hoặc vừa bị khách khác đặt) không còn trong danh sách mới → bỏ chọn
+  const cartKey = cartKeyOf(selected);
+  // Giờ đã chọn (bản nháp cũ, trợ lý điền sẵn, hoặc vừa bị khách khác đặt) không còn trong danh sách mới → bỏ chọn.
+  // Chỉ đối chiếu với kết quả của lượt tải MỚI NHẤT cho đúng ngày + giỏ đang chọn: trợ lý vừa đổi giỏ và điền giờ thì
+  // dữ liệu của giỏ cũ chưa kịp thay — bỏ chọn dựa trên nó là xoá nhầm giờ còn trống kèm thông báo sai.
   useEffect(() => {
-    if (!data || data.date !== date || !time) return;
+    if (!data || data.seq !== seq.current || data.date !== date || data.cartKey !== cartKey || !time) return;
     if (!data.slots.some((s) => s.time === time && s.stylistIds.length > 0)) {
       setLostTime(time);
       setTime('');
     }
-  }, [data, date, time, setTime]);
+  }, [data, date, cartKey, time, setTime]);
 
   const quickDays = useMemo(() => Array.from({ length: 14 }, (_, i) => addDaysISO(todayISO(), i)), []);
   const today = quickDays[0];
-  const fresh = !!data && data.date === date;
+  const fresh = !!data && data.date === date && data.cartKey === cartKey;
   const dayHours = hours?.find((h) => h.dayOfWeek === dowOf(date));
   const radar = useMemo(
-    () => (data ? buildRadar(data.slots, { open: dayHours?.isClosed ? undefined : dayHours?.openTime, close: dayHours?.closeTime, duration: totalDuration }) : []),
+    () => (data ? buildRadar(data.slots, {
+      open: dayHours?.isClosed ? undefined : dayHours?.openTime, close: dayHours?.closeTime, duration: totalDuration,
+      // Hôm nay: mốc không còn đặt được (đã qua / trong khoảng đặt trước) không tính vào độ trống, buổi đã qua không bị gọi
+      // là "đã kín". Ưu tiên mốc máy chủ trả (đúng giờ tiệm + thời gian đặt trước); máy chủ cũ thì dùng giờ hiện tại.
+      now: data.earliestStartMinutes ?? (data.date === todayISO() ? salonNow().minutes : undefined),
+    }) : []),
     [data, dayHours, totalDuration],
   );
   const maxFree = Math.max(1, ...(data?.slots.map((s) => s.stylistIds.length) ?? [1]));
@@ -186,7 +200,7 @@ export function Step2Slot() {
           ) : (
             <div className="grid gap-3 lg:grid-cols-3">
               {radar.map((session) => (
-                <section key={session.key} aria-label={`Buổi ${session.label}: ${session.slots.length} khung trống`}
+                <section key={session.key} aria-label={`Buổi ${session.label}: ${session.past ? 'đã qua' : `${session.slots.length} khung trống`}`}
                          className={`rounded-2xl border border-slate-200/70 bg-white/40 p-3.5 sm:p-4 ${session.slots.length ? '' : 'opacity-60'}`}>
                   <header className="flex items-center justify-between gap-2">
                     <span className="flex items-center gap-2 text-sm font-semibold text-slate-900">
@@ -203,7 +217,7 @@ export function Step2Slot() {
                       <div className={`h-full origin-left rounded-full transition-transform duration-spring ease-spring ${session.capacity >= 0.3 ? 'bg-gold' : 'bg-amber-500'}`}
                            style={{ transform: `scaleX(${Math.max(session.slots.length ? 0.04 : 0, session.capacity)})` }} />
                     </div>
-                    <span className="shrink-0 text-[11px] font-medium text-slate-600">{capacityLabel(session.capacity, session.slots.length)}</span>
+                    <span className="shrink-0 text-[11px] font-medium text-slate-600">{capacityLabel(session.capacity, session.slots.length, session.past)}</span>
                   </div>
                   {session.slots.length > 0 ? (
                     <div className="mt-3.5 grid grid-cols-3 gap-2 xs:grid-cols-4 lg:grid-cols-3">
@@ -228,7 +242,7 @@ export function Step2Slot() {
                       })}
                     </div>
                   ) : (
-                    <p className="mt-4 text-center text-xs text-slate-500">Buổi này đã kín</p>
+                    <p className="mt-4 text-center text-xs text-slate-500">{session.past ? 'Buổi này đã qua' : 'Buổi này đã kín'}</p>
                   )}
                 </section>
               ))}

@@ -71,28 +71,62 @@ const TYPOS: [RegExp, string][] = [
   [/\bbn\b/g, 'bao nhieu'], [/(?<!\d ?)\b(k|ko|kh|khg|hok|hem|hk)\b/g, 'khong'], [/\b(dc|dk|đc)\b/g, 'duoc'],
   [/\bj\b/g, 'gi'], [/\bmay ?h\b/g, 'may gio'], [/\bbao (nhiu|nheu|nhieuu)\b/g, 'bao nhieu'], [/\b(dich du|dic vu|dv)\b/g, 'dich vu'],
   // Gõ không dấu "mun" = muốn hay mụn? Theo từ đứng cạnh: "tui mun đi spa" (muốn) ≠ "bị mụn", "da mụn", "trị mụn"
-  [/\b(tui|toi|minh|em|e|anh|chi|ban|t|m) mun\b/g, '$1 muon'], [/\bmun (di|lam|dat|hoi|cat|goi|nhuom|uon|duoi|xem|biet|tim|book|thu)\b/g, 'muon $1'],
+  // ("da em mun nhieu qua" = da em mụn nhiều: đổi thành "da em muon" thì bước bỏ hư từ "dạ" xoá luôn chữ "da") — sau "da"
+  // chỉ đổi khi từ đứng sau là việc khách muốn làm ("da em mun tu van ve toc" = dạ em muốn tư vấn). Từ sau "mụn" hay gặp
+  // ("mụn đen", "mụn sữa", "mụn lấy nhân", "trị mụn gấp", "mụn ghê quá") không vào danh sách, hoặc chỉ tính kèm từ rõ nghĩa
+  [/(?<!\bda )\b(tui|toi|minh|em|e|anh|chi|ban|t|m) mun\b/g, '$1 muon'],
+  [/\bmun (di|lam|dat|hoi|cat|goi|nhuom|uon|duoi|xem|biet|tim|book|thu|tu van|dang ky|hen|xin|chon|huy|doi|sua (?:mong|toc|nail|lich|lai)|lay (?:lich|hen|so)|den (?:tiem|salon|spa))\b/g, 'muon $1'],
   [/\bthu (dan|zan|giang)\b/g, 'thu gian'], [/\btia (lai|toc|ngon|bot|gon)\b/g, 'cat toc'], [/\bntn\b/g, 'nhu the nao'], [/\b(z|zay|dzay)\s*([?!.]*)$/g, 'vay$2'], [/\bsdt\b/g, 'so dien thoai'],
 ];
 
 /**
  * Hư từ "đã" (đã đặt) và "dạ" (dạ vâng) bỏ dấu đều thành "da" — trùng "da" (làn da). Thử thật 16/10: "em da dat lich roi"
- * được gợi ý Massage mặt / Chăm sóc da; "dạ em muốn làm móng" lọt "Chăm sóc da" vào danh sách khớp. Câu CÓ DẤU: bỏ đúng
- * hai từ này trước khi bỏ dấu. Câu KHÔNG DẤU: chỉ bỏ "da" khi từ đứng sau cho thấy là hư từ ("da dat", "da cho em hoi")
- * — "da em bi kho", "da tay", "da den", "da nhan" vẫn là làn da.
+ * được gợi ý Massage mặt / Chăm sóc da; "dạ em muốn làm móng" lọt "Chăm sóc da" vào danh sách khớp. Câu CÓ DẤU: chỉ bỏ đúng
+ * hai từ này trước khi bỏ dấu — chữ "da" còn lại là làn da, không đoán thêm. Câu KHÔNG DẤU: chỉ bỏ "da" khi từ đứng sau cho
+ * thấy là hư từ ("da dat", "da cho em hoi") — "da em bi kho", "da tay", "da den", "da nhan" vẫn là làn da. Từ đứng sau mà bỏ
+ * dấu trùng từ hay đi với làn da ("hỏi" / "hơi": da hơi khô, "nói" / "nổi": da nổi mẩn, "báo" / "bao": da bao nhiêu tiền)
+ * chỉ tính khi cả cụm không thể hiểu là làn da ("da hoi roi", "da bao huy").
  */
 const ACCENTED_PARTICLE = /(?<![\p{L}\p{N}])(?:đã|dạ)(?![\p{L}\p{N}])/giu;
 const PAST_PARTICLE = new RegExp('\\bda (?=(?:dat|book|huy|doi (?:lich|gio|ngay|hen|tho)|xong|thanh toan|chuyen khoan|tung|goi dien|hen|'
-  + 'chon|dang ky|coc|nhuom|uon|duoi|cat|lam (?:nail|mong|toc)|hoi|noi|bao|gui|co lich|qua tiem|den tiem|toi tiem)\\b)', 'g');
-const POLITE_PARTICLE = /^da (?=(?:vang|cho|xin|cam on|ok|oke|roi|vay|duoc|biet|hieu|(?:em|e|toi|minh|anh|chi|tui) (?:muon|hoi|can|dat|xin|cho|book|dang ky|lay|tu van))\b)/;
+  + 'chon|dang ky|coc|nhuom|uon|duoi|cat|lam (?:nail|mong|toc)|hoi (?:roi|tiem|le tan|nhan vien)|noi (?:roi|voi)|bao (?:truoc|huy|lai|roi)|'
+  + 'gui|co lich|qua tiem|den tiem|toi tiem)\\b)', 'g');
+const POLITE_PARTICLE = new RegExp('^da (?=(?:vang|cho|xin|cam on|ok|oke|roi|vay|duoc|biet|hieu|'
+  + '(?:em|e|toi|minh|anh|chi|tui) (?:muon|hoi (?:ve|chut|xiu|thu)|can|dat|xin|cho|book|dang ky|lay|tu van))\\b)');
 
-/** Bỏ hư từ "đã" / "dạ" (xem ACCENTED_PARTICLE). Nhận câu có dấu hoặc đã bỏ dấu; chạy lại nhiều lần vẫn cho cùng kết quả. */
-export function stripParticles(message: string): string {
+/** Câu có chữ tiếng Việt CÓ DẤU (dấu thanh / mũ / móc hoặc chữ "đ") — emoji, dấu "…", ngoặc kép cong không tính. */
+function hasDiacritics(message: string): boolean {
+  return /[\u0300-\u036fđĐ]/.test(message.normalize('NFD'));
+}
+
+/**
+ * Câu có dấu mà riêng "đã" / "dạ" gõ thiếu dấu, đứng đầu câu hoặc sau đại từ, ngay trước cụm CÓ DẤU không thể theo sau làn da:
+ * "em da đặt lịch rồi", "da đặt lịch giúp em", "Da vâng ạ". Luật như câu không dấu: "da đặt lịch" + "rồi" / dừng ở đó = đã có
+ * lịch, còn lại chỉ bỏ "da". Chữ "da" ở chỗ khác vẫn là làn da ("chăm sóc da đặt lịch ở đâu", "Da mình cần chăm sóc gì").
+ */
+const MIXED_AT = String.raw`(?<=^\s*|(?<![\p{L}\p{N}])(?:em|e|anh|chị|chi|mình|minh|tôi|toi|tui|tớ|t|m)\s+)da\s+`;
+const MIXED_BOOK = String.raw`(?:đặt|book)\s+(?:lịch|hẹn)(?![\p{L}\p{N}])`;
+const MIXED_BOOKED = new RegExp(`${MIXED_AT}${MIXED_BOOK}(?=.*(?<![\\p{L}\\p{N}])r[ồo]i(?![\\p{L}\\p{N}])|\\s*[.!?…]*\\s*$)`, 'giu');
+const MIXED_PARTICLE = new RegExp(`${MIXED_AT}(?=${MIXED_BOOK})|(?<=^\\s*)da(?:\\s*,)?\\s+(?=(?:vâng|cảm\\s+ơn)(?![\\p{L}\\p{N}]))`, 'giu');
+
+/** Bỏ "đã" / "dạ" CÓ DẤU (kèm "da" thiếu dấu trong MIXED_PARTICLE) rồi bỏ dấu — chữ "da" không dấu còn lại là làn da. */
+function foldParticles(message: string): string {
   // "đã đặt lịch" = khách ĐÃ CÓ lịch (hỏi tra cứu / đổi / huỷ), không phải muốn đặt mới → giữ nghĩa bằng cụm "co lich hen"
-  const booked = message.replace(/(?<![\p{L}\p{N}])đã\s+(?:đặt|book)\s+(?:lịch|hẹn)(?![\p{L}\p{N}])/giu, ' co lich hen ');
+  const booked = message.replace(/(?<![\p{L}\p{N}])đã\s+(?:đặt|book)\s+(?:lịch|hẹn)(?![\p{L}\p{N}])/giu, ' co lich hen ')
+    .replace(MIXED_BOOKED, ' co lich hen ').replace(MIXED_PARTICLE, ' ');
+  return fold(booked.replace(ACCENTED_PARTICLE, ' ')).replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Bỏ hư từ "đã" / "dạ" (xem ACCENTED_PARTICLE) và bỏ dấu. Câu có dấu chỉ mất "đã" / "dạ" có dấu; câu không dấu mới đoán theo
+ * từ đứng sau (chạy lại trên kết quả vẫn cho cùng kết quả).
+ */
+export function stripParticles(message: string): string {
+  const folded = foldParticles(message);
+  if (hasDiacritics(message)) return folded;
   // Không dấu thì "da dat lich" có thể là "dạ, đặt lịch giúp em": chỉ hiểu là "đã có lịch" khi câu có "rồi" hoặc dừng ở đó
-  const folded = fold(booked.replace(ACCENTED_PARTICLE, ' ')).replace(/\bda (?:dat|book) (?:lich|hen)\b(?=.*\broi\b| *[.!?]* *$)/g, 'co lich hen');
-  return folded.replace(POLITE_PARTICLE, '').replace(PAST_PARTICLE, '').replace(/\s+/g, ' ').trim();
+  return folded.replace(/\bda (?:dat|book) (?:lich|hen)\b(?=.*\broi\b| *[.!?]* *$)/g, 'co lich hen')
+    .replace(POLITE_PARTICLE, '').replace(PAST_PARTICLE, '').replace(/\s+/g, ' ').trim();
 }
 
 /** Câu khách → dạng bỏ dấu đã sửa lỗi gõ + áp cụm đã học. Câu đã học nguyên văn → thay bằng câu viết lại. */
@@ -105,7 +139,10 @@ export function correctMessage(message: string, learned: LearnedPhrase[] = []): 
     if (a.kind !== 'alias' || !a.phrase.trim()) continue;
     m = m.replace(new RegExp(`\\b${a.phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g'), a.rewrite);
   }
-  return stripParticles(TYPOS.reduce((acc, [re, to]) => acc.replace(re, to), m));
+  const typed = TYPOS.reduce((acc, [re, to]) => acc.replace(re, to), m);
+  // Câu không dấu: sửa lỗi gõ có thể lộ thêm hư từ ("da e mun lam mong" → "da e muon lam mong") → bỏ thêm một lượt.
+  // Câu có dấu: "da" còn lại sau lượt đầu là làn da — bản đã bỏ dấu trông như câu không dấu nhưng KHÔNG được đoán lại.
+  return hasDiacritics(raw) ? typed : stripParticles(typed);
 }
 
 /**
@@ -197,7 +234,9 @@ const NEEDS: { label: string; ask: RegExp; words: string[]; cat?: RegExp }[] = [
 const SYMPTOMS: { ask: RegExp; words: string[] }[] = [
   { ask: /\b(kho xo|xo roi|hu ton|che ngon|gay rung|toc yeu|toc kho|phuc hoi|nhuom nhieu|tay nhieu|toc xo|xo qua|bi xo|mem muot|suon muot|bong muot|muot ma|xo cung)\b/, words: ['phuc hoi', 'hap', 'u', 'duong'] },
   // "tóc em uốn nhiều lần bị khô" — triệu chứng đứng cách chữ "tóc" vài từ (thử thật 16/10 ra Cắt tóc / Uốn thay vì phục hồi)
-  { ask: /\b(uon nhieu|duoi nhieu|toc(?: \w+){1,6} (?:bi )?(?:kho|xo|che ngon|hu ton|gay rung|gay|rung nhieu))\b/, words: ['phuc hoi', 'hap', 'u', 'duong'] },
+  // "gay" trơn còn là "gáy" / "gầy" ("cắt tóc sát gáy", "kiểu tóc cho mặt gầy") → chỉ tính cụm chắc chắn là gãy:
+  // "bị / dễ / hay gãy", "gãy ngọn", "gãy rụng"; "gãy nhiều" chỉ khi ngay sau "tóc (em)" — "sát gáy nhiều hơn", "mặt gầy nhiều"
+  { ask: /\b(uon nhieu|duoi nhieu|toc(?: \w+){1,6} (?:bi )?(?:kho|xo|che ngon|hu ton|gay rung|rung nhieu)|toc(?: \w+){0,6} (?:(?:bi|de|hay) gay|gay ngon)|toc(?: (?:em|e|minh|toi|tui|chi|anh|con|be))? gay nhieu)\b/, words: ['phuc hoi', 'hap', 'u', 'duong'] },
   // "chăm sóc tóc" (nút nhanh "Tóc") = phục hồi / hấp / gội dưỡng, không phải mọi dịch vụ có chữ "chăm sóc"
   { ask: /\b(cham soc toc|duong toc)\b/, words: ['phuc hoi', 'hap', 'duong'] },
   { ask: /\b(mun|tham mun|da dau|lo chan long)\b/, words: ['mun', 'tri mun', 'lam sach'] }, // không dùng "tri" trơn: khớp nhầm "trị gàu"
@@ -302,8 +341,12 @@ export function matchServices(message: string, catalog: CatalogItem[], limit = 4
   return scored.filter((x) => x.score >= top * ratio).slice(0, limit).map((x) => x.s);
 }
 
-/** Bỏ dấu + từ đồng nghĩa khách hay dùng → chữ có trong tên dịch vụ ("bé 5 tuổi" → "trẻ em", "haircut" → "cắt tóc"). */
-export const normalize = (message: string): string => SYNONYMS.reduce((acc, [re, to]) => acc.replace(re, to), stripParticles(message));
+/**
+ * Bỏ dấu (kèm "đã" / "dạ" có dấu) + từ đồng nghĩa khách hay dùng → chữ có trong tên dịch vụ ("bé 5 tuổi" → "trẻ em",
+ * "haircut" → "cắt tóc"). KHÔNG đoán hư từ "da" ở đây: câu khách đi qua correctMessage — chỉ nơi đó còn biết câu gốc có dấu
+ * hay không ("Da mình cần chăm sóc gì" đã bỏ dấu trông y như câu không dấu "dạ mình cần…").
+ */
+export const normalize = (message: string): string => SYNONYMS.reduce((acc, [re, to]) => acc.replace(re, to), foldParticles(message));
 
 /** Cách gọi của khách → chữ trong tên dịch vụ. */
 const SYNONYMS: [RegExp, string][] = [
@@ -815,7 +858,10 @@ export function groupAvailabilityAnswer(
   const withSlots = rows.map((r) => ({ ...r, slots: openSlots(r.data, when) })).filter((r) => r.slots.length)
     .sort((a, b) => b.slots.length - a.slots.length);
   const full = rows.filter((r) => !withSlots.some((w) => w.service.id === r.service.id)).map((r) => r.service.name);
-  if (!withSlots.length) return { answer: `${Day}${partNote} các dịch vụ nhóm ${label} đều đã kín lịch. Bạn thử ngày khác giúp mình nhé.`, open: [] };
+  // Chỉ kín đúng giờ / buổi hỏi thì giờ khác cùng ngày có thể còn (trợ lý nêu ngay sau câu này) → không bảo "thử ngày khác" trơn
+  if (!withSlots.length) {
+    return { answer: `${Day}${partNote} các dịch vụ nhóm ${label} đều đã kín lịch. Bạn thử ${partNote ? 'giờ khác hoặc ' : ''}ngày khác giúp mình nhé.`, open: [] };
+  }
   const lines = withSlots.slice(0, 6).map((r) => `• ${r.service.name} (${r.service.durationMinutes} phút · ${r.service.priceText}) — `
     + `${when.time ? 'còn trống' : `${r.slots.length} khung giờ, sớm nhất ${r.slots[0]}`}`);
   return {

@@ -66,12 +66,20 @@ const wakeAll = (): void => { [...wakers].forEach((w) => w()); };
 
 /** Mốc dữ liệu đã nhận (lời chào / sự kiện cuối) — so với lời chào lần nối sau để biết có lỡ thay đổi không. */
 let cursor: StreamCursor | null = null;
+/**
+ * Luồng đã rớt ngoài dự kiến (mất mạng, lỗi mạng, watchdog) kể từ lời chào trước. Mốc tiến lên ngay khi NHẬN sự kiện,
+ * trước khi màn hình tải lại xong — nếu lần tải đó hỏng cùng lúc rớt mạng thì mốc vẫn khớp mà màn hình còn cũ,
+ * nên nối lại sau khi rớt luôn làm mới. Đóng theo kế hoạch (20 phút) / nối lại khi tab hiện lại thì không.
+ */
+let dropped = false;
+/** Các luồng bị huỷ CHỦ ĐỘNG khi tab hiện lại (không phải rớt mạng). */
+const resumed = new WeakSet<AbortController>();
 
 const onVisible = (): void => {
   if (document.visibilityState !== 'visible' || !running) return;
   // Trình duyệt di động hay âm thầm đóng kết nối khi tab ở nền -> nối lại NGAY; lời chào mới cho biết có lỡ thay đổi nào
   // không (missedSince) — có thì làm mới, không thì giữ nguyên màn hình. Đang hỏi định kỳ thì hỏi ngay một lượt.
-  current?.abort();
+  if (current) { resumed.add(current); current.abort(); }
   wakeAll();
 };
 const onOnline = (): void => { if (running) wakeAll(); };
@@ -149,7 +157,10 @@ async function runStream(onHello: (hello: StreamCursor | null) => void): Promise
   } catch (e) {
     if (e instanceof StreamError) throw e;
     // Bị huỷ (tab hiện lại, watchdog, hết thời gian chờ lời chào) hoặc lỗi mạng
-    if (hello) return true;
+    if (hello) {
+      if (!resumed.has(ctrl)) dropped = true; // rớt giữa chừng (lỗi mạng / watchdog), không phải do tab hiện lại
+      return true;
+    }
     throw new StreamError(0, (e as Error).message || 'Mất kết nối');
   } finally {
     window.clearTimeout(helloTimer);
@@ -182,6 +193,7 @@ async function loop(id: number): Promise<void> {
 
   while (running && id === generation) {
     if (!navigator.onLine) {
+      dropped = true;
       setStatus('offline');
       await sleep(3000);
       continue;
@@ -194,9 +206,11 @@ async function loop(id: number): Promise<void> {
         refreshedOnce = false;
         setStatus('live');
         // Lần nối đầu tiên: màn hình vừa tải xong, chỉ ghi mốc. Nối lại: chỉ làm mới khi đã lỡ thay đổi (máy chủ khởi động lại
-        // hoặc số thứ tự tăng trong lúc mất kết nối); lời chào thiếu mốc (máy chủ cũ) → làm mới cho chắc.
+        // hoặc số thứ tự tăng trong lúc mất kết nối) hoặc luồng trước rớt ngoài dự kiến (lần tải theo sự kiện cuối có thể đã
+        // hỏng vì mất mạng); lời chào thiếu mốc (máy chủ cũ) → làm mới cho chắc.
         const first = cursor === null && !pollState.polled;
-        if (!first && (!hello || missedSince(cursor, hello))) dispatchRemoteChange();
+        if (!first && (dropped || !hello || missedSince(cursor, hello))) dispatchRemoteChange();
+        dropped = false;
         cursor = hello;
         pollState.version = null;
         pollState.polled = false;
@@ -229,6 +243,7 @@ export function startRealtime(): void {
   if (running || DEMO_MODE || typeof window === 'undefined') return;
   running = true;
   cursor = null;
+  dropped = false;
   generation += 1;
   document.addEventListener('visibilitychange', onVisible);
   window.addEventListener('online', onOnline);

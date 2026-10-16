@@ -23,6 +23,18 @@ interface Row {
 
 const STAFF_LIST: Role[] = ['receptionist', 'owner', 'admin'];
 
+/** Kết quả tìm trên máy chủ, GẮN với truy vấn đã sinh ra nó (`q` đã trim). */
+interface RemoteHits<T> { q: string; items: T[] }
+const NO_HITS: RemoteHits<never> = { q: '', items: [] };
+
+/**
+ * Chỉ dùng kết quả máy chủ khi nó trả lời ĐÚNG truy vấn đang gõ: gõ tiếp '0912' → '0912345678' rồi Enter ngay thì kết quả
+ * của '0912' (đang chờ debounce + mạng) không còn hiện / được chọn — tránh mở nhầm lịch hẹn của khách khác.
+ */
+export function freshHits<T>(hits: RemoteHits<T>, query: string): T[] {
+  return query && hits.q === query ? hits.items : [];
+}
+
 /** Tải (và đệm) dữ liệu nền cho bảng lệnh: mở lại lần sau hiện NGAY từ bản đệm rồi làm mới ngầm. */
 function usePaletteData<T>(key: string, enabled: boolean, open: boolean, fetcher: () => Promise<T[]>): T[] {
   const [items, setItems] = useState<T[]>(() => swrStore.get<T[]>(key)?.data ?? []);
@@ -48,9 +60,9 @@ export function CommandPalette({ open, onClose, navItems, role }: {
   const navigate = useNavigate();
   const [q, setQ] = useState('');
   const [active, setActive] = useState(0);
-  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [customers, setCustomers] = useState<RemoteHits<Customer>>(NO_HITS);
   /** Lịch hẹn tìm trên máy chủ (ngoài 200 lịch nạp sẵn quanh hôm nay) — gộp sau kết quả tức thì trong RAM. */
-  const [remoteAppts, setRemoteAppts] = useState<Appointment[]>([]);
+  const [remoteAppts, setRemoteAppts] = useState<RemoteHits<Appointment>>(NO_HITS);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const theme = useStaffTheme();
@@ -73,18 +85,19 @@ export function CommandPalette({ open, onClose, navItems, role }: {
     if (!open) return;
     setQ('');
     setActive(0);
-    setCustomers([]);
-    setRemoteAppts([]);
+    setCustomers(NO_HITS);
+    setRemoteAppts(NO_HITS);
     window.setTimeout(() => inputRef.current?.focus(), 0);
   }, [open]);
 
   // Khách hàng + lịch hẹn mọi ngày: tìm trên máy chủ (dữ liệu lớn, che SĐT theo quyền) — chỉ khi gõ ≥ 2 ký tự
   useEffect(() => {
-    if (!open || q.trim().length < 2) { setCustomers([]); setRemoteAppts([]); return; }
+    const query = q.trim();
+    if (!open || query.length < 2) { setCustomers(NO_HITS); setRemoteAppts(NO_HITS); return; }
     let alive = true;
     const t = window.setTimeout(() => {
-      if (staff) customersApi.search({ q: q.trim(), limit: 5 }).then((r) => { if (alive) setCustomers(r.items); }).catch(() => undefined);
-      if (role) appointmentsApi.list({ search: q.trim(), limit: 6, page: 1 }).then((r) => { if (alive) setRemoteAppts(r.items); }).catch(() => undefined);
+      if (staff) customersApi.search({ q: query, limit: 5 }).then((r) => { if (alive) setCustomers({ q: query, items: r.items }); }).catch(() => undefined);
+      if (role) appointmentsApi.list({ search: query, limit: 6, page: 1 }).then((r) => { if (alive) setRemoteAppts({ q: query, items: r.items }); }).catch(() => undefined);
     }, 180);
     return () => { alive = false; window.clearTimeout(t); };
   }, [q, open, staff, role]);
@@ -97,7 +110,7 @@ export function CommandPalette({ open, onClose, navItems, role }: {
     const out: Row[] = [];
     const local = query ? search(apptIndex, query, 6) : [];
     const appts = query
-      ? [...local, ...remoteAppts.filter((r) => !local.some((l) => l.id === r.id))].slice(0, 8)
+      ? [...local, ...freshHits(remoteAppts, query).filter((r) => !local.some((l) => l.id === r.id))].slice(0, 8)
       : appointments.filter((a) => a.date === today && ['pending', 'confirmed', 'arrived', 'in_progress'].includes(a.status)).slice(0, 5);
     for (const a of appts) {
       out.push({
@@ -108,7 +121,7 @@ export function CommandPalette({ open, onClose, navItems, role }: {
       });
     }
     if (query) {
-      for (const c of customers) {
+      for (const c of freshHits(customers, query)) {
         out.push({
           id: `c:${c.id}`, section: 'Khách hàng', icon: <UserRound size={16} />, title: c.fullName,
           hint: `${c.phone} · ${c.totalVisits} lượt làm`, run: () => go(`/quan-ly/khach-hang?q=${encodeURIComponent(c.phoneMasked ? c.fullName : c.phone)}`),

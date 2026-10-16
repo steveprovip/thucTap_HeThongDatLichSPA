@@ -281,6 +281,8 @@ export interface Availability {
   slots: Slot[];
   suggestedDates: string[];
   exceedsLongestShift: boolean;
+  /** Hôm nay: mốc sớm nhất còn được đặt (phút từ 00:00 giờ tiệm, đã cộng thời gian đặt trước); ngày khác null. */
+  earliestStartMinutes?: number | null;
 }
 
 export interface Quote {

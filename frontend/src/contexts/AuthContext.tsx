@@ -4,6 +4,7 @@ import type { AuthUser, Role } from '@/types';
 import { DEMO_MODE } from '@/api/demoMode';
 import type { demoRole as DemoRoleApi } from '@/api/mockBackend';
 import { startRealtime, stopRealtime } from '@/utils/realtime';
+import { swrStore } from '@/utils/swrStore';
 
 interface AuthContextValue {
   user: AuthUser | null;
@@ -49,6 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void refreshUser();
     // Khi refresh token cũng hết hạn -> đưa về trang đăng nhập
     onUnauthorized.handler = () => {
+      swrStore.clear();
       setUser(null);
       if (!window.location.pathname.startsWith('/dang-nhap')) {
         window.location.assign('/dang-nhap');
@@ -58,6 +60,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     const result = await authApi.login(email, password);
+    // Đổi tài khoản trên cùng tab: bỏ bản đệm của người trước (lịch của chuyên viên khác, SĐT chưa che…)
+    swrStore.clear();
     setUser(result.user);
     return result.user;
   }, []);
@@ -69,6 +73,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await authApi.logout();
     } catch { /* token cục bộ đã được xoá trong authApi.logout */ }
     if (DEMO_MODE) (await loadDemoRole()).set('customer');
+    // Đệm dữ liệu sống ở cấp module (không mất khi điều hướng SPA) → xoá để người đăng nhập sau không thấy dữ liệu cũ
+    swrStore.clear();
     setUser(null);
   }, []);
 
@@ -88,6 +94,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const setDemoRole = useCallback((role: Role) => {
     if (!demoRole) return; // chỉ có ở chế độ demo (đã nạp khi khởi động AuthProvider)
     demoRole.set(role);
+    swrStore.clear();
     setUser(demoRole.user());
   }, []);
 

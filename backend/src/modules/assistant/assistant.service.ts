@@ -737,10 +737,21 @@ export class AssistantService implements OnApplicationBootstrap {
     return null;
   }
 
-  /** Cả nhóm kín: dịch vụ có ngày còn chỗ SỚM NHẤT (tối đa 3 dịch vụ cùng ngày đó được tra giờ) → giờ sớm nhất. */
+  /**
+   * Cả nhóm kín đúng giờ / buổi khách hỏi. Ngày đó còn dịch vụ trong nhóm có giờ trống → khung gần giờ khách hỏi nhất NGAY
+   * NGÀY ĐÓ (cùng luật pickNearestSlot của một dịch vụ, áp trên khung tốt nhất của từng dịch vụ). Chỉ khi cả nhóm kín cả ngày
+   * mới lấy dịch vụ có ngày còn chỗ SỚM NHẤT (tối đa 3 dịch vụ cùng ngày đó được tra giờ) → giờ sớm nhất.
+   */
   private async nearestGroupSlot(
-    rows: { service: CatalogItem; data: AvailabilityData }[], when: Pick<WhenQuery, 'part' | 'time'>,
+    rows: { service: CatalogItem; data: AvailabilityData }[], when: Pick<WhenQuery, 'date' | 'part' | 'time'>,
   ): Promise<{ service: CatalogItem; slot: VerifiedSlot } | null> {
+    const sameDay = rows.flatMap((r) => {
+      const pick = pickNearestSlot(r.data, when);
+      return pick ? [{ service: r.service, pick }] : [];
+    }).sort((a, b) => a.pick.time.localeCompare(b.pick.time));
+    const best = pickNearestSlot({ salonClosed: false, closedReason: null, suggestedDates: [], slots: sameDay.map((x) => x.pick) }, when);
+    const hit = sameDay.find((x) => x.pick === best);
+    if (hit) return { service: hit.service, slot: { date: when.date, ...hit.pick } };
     const dates = rows.map((r) => r.data.suggestedDates[0]).filter((d): d is string => !!d).sort();
     if (!dates.length) return null;
     const found: { service: CatalogItem; slot: VerifiedSlot }[] = [];

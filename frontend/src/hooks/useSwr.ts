@@ -29,13 +29,14 @@ export function useSwr<T>(key: string | null, fetcher: () => Promise<T>): SwrRes
   const keyRef = useRef(key);
   const seq = useRef(0);
 
-  const revalidate = useCallback(async () => {
+  /** `force`: bỏ qua request cùng khoá đang chạy (nó có thể đã đọc CSDL trước lần ghi vừa xong). */
+  const load = useCallback(async (force: boolean) => {
     const k = keyRef.current;
     if (!k) return;
     const my = ++seq.current;
     setValidating(true);
     try {
-      const data = await swrStore.fetch<T>(k, () => fetcherRef.current());
+      const data = await swrStore.fetch<T>(k, () => fetcherRef.current(), force);
       if (my === seq.current) setState({ key: k, data, error: undefined });
     } catch (error) {
       if (my === seq.current) setState((s) => ({ ...s, error }));
@@ -44,13 +45,17 @@ export function useSwr<T>(key: string | null, fetcher: () => Promise<T>): SwrRes
     }
   }, []);
 
+  /** Tải lại theo yêu cầu (sau khi ghi, sự kiện đồng bộ, onChanged): luôn gửi request mới để phản ánh lần ghi. */
+  const revalidate = useCallback(() => load(true), [load]);
+
   useEffect(() => {
     keyRef.current = key;
     if (!key) return;
     const cached = swrStore.get<T>(key);
     if (cached) setState({ key, data: cached.data, error: undefined });
-    void revalidate();
-  }, [key, revalidate]);
+    // Lần tải đầu / đổi khoá: được gộp với request cùng khoá đang chạy (hai màn hình cùng mở một bộ lọc)
+    void load(false);
+  }, [key, load]);
 
   const mutate = useCallback((fn: (data: T) => T) => {
     const k = keyRef.current;

@@ -16,6 +16,23 @@ Nhánh `claude/peaceful-pasteur-27lppm`. Tài liệu này ghi lại **cái gì �
 | 8 | Production nạp `mockBackend.ts` (≈ 100 KB) và **chạy `seed()` CSDL giả** ở mọi lần tải trang của khách thật | `api/demoMode.ts`, nạp động khi demo | `grep salon.demo.v6 dist/` = 0 |
 | 9 | `main.tsx` chặn vẽ tới 800 ms chờ API salon-info | `main.tsx` | FCP thực đo 300–500 → ~180 ms |
 
+### Vòng review đối kháng trước khi merge (15 lỗi được xác nhận lại bằng chạy thật, đã sửa)
+
+| Vùng | Lỗi | Sửa |
+|------|-----|-----|
+| Trợ lý AI | Bỏ hư từ quá tay xoá luôn "da" (làn da): "chăm sóc da bao nhiêu tiền", "da em hơi khô", "da nổi mẩn", "da em mun nhieu qua" → "chưa rõ ý" | Câu có dấu chỉ bỏ "đã/dạ" có dấu; luật không dấu bỏ các từ nhập nhằng (hơi/hỏi, nổi/nói, bao/báo); TYPOS "mun→muon" không chạy sau "da" |
+| Trợ lý AI | "gáy" / "gầy" bị coi là tóc gãy → gợi ý Phục hồi thay vì Cắt tóc | Chỉ tính cụm chắc chắn: "bị/dễ/hay gãy", "gãy ngọn", "tóc (em) gãy nhiều" |
+| Trợ lý AI | Cả nhóm kín đúng giờ hỏi → gợi ý ngày xa trong khi dịch vụ khác trong nhóm còn giờ cùng ngày | `nearestGroupSlot` xét cùng ngày trước |
+| Lễ tân | Tải lại sau khi ghi dùng chung GET đã chạy TRƯỚC lần ghi → dòng quay về trạng thái cũ | `swrStore.fetch(force)` + vé "request mới nhất mới được ghi đệm" |
+| Bảo mật | Đăng xuất / đổi tài khoản không xoá đệm → người sau thấy lịch + SĐT chưa che của người trước | `swrStore.clear()` khi đăng nhập / đăng xuất / hết phiên |
+| Đồng bộ | Luồng SSE rớt đúng lúc đang tải lại → nối lại không làm mới (mốc đã tiến) | Cờ `dropped`: rớt ngoài dự kiến thì nối lại luôn làm mới |
+| Ctrl+K | Kết quả máy chủ của truy vấn cũ vẫn chọn được bằng Enter | Gắn kết quả với truy vấn đã sinh ra nó |
+| Khách hàng | Chọn khách trong Ctrl+K khi đang ở trang Khách hàng không đổi danh sách | Theo `?q=` mỗi lần điều hướng |
+| Lịch ngày | Hoàn tác ghi đè trạng thái mới hơn vừa đồng bộ (vd. quầy khác vừa huỷ) | Chỉ hoàn tác khi thẻ còn trạng thái lạc quan, rồi tải lại ngầm |
+| Đặt lịch | Trợ lý đổi giỏ + điền giờ ở bước 2 → giờ bị bỏ chọn theo dữ liệu của giỏ cũ | Dữ liệu giờ trống gắn với giỏ + lượt tải |
+| Slot Radar | Hôm nay: buổi đã qua bị ghi "Đã kín", buổi trống bị ghi "Sắp kín" | API trả thêm `earliestStartMinutes` (chỉ thêm trường, tương thích ngược); buổi đã qua ghi "Đã qua" |
+| Giao diện sáng | Nút Trợ lý AI, bóng `.lift`, độ đậm bôi chọn chữ, thanh cuộn `.thin-scroll` lệch bản cũ | Trả đúng giá trị cũ, chỉ đổi dưới Noir |
+
 ## 2. Kiến trúc mới (tóm tắt)
 
 - **Design tokens**: mọi màu Tailwind là biến CSS `R G B`; `:root` = đúng màu Tailwind (giao diện sáng không đổi). `html[data-theme='noir']`
@@ -30,18 +47,17 @@ Nhánh `claude/peaceful-pasteur-27lppm`. Tài liệu này ghi lại **cái gì �
 
 ```bash
 # Cổng chất lượng
-npm --prefix backend run typecheck && npm --prefix backend run lint && npm --prefix backend run test      # 321 test
-npm --prefix frontend run typecheck && npm --prefix frontend run lint && npm --prefix frontend run test   # 40 test
+npm --prefix backend run typecheck && npm --prefix backend run lint && npm --prefix backend run test      # 331 test
+npm --prefix frontend run typecheck && npm --prefix frontend run lint && npm --prefix frontend run test   # 54 test
 npm --prefix frontend run build
 
 # E2E trên PostgreSQL thật (tạo/xoá CSDL salon_booking_test)
 npm --prefix backend run test:e2e
 ```
 
-Kết quả tại thời điểm giao (PostgreSQL 16.15, Node 22): unit BE 321/321, FE 40/40; E2E 153/154 — lượt chạy đầy đủ có **một** suite gọi
-`/public/assistant/chat` từ 127.0.0.1 dính 429 do các suite dùng chung bộ đếm giới hạn tần suất trong CSDL test (suite nào bị thay đổi theo
-thời gian chạy; **bản gốc `280d21a` cũng lỗi y hệt**); chạy riêng từng suite đều đạt. Chống đặt trùng: 20 request đồng thời → đúng 1 thành công,
-19 nhận 409; ràng buộc `appointments_no_overlap` chặn cả ghi thẳng vào bảng.
+Kết quả tại thời điểm giao (PostgreSQL 16.15, Node 22): unit BE 331/331, FE 54/54, E2E 155/155 (sau khi gộp `develop` có bản sửa
+bộ đếm giới hạn tần suất `public_assistant_ip` giữa các suite). Chống đặt trùng: 20 request đồng thời → đúng 1 thành công, 19 nhận 409;
+ràng buộc `appointments_no_overlap` chặn cả ghi thẳng vào bảng.
 
 ### Lighthouse 12 (cùng máy, cùng máy chủ tĩnh nén Brotli như Cloudflare Pages, API thật)
 
