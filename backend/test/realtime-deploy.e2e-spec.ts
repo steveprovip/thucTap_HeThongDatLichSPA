@@ -132,11 +132,11 @@ describe('Đồng bộ trực tiếp giữa các thiết bị (SSE)', () => {
 
   it('khách tự đặt lịch trên website -> lễ tân nhận booking.created kèm id = seq (chuông báo), không có dữ liệu cá nhân', async () => {
     const server = app.getHttpServer();
-    const catalog = await request(server).get('/api/public/catalog').expect(200);
-    const serviceId: string = catalog.body.data.flatMap((g: { services: { id: string }[] }) => g.services)[0].id;
+    // Dịch vụ seed cố định (giống booking-concurrency): các suite khác thêm dịch vụ chưa có thợ / ca làm vào đầu danh mục
+    const serviceId = '55555555-5555-4555-8555-000000000001';
     let date = '';
     let slot: { time: string; stylistIds: string[] } | undefined;
-    for (let day = 2; day < 16 && !slot; day += 1) {
+    for (let day = 2; day < 24 && !slot; day += 1) {
       date = tomorrowISO(day);
       const av = await request(server).get('/api/public/availability').query({ date, serviceIds: serviceId }).expect(200);
       slot = av.body.data.slots.find((s: { stylistIds: string[] }) => s.stylistIds.length > 0);
