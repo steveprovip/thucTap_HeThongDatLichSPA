@@ -186,7 +186,7 @@ export function SmartAiAssistant() {
   return (
     <div className="no-print">
       <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-label="Mở trợ lý AI"
-              className="fixed bottom-4 right-4 z-40 inline-flex items-center gap-2 rounded-full bg-gradient-to-br from-teal-600 to-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-lg hover:brightness-110">
+              className="fixed bottom-4 right-4 z-40 inline-flex items-center gap-2 rounded-full bg-gradient-to-br from-teal-600 to-teal-800 px-4 py-3 text-sm font-semibold text-white shadow-lg hover:brightness-110">
         {open ? <X size={18} /> : <Sparkles size={18} />}
         <span className="hidden sm:inline">Trợ lý AI</span>
         {!open && gapCount > 0 && (

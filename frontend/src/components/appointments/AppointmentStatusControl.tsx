@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React from 'react';
+import { ArrowRight, Loader2 } from 'lucide-react';
 import type { AppointmentStatus } from '@/types';
 
 interface StatusMeta {
@@ -7,108 +8,71 @@ interface StatusMeta {
   dotClass: string;
   nextStatus?: AppointmentStatus;
   nextActionLabel?: string;
-  nextBtnClass?: string;
 }
 
+/**
+ * Chuỗi chuyển trạng thái 1 chạm: Chờ xác nhận → Đã xác nhận → Đã check-in → Đang làm → Hoàn thành.
+ * Màu lấy từ token (đúng ở cả giao diện sáng lẫn Lotus Noir), cùng hệ màu với Lịch ngày / StatusBadge.
+ */
 export const STATUS_CONFIG: Record<string, StatusMeta> = {
   pending: {
-    label: 'Chờ xác nhận',
-    badgeClass: 'bg-[#FAF3E3] text-[#8C621E] border-[#E6D3A7]',
-    dotClass: 'bg-[#C59B27]',
-    nextStatus: 'confirmed',
-    nextActionLabel: 'Xác nhận',
-    nextBtnClass: 'bg-[#1C1917] text-[#FAF8F5] hover:bg-[#332E2A]',
+    label: 'Chờ xác nhận', badgeClass: 'bg-amber-50 text-amber-800 border-amber-200', dotClass: 'bg-amber-500',
+    nextStatus: 'confirmed', nextActionLabel: 'Xác nhận',
   },
   confirmed: {
-    label: 'Đã xác nhận',
-    badgeClass: 'bg-[#F3EFE6] text-[#574B3A] border-[#DCD3C2]',
-    dotClass: 'bg-[#8A7556]',
-    nextStatus: 'arrived',
-    nextActionLabel: 'Check-in khách',
-    nextBtnClass: 'bg-[#B48A3E] text-white hover:bg-[#9A732E]',
+    label: 'Đã xác nhận', badgeClass: 'bg-blue-50 text-blue-800 border-blue-200', dotClass: 'bg-blue-500',
+    nextStatus: 'arrived', nextActionLabel: 'Check-in',
   },
   arrived: {
-    label: 'Đã check-in',
-    badgeClass: 'bg-[#EBF3EE] text-[#1E5631] border-[#C5DEC9]',
-    dotClass: 'bg-[#2E7D47]',
-    nextStatus: 'in_progress',
-    nextActionLabel: 'Bắt đầu làm',
-    nextBtnClass: 'bg-[#1E5631] text-white hover:bg-[#164225]',
+    label: 'Đã check-in', badgeClass: 'bg-violet-50 text-violet-800 border-violet-200', dotClass: 'bg-violet-500',
+    nextStatus: 'in_progress', nextActionLabel: 'Bắt đầu làm',
   },
   in_progress: {
-    label: 'Đang làm',
-    badgeClass: 'bg-[#FDF4E7] text-[#9A5B13] border-[#F0D4B0]',
-    dotClass: 'bg-[#D97706] animate-pulse',
-    nextStatus: 'completed',
-    nextActionLabel: 'Hoàn thành',
-    nextBtnClass: 'bg-[#1C1917] text-[#E6C786] hover:bg-[#2E2925]',
+    label: 'Đang làm', badgeClass: 'bg-cyan-50 text-cyan-900 border-cyan-200', dotClass: 'bg-cyan-500 animate-pulse',
+    nextStatus: 'completed', nextActionLabel: 'Hoàn thành',
   },
-  completed: {
-    label: 'Hoàn thành',
-    badgeClass: 'bg-[#EAECE9] text-[#2F4F3E] border-[#CBD5CE]',
-    dotClass: 'bg-[#2F4F3E]',
-  },
-  cancelled: {
-    label: 'Đã huỷ',
-    badgeClass: 'bg-[#F9EBEB] text-[#8B2626] border-[#E8C5C5]',
-    dotClass: 'bg-[#A83232]',
-  },
-  no_show: {
-    label: 'Không đến',
-    badgeClass: 'bg-[#F4EFEF] text-[#6E5A5A] border-[#DDD2D2]',
-    dotClass: 'bg-[#78716C]',
-  },
+  completed: { label: 'Hoàn thành', badgeClass: 'bg-emerald-50 text-emerald-800 border-emerald-200', dotClass: 'bg-emerald-500' },
+  cancelled: { label: 'Đã huỷ', badgeClass: 'bg-slate-100 text-slate-600 border-slate-200', dotClass: 'bg-slate-400' },
+  no_show: { label: 'Không đến', badgeClass: 'bg-rose-50 text-rose-800 border-rose-200', dotClass: 'bg-rose-500' },
 };
 
 interface AppointmentStatusControlProps {
   appointmentId: string;
   status: AppointmentStatus;
-  onStatusChange: (id: string, nextStatus: AppointmentStatus) => Promise<void>;
+  /** Màn hình cha tự cập nhật lạc quan + gọi API; trong lúc chờ truyền `busy`. */
+  onAdvance: (id: string, nextStatus: AppointmentStatus) => void;
+  busy?: boolean;
   compact?: boolean;
 }
 
+/**
+ * Huy hiệu trạng thái + nút bước kế. Trạng thái hiển thị đã là trạng thái MỚI ngay khi bấm (lạc quan, < 16 ms);
+ * trong lúc máy chủ xác nhận, nút hiện vòng xoay nhỏ và khoá để không bấm hai lần. Lỗi → màn hình cha trả lại dòng đó.
+ */
 export const AppointmentStatusControl: React.FC<AppointmentStatusControlProps> = ({
-  appointmentId,
-  status,
-  onStatusChange,
-  compact = false,
+  appointmentId, status, onAdvance, busy = false, compact = false,
 }) => {
-  const [isUpdating, setIsUpdating] = useState(false);
-  const normalizedKey = String(status).toLowerCase();
-  const meta = STATUS_CONFIG[normalizedKey] || STATUS_CONFIG.pending;
-
-  const handleAdvance = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!meta.nextStatus || isUpdating) return;
-    setIsUpdating(true);
-    try {
-      await onStatusChange(appointmentId, meta.nextStatus);
-    } finally {
-      setIsUpdating(false);
-    }
-  };
+  const meta = STATUS_CONFIG[String(status).toLowerCase()] || STATUS_CONFIG.pending;
+  const next = meta.nextStatus;
 
   return (
-    <div className="flex items-center gap-1.5 shrink-0">
-      <span
-        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${meta.badgeClass}`}
-      >
-        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${meta.dotClass}`} />
-        <span className="truncate max-w-[110px]">{meta.label}</span>
+    <div className="flex shrink-0 items-center gap-1.5">
+      <span key={status} className={`animate-spring-pop inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${meta.badgeClass}`}>
+        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${meta.dotClass}`} />
+        <span className="max-w-[110px] truncate">{meta.label}</span>
       </span>
 
-      {meta.nextStatus && (
+      {next && (
         <button
           type="button"
-          disabled={isUpdating}
-          onClick={handleAdvance}
-          className={`spa-interactive-btn inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium shadow-xs disabled:opacity-50 cursor-pointer ${meta.nextBtnClass}`}
-          title={`Chuyển nhanh sang: ${STATUS_CONFIG[meta.nextStatus]?.label ?? meta.nextStatus}`}
+          disabled={busy}
+          onClick={(e) => { e.stopPropagation(); if (!busy) onAdvance(appointmentId, next); }}
+          className="spa-interactive-btn inline-flex min-h-[30px] items-center gap-1 rounded-full bg-teal-700 px-2.5 text-xs font-semibold text-white shadow-sm hover:bg-teal-800 disabled:cursor-wait disabled:opacity-60"
+          title={`Chuyển nhanh sang: ${STATUS_CONFIG[next]?.label ?? next}`}
+          aria-label={`${meta.nextActionLabel ?? 'Bước kế'} — chuyển sang ${STATUS_CONFIG[next]?.label ?? next}`}
         >
-          {isUpdating ? (
-            <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
-          ) : (
-            <span>{compact ? 'Tiếp →' : `${meta.nextActionLabel} →`}</span>
+          {busy ? <Loader2 size={12} className="animate-spin" /> : (
+            <>{compact ? 'Tiếp' : meta.nextActionLabel} <ArrowRight size={12} /></>
           )}
         </button>
       )}
@@ -121,7 +85,7 @@ export const ServicePills: React.FC<{
   maxVisible?: number;
 }> = ({ services = [], maxVisible = 2 }) => {
   if (!services.length) {
-    return <span className="text-xs text-[#78716C] italic">Chưa chọn dịch vụ</span>;
+    return <span className="text-xs italic text-slate-500">Chưa chọn dịch vụ</span>;
   }
 
   const visible = services.slice(0, maxVisible);
@@ -129,17 +93,14 @@ export const ServicePills: React.FC<{
   const fullListTitle = services.map((s) => s.name).join(' • ');
 
   return (
-    <div className="flex flex-wrap items-center gap-1 min-w-0" title={fullListTitle}>
+    <div className="flex min-w-0 flex-wrap items-center gap-1" title={fullListTitle}>
       {visible.map((srv, idx) => (
-        <span
-          key={srv.id ?? idx}
-          className="inline-block max-w-[165px] truncate px-2 py-0.5 text-xs rounded bg-[#F5F1EA] text-[#332E2A] border border-[#E7E0D6]"
-        >
+        <span key={srv.id ?? idx} className="inline-block max-w-[165px] truncate rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs text-slate-700">
           {srv.name}
         </span>
       ))}
       {hiddenCount > 0 && (
-        <span className="inline-flex items-center px-1.5 py-0.5 text-[11px] font-semibold rounded bg-[#EFE7D6] text-[#8C621E] border border-[#DFCFAF] shrink-0">
+        <span className="inline-flex shrink-0 items-center rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[11px] font-semibold text-amber-800">
           +{hiddenCount} dịch vụ
         </span>
       )}

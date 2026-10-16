@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { History, Search, Trash2, Users } from 'lucide-react';
 import { customersApi, getErrorMessage } from '@/api';
 import type { Customer, VisitHistoryItem } from '@/types';
@@ -14,7 +15,9 @@ import { useToast } from '@/contexts/ToastContext';
 
 /** S3-10 + S4-03: hồ sơ khách gộp theo số điện thoại và lịch sử dịch vụ. */
 export function CustomersPage() {
-  const [q, setQ] = useState('');
+  // Bảng lệnh (Ctrl + K) mở thẳng hồ sơ khách qua ?q=<SĐT / tên>
+  const [params] = useSearchParams();
+  const [q, setQ] = useState(() => params.get('q') ?? '');
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(20);
   const [data, setData] = useState<{ items: Customer[]; total: number; totalPages: number } | null>(null);

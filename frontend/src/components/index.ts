@@ -26,3 +26,4 @@ export * from './AnimatedNumber';
 export * from './LotusMark';
 export * from './SoundToggle';
 export * from './SegmentedTabs';
+export * from './CommandPalette';

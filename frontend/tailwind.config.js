@@ -9,7 +9,7 @@
 const v = (name) => `rgb(var(--${name}) / <alpha-value>)`;
 const STEPS = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950];
 const scale = (name) => Object.fromEntries(STEPS.map((s) => [s, v(`${name}-${s}`)]));
-const THEMED = ['slate', 'teal', 'amber', 'red', 'emerald', 'violet', 'rose', 'sky', 'pink', 'orange', 'blue', 'indigo', 'green', 'fuchsia', 'cyan'];
+const THEMED = ['slate', 'gray', 'teal', 'amber', 'red', 'emerald', 'violet', 'rose', 'sky', 'pink', 'orange', 'blue', 'indigo', 'green', 'fuchsia', 'cyan', 'purple', 'lime', 'yellow'];
 
 export default {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],

@@ -12,7 +12,7 @@ import { STATUS_BLOCK, STATUS_DOT, STATUS_LABELS, STATUS_STYLES } from '@/utils/
 import { timeToMinutes, todayISO } from '@/utils/format';
 import { overrunInfo } from '@/utils/opsHelpers';
 import { stylistColorMap } from '@/utils/stylistColors';
-import { notifyAppointmentsChanged, useAppointmentsSync } from '@/utils/liveSync';
+import { useAppointmentsSync } from '@/utils/liveSync';
 import { packOverlappingAppointments } from '@/utils/timelineLayout';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
@@ -60,17 +60,24 @@ function TimelineBlock({ id, enabled, slotH, startMin, label, className, style, 
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id, disabled: !enabled });
   const dy = transform ? Math.round(transform.y / slotH) * slotH : 0;
+  // Khối lịch là <div role="button"> (không phải <button>): bên trong có nút "Check-in →" — HTML cấm <button> lồng <button>
+  // (React cảnh báo validateDOMNesting, trình đọc màn hình đọc sai). Enter = mở chi tiết; Space = kéo bằng bàn phím (dnd-kit).
+  const dragKeyDown = enabled ? listeners?.onKeyDown : undefined;
   return (
-    <button ref={setNodeRef} type="button" onClick={onOpen} title={title} {...(enabled ? { ...listeners, ...attributes } : {})}
-            className={`${className} ${enabled ? 'cursor-grab touch-none active:cursor-grabbing' : ''} ${isDragging ? 'z-[30] opacity-90 shadow-xl ring-2 ring-teal-500' : ''}`}
-            style={{ ...style, ...(transform ? { transform: `translate3d(${transform.x}px, ${dy}px, 0)` } : {}) }}>
+    <div ref={setNodeRef} onClick={onOpen} title={title} {...(enabled ? { ...listeners, ...attributes } : { role: 'button', tabIndex: 0 })}
+         onKeyDown={(e) => {
+           if (e.key === 'Enter' && e.target === e.currentTarget) { e.preventDefault(); onOpen(); return; }
+           dragKeyDown?.(e);
+         }}
+         className={`${className} ${enabled ? 'cursor-grab touch-none active:cursor-grabbing' : 'cursor-pointer'} ${isDragging ? 'z-[30] opacity-90 shadow-xl ring-2 ring-teal-500' : ''}`}
+         style={{ ...style, ...(transform ? { transform: `translate3d(${transform.x}px, ${dy}px, 0)` } : {}) }}>
       {isDragging && (
         <span className="absolute -top-5 left-0 rounded bg-teal-600 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow">
           → {label(startMin + Math.round((transform?.y ?? 0) / slotH) * 15)}
         </span>
       )}
       {children}
-    </button>
+    </div>
   );
 }
 
@@ -149,6 +156,17 @@ export function DayTimelinePage() {
   };
 
   /** Chuyển nhanh trạng thái 1-chạm lạc quan ngay trên lưới lịch ngày (Optimistic UI < 16ms). */
+  /** Đổi trạng thái MỘT thẻ trong lưới (hàm thuần, dùng cho cả cập nhật lạc quan lẫn hoàn tác). */
+  const patchStatus = (d: DayTimeline, id: string, status: AppointmentStatus): DayTimeline => ({
+    ...d,
+    columns: d.columns.map((col) => ({
+      ...col,
+      appointments: col.appointments.map((item) => (item.id === id ? { ...item, status } : item)),
+    })),
+  });
+  /** Thẻ đang chờ máy chủ xác nhận — chặn bấm đúp gửi hai lệnh chuyển trạng thái. */
+  const advancing = useRef(new Set<string>());
+
   const handleQuickStatusAdvance = async (e: React.MouseEvent, a: Appointment) => {
     e.stopPropagation();
     let nextStatus: AppointmentStatus | null = null;
@@ -156,29 +174,25 @@ export function DayTimelinePage() {
     else if (a.status === 'confirmed') nextStatus = 'arrived';
     else if (a.status === 'arrived') nextStatus = 'in_progress';
     else if (a.status === 'in_progress') nextStatus = 'completed';
-    if (!nextStatus || !data) return;
-
-    const previousData = data;
-    setData({
-      ...data,
-      columns: data.columns.map((col) => ({
-        ...col,
-        appointments: col.appointments.map((item) =>
-          item.id === a.id ? { ...item, status: nextStatus! } : item,
-        ),
-      })),
-    });
+    if (!nextStatus || !data || advancing.current.has(a.id)) return;
+    const next = nextStatus;
+    advancing.current.add(a.id);
+    // Lạc quan theo TỪNG THẺ (cập nhật hàm): lỗi chỉ trả lại đúng thẻ này — trước đây khôi phục ảnh chụp cả lưới
+    // làm mất thay đổi của thẻ khác / dữ liệu đồng bộ ngầm vừa về trong lúc chờ.
+    setData((d) => (d ? patchStatus(d, a.id, next) : d));
 
     try {
-      if (nextStatus === 'confirmed') await appointmentsApi.confirm(a.id);
-      else if (nextStatus === 'arrived') await appointmentsApi.checkIn(a.id);
-      else if (nextStatus === 'in_progress') await appointmentsApi.start(a.id);
-      else if (nextStatus === 'completed') await appointmentsApi.complete(a.id);
-      toast.success(`Đã cập nhật: ${STATUS_LABELS[nextStatus]}`);
-      notifyAppointmentsChanged();
+      if (next === 'confirmed') await appointmentsApi.confirm(a.id);
+      else if (next === 'arrived') await appointmentsApi.checkIn(a.id);
+      else if (next === 'in_progress') await appointmentsApi.start(a.id);
+      else if (next === 'completed') await appointmentsApi.complete(a.id);
+      toast.success(`Đã cập nhật: ${STATUS_LABELS[next]}`);
+      // axios interceptor đã phát sự kiện đổi dữ liệu (kênh lịch hẹn) → lưới và các màn hình khác tự tải lại ngầm
     } catch (err) {
-      setData(previousData);
+      setData((d) => (d ? patchStatus(d, a.id, a.status) : d));
       toast.error(getErrorMessage(err));
+    } finally {
+      advancing.current.delete(a.id);
     }
   };
 
@@ -399,8 +413,10 @@ export function DayTimelinePage() {
                     {/* Khối lịch hẹn */}
                     {packOverlappingAppointments(col.appointments).map((pos, index) => {
                       const a = pos.item;
-                      const widthPct = 100 / pos.totalLanes;
-                      const leftPct = pos.laneIndex * widthPct;
+                      const lanePct = 100 / pos.totalLanes;
+                      const leftPct = pos.laneIndex * lanePct;
+                      // Giãn sang các làn trống bên phải (laneSpan) — thẻ đọc được tên khách thay vì bị bóp 1/N
+                      const widthPct = lanePct * pos.laneSpan;
                       const c = colors.get(col.stylistId);
                       const tone = colorBy === 'stylist' && c
                         ? `${c.soft} ${c.edge} ${c.text} ${a.status === 'cancelled' ? 'line-through opacity-60' : a.status === 'no_show' ? 'opacity-60' : ''}`
@@ -451,11 +467,11 @@ export function DayTimelinePage() {
                             <span className="shrink-0">{a.startTime}</span>
                             <span className="truncate">{a.customer.fullName}</span>
                           </span>
-                          {nextActionLabel && pos.totalLanes <= 2 && heightOf(a.totalDurationMinutes) >= 42 && (
+                          {nextActionLabel && pos.totalLanes / pos.laneSpan <= 2 && heightOf(a.totalDurationMinutes) >= 42 && (
                             <button
                               type="button"
                               onClick={(e) => void handleQuickStatusAdvance(e, a)}
-                              className="spa-interactive-btn shrink-0 rounded bg-slate-900/80 px-1.5 py-0.5 text-[9px] font-semibold text-white hover:bg-slate-900 shadow-xs cursor-pointer select-none"
+                              className="spa-interactive-btn shrink-0 cursor-pointer select-none rounded bg-teal-700 px-1.5 py-0.5 text-[9px] font-semibold text-white shadow-sm hover:bg-teal-800"
                               title={`Chuyển nhanh sang: ${nextActionLabel}`}
                             >
                               {nextActionLabel} →
