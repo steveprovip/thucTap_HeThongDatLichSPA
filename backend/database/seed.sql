@@ -477,9 +477,11 @@ WHERE u.voucher_id = v.id;
 -- 13. NHẬT KÝ MẪU
 -- ---------------------------------------------------------------------------
 INSERT INTO audit_logs (actor_id, actor_email, actor_role, action, entity_type, entity_id, summary)
-SELECT '11111111-1111-4111-8111-000000000001','admin@salon.vn','admin','create','system','seed',
+SELECT id, email, role, 'create', 'system', 'seed',
        'Nạp bộ dữ liệu mẫu staging (5 thợ, 12 dịch vụ, 4 vai trò nội bộ)'
-WHERE NOT EXISTS (SELECT 1 FROM audit_logs WHERE entity_type = 'system' AND entity_id = 'seed');
+FROM users WHERE lower(email) = 'admin@salon.vn'
+  AND NOT EXISTS (SELECT 1 FROM audit_logs WHERE entity_type = 'system' AND entity_id = 'seed')
+LIMIT 1;
 
 -- ---------------------------------------------------------------------------
 -- 14. BÁO CÁO KẾT QUẢ NẠP
