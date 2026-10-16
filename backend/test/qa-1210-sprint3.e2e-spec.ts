@@ -31,6 +31,8 @@ describe('QA 12/10 — voucher PATCH, AI thợ đang trực, duyệt nghỉ, ema
     app = await createTestApp();
     server = app.getHttpServer();
     ds = app.get(DataSource);
+    // Bộ đếm AI khách theo IP nằm trong CSDL dùng chung: mọi bộ test gọi từ 127.0.0.1 cùng một xô 20 lượt / 10 phút
+    await ds.query(`DELETE FROM rate_limits WHERE scope = 'public_assistant_ip'`);
     for (const role of ['admin', 'owner', 'receptionist', 'stylist'] as const) {
       const r = await request(server).post('/api/auth/login').send(ACCOUNTS[role]).expect(200);
       tokens[role] = r.body.data.accessToken as string;
