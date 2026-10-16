@@ -507,7 +507,8 @@
     :root[data-theme='noir'] input[type='date'], :root[data-theme='noir'] input[type='time'] { color-scheme: dark; }
     :root[data-theme='noir'] img { color-scheme: normal; }
   }
-  html { -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; }
+  /* scrollbar-gutter: chừa sẵn chỗ thanh cuộn — trang ngắn → dài (wizard tải xong) không còn đẩy ngang toàn bộ nội dung (CLS) */
+  html { -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; scrollbar-gutter: stable; }
   body {
     @apply bg-surface-page text-ink font-sans antialiased;
     margin: 0;

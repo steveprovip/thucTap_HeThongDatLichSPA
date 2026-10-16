@@ -18,7 +18,7 @@ const KEY = 'salon.demo.v6';
  * Chỉ vào chế độ demo khi VITE_DEMO_MODE=true (npm run dev:demo). Thiếu biến (vd. bản clone mới chưa có
  * frontend/.env vì .env bị gitignore) = gọi API thật, để không âm thầm chạy dữ liệu giả trong trình duyệt.
  */
-export const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === 'true';
+export { DEMO_MODE } from './demoMode';
 /** Phiên demo lưu MÃ tài khoản (không phải vai trò) để mọi kiểm tra quyền dựa trên đúng người đăng nhập. */
 const SESSION_KEY = 'salon.demoUserId';
 /** Mật khẩu mẫu theo vai trò — trùng khớp seed của máy chủ thật (backend/database/seed.sql) và README. */

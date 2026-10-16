@@ -234,9 +234,10 @@ export function HomePage() {
 
   return (
     <div className="space-y-14 pb-6 sm:space-y-20">
-      {/* ---------------- Hero biên tập: ảnh tràn khung, chữ serif, ánh sáng champagne theo con trỏ ---------------- */}
+      {/* ---------------- Hero biên tập: ảnh tràn khung, chữ serif, ánh sáng champagne theo con trỏ ----------------
+          (khung hero KHÔNG có hiệu ứng mờ dần: tiêu đề là phần tử LCP, phải hiện ở khung hình đầu tiên) */}
       <section ref={heroGlow} aria-labelledby="hero-title"
-               className="ambient grain animate-spring-in relative isolate overflow-hidden rounded-[28px] border border-slate-200/60 shadow-pop">
+               className="ambient grain relative isolate overflow-hidden rounded-[28px] border border-slate-200/60 shadow-pop">
         <SmartImage src={IMAGES.hero_spa_interior} alt="Không gian boutique spa Hương Sen" kind="spa" sizes="(min-width: 1280px) 1280px, 100vw"
                     className="absolute inset-x-0 top-0 -z-20 h-72 sm:h-80 lg:inset-0 lg:h-full" imgClassName="animate-ken-burns" />
         <div aria-hidden className="absolute inset-0 -z-10 bg-gradient-to-t from-canvas via-canvas/85 to-canvas/10 lg:bg-gradient-to-r lg:from-canvas lg:via-canvas/80 lg:to-canvas/5" />

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ArrowRight, Lock, LogIn, LogOut, ShieldCheck } from 'lucide-react';
 import { getErrorCode, getErrorDetails, getErrorMessage } from '@/api';
-import { DEMO_MODE } from '@/api/mockBackend';
+import { DEMO_MODE } from '@/api/demoMode';
 import { Button, Card, Field, Input, Notice } from '@/components';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';

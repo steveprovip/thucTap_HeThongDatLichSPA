@@ -3,7 +3,7 @@ import {
   CalendarRange, ImagePlus, LayoutGrid, List, Pencil, Plus, Search, Star, UserRound, X,
 } from 'lucide-react';
 import { appointmentsApi, catalogApi, getErrorMessage, stylistsApi } from '@/api';
-import { DEMO_MODE } from '@/api/mockBackend';
+import { DEMO_MODE } from '@/api/demoMode';
 import type { Appointment, ServiceCategory, ServiceItem, Shift, Stylist, StylistGender } from '@/types';
 import {
   EmailText,

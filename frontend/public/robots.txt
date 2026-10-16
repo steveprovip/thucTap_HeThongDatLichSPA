@@ -1,0 +1,7 @@
+# Trang khách được lập chỉ mục; khu nhân viên / đăng nhập thì không.
+User-agent: *
+Allow: /
+Disallow: /quan-ly
+Disallow: /dang-nhap
+Disallow: /quen-mat-khau
+Disallow: /dat-lai-mat-khau

@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { api, BASE_URL, tokenStore } from '@/api/client';
-import { DEMO_MODE } from '@/api/mockBackend';
+import { DEMO_MODE } from '@/api/demoMode';
 import { dispatchRemoteChange } from './liveSync';
 import { missedSince, type LiveChange, type StreamCursor } from './realtimeScopes';
 

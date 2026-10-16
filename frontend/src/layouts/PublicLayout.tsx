@@ -73,9 +73,10 @@ export function PublicLayout() {
         </div>
       </header>
 
-      {/* /dat-lich ẩn chân trang trên điện thoại → chừa chỗ cho dock điều hướng cố định để dòng cuối không bị che */}
+      {/* /dat-lich ẩn chân trang trên điện thoại → chừa chỗ cho dock điều hướng cố định để dòng cuối không bị che;
+          cao tối thiểu một màn hình để chân trang (máy tính) nằm sẵn dưới mép màn hình, không bị đẩy xuống khi bước 1 tải xong (CLS) */}
       <main className={`mx-auto w-full ${wide ? 'max-w-7xl' : 'max-w-5xl'} flex-1 px-4 pt-5 sm:pb-10
-        ${location.pathname.startsWith('/dat-lich') ? 'pb-[calc(var(--bottom-nav-h)+1.5rem+env(safe-area-inset-bottom))]' : 'pb-6'}`}>
+        ${location.pathname.startsWith('/dat-lich') ? 'min-h-[100dvh] pb-[calc(var(--bottom-nav-h)+1.5rem+env(safe-area-inset-bottom))]' : 'pb-6'}`}>
         <div key={location.pathname} className="animate-fade">
           {showBack && (
             <div className="mb-4 animate-slide-in-right-soft">

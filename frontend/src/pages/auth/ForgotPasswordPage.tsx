@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, KeyRound, MailCheck, RotateCw, Send } from 'lucide-react';
 import { authApi, getErrorMessage } from '@/api';
-import { DEMO_MODE } from '@/api/mockBackend';
+import { DEMO_MODE } from '@/api/demoMode';
 import { Button, Card, Field, Input, Notice } from '@/components';
 import { useToast } from '@/contexts/ToastContext';
 import { emailError as validateEmail } from '@/utils/validators';

@@ -1,7 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, ReactNode } from 'react';
 import { authApi, onUnauthorized, tokenStore } from '@/api';
 import type { AuthUser, Role } from '@/types';
-import { DEMO_MODE, demoRole } from '@/api/mockBackend';
+import { DEMO_MODE } from '@/api/demoMode';
+import type { demoRole as DemoRoleApi } from '@/api/mockBackend';
 import { startRealtime, stopRealtime } from '@/utils/realtime';
 
 interface AuthContextValue {
@@ -16,13 +17,18 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+/** Bộ chuyển vai trò của bản demo — chỉ nạp (động) khi DEMO_MODE; bản production không bao giờ tải mockBackend. */
+let demoRole: typeof DemoRoleApi | null = null;
+const loadDemoRole = async (): Promise<typeof DemoRoleApi> => (demoRole ??= (await import('@/api/mockBackend')).demoRole);
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(DEMO_MODE ? demoRole.user() : null);
-  const [loading, setLoading] = useState(!DEMO_MODE);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const refreshUser = useCallback(async () => {
     if (DEMO_MODE) {
-      setUser(demoRole.user()); setLoading(false); return;
+      const demo = await loadDemoRole();
+      setUser(demo.user()); setLoading(false); return;
     }
     if (!tokenStore.access) {
       setUser(null);
@@ -62,7 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await authApi.logout();
     } catch { /* token cục bộ đã được xoá trong authApi.logout */ }
-    if (DEMO_MODE) demoRole.set('customer');
+    if (DEMO_MODE) (await loadDemoRole()).set('customer');
     setUser(null);
   }, []);
 
@@ -80,6 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const setDemoRole = useCallback((role: Role) => {
+    if (!demoRole) return; // chỉ có ở chế độ demo (đã nạp khi khởi động AuthProvider)
     demoRole.set(role);
     setUser(demoRole.user());
   }, []);
