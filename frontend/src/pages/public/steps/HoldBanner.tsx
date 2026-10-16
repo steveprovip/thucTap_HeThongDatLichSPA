@@ -36,8 +36,8 @@ export function HoldBanner({ hold, state, remainingMs, onExtend }: {
   const low = remainingMs < 2 * 60_000;
   return (
     <div role="status" aria-live="polite"
-         className={`flex flex-wrap items-center gap-3.5 rounded-2xl border px-4 py-3 transition-colors duration-500 ${low ? 'border-amber-300 bg-amber-50' : 'border-gold/30 bg-gold/[0.06]'}`}>
-      <span className={`relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${low ? 'pulse-ring text-amber-600' : 'text-gold'}`}>
+         className={`flex flex-wrap items-center gap-3.5 rounded-2xl border px-4 py-3 transition-colors duration-500 ${low ? 'border-amber-300 bg-amber-50' : 'border-champagne/40 bg-white/90 shadow-card backdrop-blur-[20px]'}`}>
+      <span className={`relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${low ? 'pulse-ring text-amber-600' : 'text-teal-700'}`}>
         <svg viewBox="0 0 48 48" className="absolute inset-0 h-12 w-12 -rotate-90" aria-hidden>
           <circle cx="24" cy="24" r={R} fill="none" strokeWidth="3" className="stroke-slate-200" />
           <circle cx="24" cy="24" r={R} fill="none" strokeWidth="3" strokeLinecap="round" stroke="currentColor"

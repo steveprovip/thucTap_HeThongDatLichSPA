@@ -33,6 +33,22 @@ Nhánh `claude/peaceful-pasteur-27lppm`. Tài liệu này ghi lại **cái gì �
 | Slot Radar | Hôm nay: buổi đã qua bị ghi "Đã kín", buổi trống bị ghi "Sắp kín" | API trả thêm `earliestStartMinutes` (chỉ thêm trường, tương thích ngược); buổi đã qua ghi "Đã qua" |
 | Giao diện sáng | Nút Trợ lý AI, bóng `.lift`, độ đậm bôi chọn chữ, thanh cuộn `.thin-scroll` lệch bản cũ | Trả đúng giá trị cũ, chỉ đổi dưới Noir |
 
+### Chuyển trang khách sang Lotus Ivory & Champagne Luxe (sáng nghỉ dưỡng)
+
+Phản hồi: Lotus Noir trên trang khách quá tối. Trang khách nay dùng `html[data-theme='ivory']`; Noir chỉ còn là chế độ trực
+đêm của khu nhân viên (nút trăng / Ctrl+K → "Chuyển giao diện").
+
+- **Nền**: ngà Alabaster `#FAF7F2` / kem `#F6F3ED`, thẻ trắng ngọc trai, bóng phân lớp ánh ngọc bích
+  `0 10px 30px -5px rgba(15,76,58,.05), 0 1px 3px rgba(0,0,0,.02)`, viền champagne `rgba(197,160,89,.22)`.
+- **Màu hành động** ("teal") = ngọc bích Sen `#135D47` / `#0F4C3A` — dùng chung cho khu nhân viên để thương hiệu đồng nhất.
+- **Vàng**: `champagne` `#C5A059` cho viền / vòng / ánh sáng; chữ vàng dùng `#8C6A2E` vì `#C5A059` trên nền trắng chỉ đạt 2.5:1.
+- **Tương phản (đo trong `design-tokens.test.mjs`)**: tiêu đề `#111827` 16.6:1, nội dung `#4B5563` 7.1:1 (AAA), chữ phụ 5.4:1,
+  chữ vàng 4.7:1, chữ trắng trên nút ngọc bích 7.8–9.9:1 (AAA). Chữ phụ và chữ vàng đạt AA, chưa đạt AAA (7:1).
+- **Slot Radar**: xanh (còn chỗ) · hổ phách (sắp kín) · đỏ (đã kín) · xám (đã qua), luôn kèm nhãn chữ.
+- **Dock giữ chỗ**: kính sữa trắng 90 %, mờ 20px; vòng đếm ngược 10 phút màu ngọc bích.
+- **Cloudflare Pages**: `public/_headers` cache 1 năm cho `/assets/*`, `/fonts/*` (tên có mã băm) + header bảo mật cơ bản;
+  không có `404.html` nên Pages tự trả `index.html` cho mọi đường dẫn React Router.
+
 ## 2. Kiến trúc mới (tóm tắt)
 
 - **Design tokens**: mọi màu Tailwind là biến CSS `R G B`; `:root` = đúng màu Tailwind (giao diện sáng không đổi). `html[data-theme='noir']`
@@ -48,14 +64,14 @@ Nhánh `claude/peaceful-pasteur-27lppm`. Tài liệu này ghi lại **cái gì �
 ```bash
 # Cổng chất lượng
 npm --prefix backend run typecheck && npm --prefix backend run lint && npm --prefix backend run test      # 331 test
-npm --prefix frontend run typecheck && npm --prefix frontend run lint && npm --prefix frontend run test   # 54 test
+npm --prefix frontend run typecheck && npm --prefix frontend run lint && npm --prefix frontend run test   # 59 test
 npm --prefix frontend run build
 
 # E2E trên PostgreSQL thật (tạo/xoá CSDL salon_booking_test)
 npm --prefix backend run test:e2e
 ```
 
-Kết quả tại thời điểm giao (PostgreSQL 16.15, Node 22): unit BE 331/331, FE 54/54, E2E 155/155 (sau khi gộp `develop` có bản sửa
+Kết quả tại thời điểm giao (PostgreSQL 16.15, Node 22): unit BE 331/331, FE 59/59, E2E 155/155 (sau khi gộp `develop` có bản sửa
 bộ đếm giới hạn tần suất `public_assistant_ip` giữa các suite). Chống đặt trùng: 20 request đồng thời → đúng 1 thành công, 19 nhận 409;
 ràng buộc `appointments_no_overlap` chặn cả ghi thẳng vào bảng.
 
@@ -80,5 +96,5 @@ khung trang khách** (HTML tĩnh cho `/`, `/dat-lich`) và CSS quan trọng nộ
 - **Apple Wallet**: thẻ `.pkpass` phải được ký bằng chứng chỉ Pass Type ID của Apple ở máy chủ — chưa có, nên dùng tệp `.ics`
   (iPhone mở thẳng "Thêm vào Lịch") + liên kết Google Calendar.
 - **Điểm đánh giá theo dịch vụ**: dữ liệu chỉ có điểm theo chuyên viên → trang chủ chỉ hiển thị điểm chuyên viên (số thật), không bịa điểm dịch vụ.
-- **Khu nhân viên** mặc định vẫn giao diện sáng (đèn quầy, in phiếu); bật Lotus Noir bằng nút mặt trăng hoặc Ctrl/⌘ + K → "Chuyển giao diện".
+- **Khu nhân viên** mặc định giao diện sáng (đèn quầy, in phiếu); bật Lotus Noir khi trực đêm bằng nút mặt trăng hoặc Ctrl/⌘ + K → "Chuyển giao diện".
 - SSE vẫn là bus trong bộ nhớ của **một** tiến trình API (đúng với Render 1 instance); chạy nhiều bản sao cần Postgres LISTEN/NOTIFY.

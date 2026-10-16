@@ -98,7 +98,8 @@ export function Step1Services() {
                       }}
                       className={`group flex h-full w-full items-center gap-3 rounded-2xl border p-2.5 pr-3 text-left
                         transition-[background-color,border-color,box-shadow,transform] duration-spring ease-spring active:scale-[0.985]
-                        ${isOn ? 'border-gold/60 bg-gold/[0.07] shadow-glow' : 'border-slate-200/80 bg-white/50 hover:border-gold/35 hover:bg-white'}
+                        ${isOn ? 'border-teal-700/60 bg-teal-50/70 shadow-card ring-1 ring-teal-700/15'
+                          : 'border-slate-200/80 bg-white shadow-card hover:-translate-y-1 hover:border-champagne/60 hover:shadow-card-hover'}
                         ${disabled ? 'cursor-not-allowed opacity-45' : ''}`}
                     >
                       <SmartImage src={photos[s.id]} alt="" loading="lazy" sizes="80px" className="h-[72px] w-[72px] shrink-0 rounded-xl"

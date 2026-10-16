@@ -3,10 +3,13 @@
 @tailwind utilities;
 
 /* =====================================================================================================================
- * RFC-2026-SPA-V3 · Lotus Noir & Champagne Amber — lớp design token
- *  - Biến màu dạng "R G B" để Tailwind ghép độ trong suốt; :root = đúng màu Tailwind mặc định (giao diện sáng không đổi).
- *  - html[data-theme='noir'] (trang khách + chế độ Noir của khu quản trị): đảo thang màu theo vai trò, "teal" → Champagne Gold.
- *  - Noir chỉ áp dụng trên màn hình (@media screen): phiếu in / hoá đơn nhiệt luôn in nền trắng chữ đen.
+ * Lớp design token — ba giao diện dùng chung một bộ tên màu:
+ *  - Biến màu dạng "R G B" để Tailwind ghép độ trong suốt; :root = giao diện sáng của khu nhân viên (màu Tailwind mặc định,
+ *    riêng "teal" = ngọc bích Sen #135D47 / #0F4C3A — màu hành động chung với trang khách).
+ *  - html[data-theme='ivory'] — Lotus Ivory & Imperial Champagne (trang khách): nền ngà ấm, "teal" (màu hành động) → ngọc
+ *    bích Sen #135D47 / #0F4C3A, vàng champagne #C5A059 cho viền / ánh sáng, chữ vàng đậm #8C6A2E đạt AA trên nền trắng.
+ *  - html[data-theme='noir'] (khu nhân viên trực đêm): đảo thang màu theo vai trò, "teal" → Champagne Gold.
+ *  - Ivory / Noir chỉ áp dụng trên màn hình (@media screen): phiếu in / hoá đơn nhiệt luôn in nền trắng chữ đen.
  * Bảng màu Noir sinh bằng script (pha màu Tailwind 400/500 trên nền Obsidian #080C10) và đã đo tương phản WCAG:
  * chữ chính 15–17:1, chữ phụ (slate-500) 7.1:1, biểu tượng (slate-400) 5.2:1, chữ trên nút vàng 10–13:1.
  * ===================================================================================================================== */
@@ -30,8 +33,10 @@
     --gold: 180 138 62;
     --gold-soft: 246 239 226;
     --gold-deep: 140 98 30;
+    /* Vàng trang trí (viền, ánh sáng theo con trỏ, đường kẻ vàng) — tách khỏi --gold (chữ) để Ivory dùng champagne sáng */
+    --champagne: 180 138 62;
     --bloom: 224 109 133;
-    --jade: 13 148 136;
+    --jade: 19 93 71;
     --lotus: 6 30 26;
     --scrim: 15 23 42;
     --seed-s1: 80%; --seed-l1: 94%; --seed-s2: 70%; --seed-l2: 86%;
@@ -40,8 +45,9 @@
     --hairline-alpha: 0.08;
     --shimmer-alpha: 0.14;
     --shimmer-hi: 255 255 255 / 0.5;
-    --shadow-card: 0 4px 20px -2px rgba(0, 0, 0, 0.05), 0 2px 6px -1px rgba(0, 0, 0, 0.02);
-    --shadow-card-hover: 0 12px 32px -6px rgba(15, 23, 42, 0.10), 0 4px 10px -2px rgba(15, 23, 42, 0.04);
+    /* Cùng chất liệu bóng với trang khách (Lotus Ivory): bóng phân lớp siêu mịn ánh ngọc bích */
+    --shadow-card: 0 10px 30px -5px rgba(15, 76, 58, 0.05), 0 1px 3px rgba(0, 0, 0, 0.02);
+    --shadow-card-hover: 0 20px 44px -12px rgba(15, 76, 58, 0.12), 0 2px 6px rgba(0, 0, 0, 0.03);
     --shadow-pop: 0 24px 48px -12px rgba(15, 23, 42, 0.18);
     /* Bóng khi rê .lift / .hover-lift và độ đậm bôi chọn chữ: giữ đúng giá trị giao diện sáng cũ */
     --shadow-lift: 0 16px 40px -12px rgba(15, 23, 42, 0.16), 0 4px 10px -4px rgba(15, 23, 42, 0.06);
@@ -58,17 +64,18 @@
   --slate-800: 30 41 59;
   --slate-900: 15 23 42;
   --slate-950: 2 6 23;
-  --teal-50: 240 253 250;
-  --teal-100: 204 251 241;
-  --teal-200: 153 246 228;
-  --teal-300: 94 234 212;
-  --teal-400: 45 212 191;
-  --teal-500: 20 184 166;
-  --teal-600: 13 148 136;
-  --teal-700: 15 118 110;
-  --teal-800: 17 94 89;
-  --teal-900: 19 78 74;
-  --teal-950: 4 47 46;
+  /* Màu hành động chung của thương hiệu = ngọc bích Sen (Imperial Jade) — khu nhân viên và trang khách cùng một màu */
+  --teal-50: 239 246 242;
+  --teal-100: 220 236 228;
+  --teal-200: 186 216 202;
+  --teal-300: 136 186 164;
+  --teal-400: 78 146 118;
+  --teal-500: 36 111 86;
+  --teal-600: 19 93 71;
+  --teal-700: 15 76 58;
+  --teal-800: 12 62 47;
+  --teal-900: 9 49 37;
+  --teal-950: 5 30 22;
   --amber-50: 255 251 235;
   --amber-100: 254 243 199;
   --amber-200: 253 230 138;
@@ -279,6 +286,7 @@
       --gold: 212 175 55;
       --gold-soft: 245 230 190;
       --gold-deep: 168 138 58;
+      --champagne: 212 175 55;
       --jade: 45 212 191;
       --scrim: 0 0 0;
       --seed-s1: 32%; --seed-l1: 17%; --seed-s2: 38%; --seed-l2: 12%;
@@ -512,7 +520,62 @@
       background-attachment: fixed;
     }
     :root[data-theme='noir'] input[type='date'], :root[data-theme='noir'] input[type='time'] { color-scheme: dark; }
-    :root[data-theme='noir'] img { color-scheme: normal; }
+    :root[data-theme='noir'] img { color-scheme: normal; }    /* ---------------- Lotus Ivory & Imperial Champagne — trang khách (sáng nghỉ dưỡng) ----------------
+       Tương phản WCAG trên nền ngà #FAF7F2 / trắng: tiêu đề #111827 16.6 / 17.7:1, nội dung #4B5563 7.1 / 7.6:1, chữ phụ
+       #5F6672 5.4 / 5.8:1, chữ vàng #8C6A2E 4.7 / 5.0:1, chữ trắng trên nút ngọc bích #135D47 7.8:1 (#0F4C3A 9.9:1). */
+    :root[data-theme='ivory'] {
+      color-scheme: light;
+      --canvas: 250 247 242;
+      --ivory: 251 249 245;
+      --ivory-deep: 246 243 237;
+      --ivory-line: 234 225 208;
+      --fg: 17 24 39;
+      --fg-muted: 75 85 99;
+      --line: 230 224 213;
+      --gold: 140 106 46;
+      --gold-soft: 248 241 228;
+      --gold-deep: 122 90 34;
+      --champagne: 197 160 89;
+      --bloom: 240 139 155;
+      --jade: 15 76 58;
+      --lotus: 19 93 71;
+      /* "teal" (màu hành động) = ngọc bích Sen đã đặt ở :root — dùng chung với khu nhân viên */
+      --scrim: 17 24 39;
+      --seed-s1: 38%; --seed-l1: 93%; --seed-s2: 34%; --seed-l2: 86%;
+      --glass-tint: 255 255 255;
+      --hairline: 197 160 89;
+      --hairline-alpha: 0.22;
+      --shimmer-alpha: 0.24;
+      --shimmer-hi: 255 255 255 / 0.7;
+      --shadow-card: 0 10px 30px -5px rgba(15, 76, 58, 0.05), 0 1px 3px rgba(0, 0, 0, 0.02);
+      --shadow-card-hover: 0 20px 44px -12px rgba(15, 76, 58, 0.12), 0 2px 6px rgba(0, 0, 0, 0.03), 0 0 0 1px rgba(197, 160, 89, 0.28);
+      --shadow-pop: 0 30px 64px -22px rgba(15, 76, 58, 0.18), 0 2px 8px rgba(0, 0, 0, 0.03);
+      --shadow-lift: var(--shadow-card-hover);
+      --shadow-hover-lift: var(--shadow-card-hover);
+      /* Đá ấm thay cho slate lạnh: 50–300 nền / viền kem, 500–900 chữ than chì */
+      --slate-50: 246 243 237;
+      --slate-100: 240 236 228;
+      --slate-200: 230 224 213;
+      --slate-300: 212 204 189;
+      --slate-400: 138 143 152;
+      --slate-500: 95 102 114;
+      --slate-600: 75 85 99;
+      --slate-700: 55 65 81;
+      --slate-800: 31 41 55;
+      --slate-900: 17 24 39;
+      --slate-950: 8 12 20;
+      /* Hồng cánh sen nhạt cho ưu đãi / mã giảm giá */
+      --rose-50: 253 242 244;
+      --rose-100: 252 228 233;
+      --rose-300: 240 139 155;
+    }
+    :root[data-theme='ivory'] body {
+      /* Ánh ngọc bích rất nhẹ góc trên + champagne góc dưới trên nền ngà: ấm, có chiều sâu, không chói */
+      background-image:
+        radial-gradient(1100px 560px at 8% -12%, rgb(var(--teal-100) / 0.55), transparent 62%),
+        radial-gradient(900px 520px at 100% 108%, rgb(var(--champagne) / 0.10), transparent 60%);
+      background-attachment: fixed;
+    }
   }
   /* scrollbar-gutter: chừa sẵn chỗ thanh cuộn — trang ngắn → dài (wizard tải xong) không còn đẩy ngang toàn bộ nội dung (CLS) */
   html { -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; scrollbar-gutter: stable; }
@@ -718,7 +781,7 @@
   -webkit-backdrop-filter: blur(28px) saturate(190%);
   backdrop-filter: blur(28px) saturate(190%);
   border: 1px solid rgb(var(--hairline) / var(--hairline-alpha));
-  box-shadow: inset 0 0 0 1px rgb(var(--gold) / var(--shimmer-alpha)), var(--shadow-pop);
+  box-shadow: inset 0 0 0 1px rgb(var(--champagne) / var(--shimmer-alpha)), var(--shadow-pop);
 }
 .glass-soft {
   background-color: rgb(var(--glass-tint) / 0.5);
@@ -741,19 +804,28 @@
 }
 /* Thanh nổi đè lên nội dung chữ (dock tóm tắt, thanh lệnh): nền đậm hơn để chữ phía sau không lẫn vào */
 .glass-strong { background-color: rgb(var(--glass-tint) / 0.86); }
+/* Lotus Ivory: kính mờ sữa — trắng 90 %, mờ 20px (dock giữ chỗ, thanh tóm tắt) */
+@media screen {
+  /* Thanh đầu trang / nút kính nhẹ: nền ngà đục hơn để chữ cuộn phía sau không lộ qua trên nền sáng */
+  :root[data-theme='ivory'] .glass-soft { background-color: rgb(var(--canvas) / 0.82); }
+  :root[data-theme='ivory'] .glass-strong {
+    background-color: rgb(255 255 255 / 0.9);
+    -webkit-backdrop-filter: blur(20px) saturate(160%); backdrop-filter: blur(20px) saturate(160%);
+  }
+}
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .glass, .glass-soft { background-color: rgb(var(--glass-tint) / 0.96); }
 }
 /* Viền tóc kép không kèm nền (thẻ dịch vụ, ô khung giờ) */
 .hairline {
   border: 1px solid rgb(var(--hairline) / var(--hairline-alpha));
-  box-shadow: inset 0 0 0 1px rgb(var(--gold) / calc(var(--shimmer-alpha) * 0.5));
+  box-shadow: inset 0 0 0 1px rgb(var(--champagne) / calc(var(--shimmer-alpha) * 0.5));
 }
 /* Ánh sáng champagne bám theo con trỏ (usePointerGlow ghi --mx / --my). Không có chuột: đứng yên ở góc trên phải. */
 .ambient { position: relative; isolation: isolate; }
 .ambient::before {
   content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; border-radius: inherit;
-  background: radial-gradient(560px circle at var(--mx, 78%) var(--my, 18%), rgb(var(--gold) / 0.16), transparent 62%);
+  background: radial-gradient(560px circle at var(--mx, 78%) var(--my, 18%), rgb(var(--champagne) / 0.16), transparent 62%);
 }
 /* Hạt phim 3 % (SVG feTurbulence nội tuyến, 0 request mạng) — bề mặt tối có "chất liệu" thay vì phẳng kỹ thuật số */
 .grain::after {
@@ -763,7 +835,7 @@
 /* Nhãn chữ in hoa giãn rộng (eyebrow) kiểu tạp chí */
 .eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 0.28em; text-transform: uppercase; color: rgb(var(--gold)); }
 /* Đường kẻ vàng mảnh mờ dần hai đầu */
-.gold-rule { height: 1px; background: linear-gradient(90deg, transparent, rgb(var(--gold) / 0.55), transparent); }
+.gold-rule { height: 1px; background: linear-gradient(90deg, transparent, rgb(var(--champagne) / 0.55), transparent); }
 /* Chữ số cùng bề rộng cho giá / giờ / bộ đếm (không nhảy khi đổi số) */
 .tnum { font-variant-numeric: tabular-nums; font-feature-settings: 'tnum' 1, 'cv02' 1, 'cv03' 1, 'cv04' 1, 'cv11' 1; }
 

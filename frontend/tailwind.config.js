@@ -1,10 +1,11 @@
 /** @type {import('tailwindcss').Config} */
 
 /**
- * RFC-2026-SPA-V3 · Design tokens. Mọi màu là biến CSS dạng "R G B" (src/index.css) để Tailwind ghép được độ trong suốt
- * (`bg-teal-800/[0.06]`). Giá trị ở :root = ĐÚNG màu Tailwind mặc định → giao diện sáng không đổi một điểm ảnh;
- * `html[data-theme='noir']` (Lotus Noir) đảo thang màu theo vai trò kiểu Radix: 50–100 nền nổi, 200–300 viền,
- * 400–600 chữ phụ, 700–900 chữ chính / nền nút đặc; "teal" (màu hành động) trở thành Champagne Gold.
+ * Design tokens. Mọi màu là biến CSS dạng "R G B" (src/index.css) để Tailwind ghép được độ trong suốt
+ * (`bg-teal-800/[0.06]`). :root = màu Tailwind mặc định (khu nhân viên, giao diện sáng);
+ * `html[data-theme='ivory']` (Lotus Ivory, trang khách): thang slate ấm, "teal" (màu hành động) → ngọc bích Sen;
+ * `html[data-theme='noir']` (Lotus Noir, trực đêm) đảo thang màu theo vai trò kiểu Radix: 50–100 nền nổi, 200–300 viền,
+ * 400–600 chữ phụ, 700–900 chữ chính / nền nút đặc; "teal" trở thành Champagne Gold.
  */
 const v = (name) => `rgb(var(--${name}) / <alpha-value>)`;
 const STEPS = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950];
@@ -37,6 +38,8 @@ export default {
         fg: { DEFAULT: v('fg'), muted: v('fg-muted') },
         line: v('line'),
         gold: { DEFAULT: v('gold'), soft: v('gold-soft'), deep: v('gold-deep') },
+        // Vàng trang trí (viền, vòng, thanh) — Ivory: champagne #C5A059; chữ vàng dùng `gold` (đậm hơn, đạt AA)
+        champagne: v('champagne'),
         bloom: v('bloom'),
         jade: v('jade'),
         lotus: v('lotus'),
@@ -57,7 +60,7 @@ export default {
         card: 'var(--shadow-card)',
         'card-hover': 'var(--shadow-card-hover)',
         pop: 'var(--shadow-pop)',
-        glow: '0 0 0 1px rgb(var(--gold) / 0.35), 0 12px 40px -12px rgb(var(--gold) / 0.45)',
+        glow: '0 0 0 1px rgb(var(--champagne) / 0.35), 0 12px 40px -12px rgb(var(--champagne) / 0.45)',
       },
       transitionTimingFunction: {
         // Ease-out mạnh (emil-design-eng): phản hồi tức thì, dừng mềm, không nảy quá đà

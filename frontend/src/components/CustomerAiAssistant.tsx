@@ -139,7 +139,7 @@ export function CustomerAiAssistant({ onBook, liftPx = 0 }: {
                  className="glass animate-pop-in fixed inset-x-3 z-50 flex flex-col overflow-hidden rounded-[26px] sm:inset-x-auto sm:right-6 sm:!bottom-6 sm:w-[410px]">
           <header className="relative flex items-center gap-3 border-b border-slate-200/60 px-4 py-3.5">
             <div aria-hidden className="gold-rule absolute inset-x-8 bottom-0" />
-            <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-gold ring-1 ring-gold/35">
+            <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-teal-50 text-teal-700 ring-1 ring-teal-700/20">
               <LotusMark className="h-6 w-6" />
               <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-jade ring-2 ring-canvas" aria-hidden />
             </span>
