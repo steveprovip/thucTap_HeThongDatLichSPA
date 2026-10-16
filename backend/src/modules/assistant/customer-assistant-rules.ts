@@ -75,17 +75,37 @@ const TYPOS: [RegExp, string][] = [
   [/\bthu (dan|zan|giang)\b/g, 'thu gian'], [/\btia (lai|toc|ngon|bot|gon)\b/g, 'cat toc'], [/\bntn\b/g, 'nhu the nao'], [/\b(z|zay|dzay)\s*([?!.]*)$/g, 'vay$2'], [/\bsdt\b/g, 'so dien thoai'],
 ];
 
+/**
+ * Hư từ "đã" (đã đặt) và "dạ" (dạ vâng) bỏ dấu đều thành "da" — trùng "da" (làn da). Thử thật 16/10: "em da dat lich roi"
+ * được gợi ý Massage mặt / Chăm sóc da; "dạ em muốn làm móng" lọt "Chăm sóc da" vào danh sách khớp. Câu CÓ DẤU: bỏ đúng
+ * hai từ này trước khi bỏ dấu. Câu KHÔNG DẤU: chỉ bỏ "da" khi từ đứng sau cho thấy là hư từ ("da dat", "da cho em hoi")
+ * — "da em bi kho", "da tay", "da den", "da nhan" vẫn là làn da.
+ */
+const ACCENTED_PARTICLE = /(?<![\p{L}\p{N}])(?:đã|dạ)(?![\p{L}\p{N}])/giu;
+const PAST_PARTICLE = new RegExp('\\bda (?=(?:dat|book|huy|doi (?:lich|gio|ngay|hen|tho)|xong|thanh toan|chuyen khoan|tung|goi dien|hen|'
+  + 'chon|dang ky|coc|nhuom|uon|duoi|cat|lam (?:nail|mong|toc)|hoi|noi|bao|gui|co lich|qua tiem|den tiem|toi tiem)\\b)', 'g');
+const POLITE_PARTICLE = /^da (?=(?:vang|cho|xin|cam on|ok|oke|roi|vay|duoc|biet|hieu|(?:em|e|toi|minh|anh|chi|tui) (?:muon|hoi|can|dat|xin|cho|book|dang ky|lay|tu van))\b)/;
+
+/** Bỏ hư từ "đã" / "dạ" (xem ACCENTED_PARTICLE). Nhận câu có dấu hoặc đã bỏ dấu; chạy lại nhiều lần vẫn cho cùng kết quả. */
+export function stripParticles(message: string): string {
+  // "đã đặt lịch" = khách ĐÃ CÓ lịch (hỏi tra cứu / đổi / huỷ), không phải muốn đặt mới → giữ nghĩa bằng cụm "co lich hen"
+  const booked = message.replace(/(?<![\p{L}\p{N}])đã\s+(?:đặt|book)\s+(?:lịch|hẹn)(?![\p{L}\p{N}])/giu, ' co lich hen ');
+  // Không dấu thì "da dat lich" có thể là "dạ, đặt lịch giúp em": chỉ hiểu là "đã có lịch" khi câu có "rồi" hoặc dừng ở đó
+  const folded = fold(booked.replace(ACCENTED_PARTICLE, ' ')).replace(/\bda (?:dat|book) (?:lich|hen)\b(?=.*\broi\b| *[.!?]* *$)/g, 'co lich hen');
+  return folded.replace(POLITE_PARTICLE, '').replace(PAST_PARTICLE, '').replace(/\s+/g, ' ').trim();
+}
+
 /** Câu khách → dạng bỏ dấu đã sửa lỗi gõ + áp cụm đã học. Câu đã học nguyên văn → thay bằng câu viết lại. */
 export function correctMessage(message: string, learned: LearnedPhrase[] = []): string {
   const key = fold(message).replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
   const whole = learned.find((x) => x.kind === 'question' && x.phrase === key);
   const raw = whole ? whole.rewrite : message.replace(/\bmún\b/gi, 'muốn').replace(/\bhok\b/gi, 'không');
-  let m = fold(raw);
+  let m = stripParticles(raw);
   for (const a of learned) {
     if (a.kind !== 'alias' || !a.phrase.trim()) continue;
     m = m.replace(new RegExp(`\\b${a.phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g'), a.rewrite);
   }
-  return TYPOS.reduce((acc, [re, to]) => acc.replace(re, to), m);
+  return stripParticles(TYPOS.reduce((acc, [re, to]) => acc.replace(re, to), m));
 }
 
 /**
@@ -176,6 +196,8 @@ const NEEDS: { label: string; ask: RegExp; words: string[]; cat?: RegExp }[] = [
 /** Triệu chứng cụ thể → dịch vụ chuyên trị (trọng số cao hơn nhu cầu chung "tóc" / "da"). */
 const SYMPTOMS: { ask: RegExp; words: string[] }[] = [
   { ask: /\b(kho xo|xo roi|hu ton|che ngon|gay rung|toc yeu|toc kho|phuc hoi|nhuom nhieu|tay nhieu|toc xo|xo qua|bi xo|mem muot|suon muot|bong muot|muot ma|xo cung)\b/, words: ['phuc hoi', 'hap', 'u', 'duong'] },
+  // "tóc em uốn nhiều lần bị khô" — triệu chứng đứng cách chữ "tóc" vài từ (thử thật 16/10 ra Cắt tóc / Uốn thay vì phục hồi)
+  { ask: /\b(uon nhieu|duoi nhieu|toc(?: \w+){1,6} (?:bi )?(?:kho|xo|che ngon|hu ton|gay rung|gay|rung nhieu))\b/, words: ['phuc hoi', 'hap', 'u', 'duong'] },
   // "chăm sóc tóc" (nút nhanh "Tóc") = phục hồi / hấp / gội dưỡng, không phải mọi dịch vụ có chữ "chăm sóc"
   { ask: /\b(cham soc toc|duong toc)\b/, words: ['phuc hoi', 'hap', 'duong'] },
   { ask: /\b(mun|tham mun|da dau|lo chan long)\b/, words: ['mun', 'tri mun', 'lam sach'] }, // không dùng "tri" trơn: khớp nhầm "trị gàu"
@@ -281,7 +303,7 @@ export function matchServices(message: string, catalog: CatalogItem[], limit = 4
 }
 
 /** Bỏ dấu + từ đồng nghĩa khách hay dùng → chữ có trong tên dịch vụ ("bé 5 tuổi" → "trẻ em", "haircut" → "cắt tóc"). */
-export const normalize = (message: string): string => SYNONYMS.reduce((acc, [re, to]) => acc.replace(re, to), fold(message));
+export const normalize = (message: string): string => SYNONYMS.reduce((acc, [re, to]) => acc.replace(re, to), stripParticles(message));
 
 /** Cách gọi của khách → chữ trong tên dịch vụ. */
 const SYNONYMS: [RegExp, string][] = [
@@ -514,7 +536,8 @@ export function detectCustomerIntent(message: string, catalog: CatalogItem[], op
   // Thợ: "có thợ nữ không", "thợ nào cắt đẹp", "muốn chọn thợ quen"
   if (/\b(tho|ky thuat vien|stylist)\b/.test(m) && !/\b(thieu tho)\b/.test(m)) return { intent: 'stylists', matches: [] };
   // So sánh / phân vân giữa 2 dịch vụ nêu tên: "keratin với phục hồi liên kết khác gì", "nên làm keratin hay hấp dầu"
-  if (named.parts >= 2 && /\b(hay|hoac|khac|so voi|nen|tot hon|chon)\b/.test(m) && !PRICE_RE.test(m) && !DURATION_RE.test(m)) {
+  // ("làm nail ở tiệm KHÁC, giờ muốn sơn gel" không phải so sánh hai dịch vụ)
+  if (named.parts >= 2 && /\b(hay|hoac|(?<!(?:tiem|cho|noi|ben|salon|spa|nguoi|lan) )khac|so voi|nen|tot hon|chon)\b/.test(m) && !PRICE_RE.test(m) && !DURATION_RE.test(m)) {
     return { intent: 'explain', matches: own, scope };
   }
   // 2. Chi tiết / thời lượng của dịch vụ đang nói tới ("trọn gói gồm những gì" không có ngữ cảnh → liệt kê nhóm combo)
@@ -555,6 +578,8 @@ export function detectCustomerIntent(message: string, catalog: CatalogItem[], op
   }
   if (HOURS_RE.test(m) || (when.explicitDate && /\b(co lam|mo|nghi|lam viec)\b/.test(m))) return { intent: 'hours', matches: [], when };
   if (CONTACT_RE.test(m)) return { intent: 'contact', matches: [] };
+  // "em đã đặt lịch rồi" (stripParticles → "co lich hen"): khách đã có lịch → hướng dẫn tra cứu / đổi / huỷ, không gợi ý dịch vụ
+  if (/\bco lich hen\b/.test(m) && !own.length) return { intent: 'cancel_policy', matches: [] };
   const ranked = matchServices(message, catalog, 4, false, own.some((x) => isSpecific(m, x)) ? 0.8 : 0.6);
   const matches = named.parts >= 2 ? own : [...own.filter((x) => isSpecific(m, x)), ...ranked].filter((x, i, a) => a.findIndex((y) => y.id === x.id) === i).slice(0, 3);
   if (BOOK_RE.test(m)) return { intent: 'book', matches: matches.length ? matches : focus };
@@ -690,6 +715,42 @@ export function availabilityAnswer(service: CatalogItem, when: WhenQuery, data: 
   const show = (list: string[]) => (list.length > 8 ? `${list.slice(0, 8).join(', ')} … (+${list.length - 8})` : list.join(', '));
   return `${head} ${day}${partNote} còn ${slots.length} khung giờ trống:\n${groups.map(([label, list]) => `• ${label.charAt(0).toUpperCase()}${label.slice(1)}: ${show(list)}`).join('\n')}\n`
     + 'Bấm "Đặt" rồi chọn giờ — khung giờ được giữ cho bạn trong lúc điền thông tin.';
+}
+
+/** Một khung giờ trống ĐÃ TRA THẬT (AvailabilityService) — dùng cho nút "Đặt" mở phiếu đúng ngày + giờ. */
+export interface VerifiedSlot { date: string; time: string; stylistIds: string[] }
+
+/**
+ * Khung giờ nên đề xuất trong MỘT ngày đã tra: gần giờ khách hỏi nhất (bằng nhau thì lấy giờ sớm hơn), không có giờ thì
+ * khung sớm nhất trong buổi khách hỏi, buổi đó kín thì khung sớm nhất trong ngày. Không còn khung nào → null.
+ */
+export function pickNearestSlot(data: AvailabilityData, when: Pick<WhenQuery, 'part' | 'time'>): { time: string; stylistIds: string[] } | null {
+  const open = data.slots.filter((s) => s.stylistIds.length > 0);
+  if (data.salonClosed || !open.length) return null;
+  if (when.time) {
+    const target = hhmm(when.time);
+    return [...open].sort((a, b) => Math.abs(hhmm(a.time) - target) - Math.abs(hhmm(b.time) - target) || hhmm(a.time) - hhmm(b.time))[0];
+  }
+  if (when.part) {
+    const [from, to] = PART_RANGE[when.part];
+    const inPart = open.find((s) => hhmm(s.time) >= from && hhmm(s.time) < to);
+    if (inPart) return inPart;
+  }
+  return open[0];
+}
+
+/**
+ * Giờ điền sẵn cho nút "Đặt" khi khách hỏi một giờ CỤ THỂ trong ngày đã tra: còn trống → đúng giờ đó; kín → giờ trống gần
+ * nhất. Khách chỉ hỏi chung ("chiều mai còn giờ nào") → null (khách tự chọn trong danh sách vừa liệt kê).
+ */
+export function bookTimeFor(data: AvailabilityData, when: Pick<WhenQuery, 'part' | 'time'>): string | null {
+  return when.time ? pickNearestSlot(data, when)?.time ?? null : null;
+}
+
+/** Câu báo giờ trống gần nhất (đã tra lịch thật) nối sau câu "ngày này đã kín" — không bao giờ nêu giờ chưa tra. */
+export function nearestSlotNote(slot: VerifiedSlot, today: string, serviceName?: string): string {
+  return `\nGiờ trống gần nhất đã kiểm tra trên lịch thật: ${slot.time} ${dayText(slot.date, today)}`
+    + `${serviceName ? ` cho ${serviceName}` : ''} (${slot.stylistIds.length} thợ rảnh). Bấm "Đặt" để mở phiếu đúng ngày giờ này.`;
 }
 
 /** Giờ mở cửa của ngày khách hỏi ("chủ nhật có làm không") — null nếu không biết ngày đó. */
