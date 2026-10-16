@@ -138,9 +138,9 @@ SPRINTS = [
 ]
 
 # ---------------------------------------------------------------- Snapshot kiểm định 06/10/2026, v1.4.0 (develop)
-QUALITY_DATE = "06/10/2026"
-UNIT_TESTS = 168
-E2E_TESTS = 95
+QUALITY_DATE = "16/10/2026"
+UNIT_TESTS = 385  # 331 backend + 54 frontend
+E2E_TESTS = 155
 E2E_SUITES = 13
 DEMO_TESTS = 4
 LAUNCHER_TESTS = 4
@@ -156,7 +156,7 @@ STATS = [
     ("Phân quyền nhân sự", "4 vai trò; khách đặt lịch công khai"),
     ("Hạ tầng", "Cloud 24/7 (Cloudflare Pages + Render + Supabase) · SSE · Launcher (BẮT ĐẦU / CẬP NHẬT)"),
     ("Bảng PostgreSQL / Entity TypeORM", "32 / 32"),
-    ("Kiểm thử đơn vị / E2E / Demo + Launcher", f"{UNIT_TESTS} / {E2E_TESTS} ({E2E_SUITES} bộ) / {DEMO_TESTS} + {LAUNCHER_TESTS}"),
+    ("Kiểm thử đơn vị / E2E / Demo + Launcher", f"{UNIT_TESTS} (331 BE + 54 FE) / {E2E_TESTS} ({E2E_SUITES} bộ) / {DEMO_TESTS} + {LAUNCHER_TESTS}"),
 ]
 
 DEMO_ACCOUNTS = [
@@ -184,6 +184,7 @@ RELEASES = [
     ("12/10/2026", "v2.1.0 – v2.1.1", "AI local 1 chạm, vòng tự cải tiến có duyệt, tự chuyển CPU/GPU"),
     ("13/10/2026", "v2.2.0", "Kéo thả kiểu Jira cho lịch hẹn và bảng ca làm, QR chia sẻ link 1 chạm"),
     ("15/10/2026", "v2.2.1", "Triển khai đám mây 24/7 (Cloudflare Pages https://huongsen-salon.pages.dev, Render API https://salon-spa-api-93d7.onrender.com, Supabase DB, Worker giữ thức)"),
+    ("16/10/2026", "v3.0.0", "Giao diện Lotus Ivory & Champagne Luxe $10.000, Slot Radar, Command Palette Ctrl+K, SWR cache chống race condition, rate-limit isolation, 385 Unit tests (331 BE + 54 FE), 155 E2E tests, Cloud 24/7 đồng bộ"),
 ]
 
 # ---------------------------------------------------------------- Góp ý Mentor Sprint 2 (06/10/2026) -> v1.4.0
