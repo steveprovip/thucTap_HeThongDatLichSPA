@@ -119,7 +119,12 @@ async function stepRender(cfg) {
   }
 }
 
-function ensureWranglerLogin() {
+function ensureWranglerLogin(cfg = {}) {
+  if (cfg.CLOUDFLARE_API_TOKEN || process.env.CLOUDFLARE_API_TOKEN) {
+    if (cfg.CLOUDFLARE_API_TOKEN) process.env.CLOUDFLARE_API_TOKEN = cfg.CLOUDFLARE_API_TOKEN;
+    if (cfg.CLOUDFLARE_ACCOUNT_ID) process.env.CLOUDFLARE_ACCOUNT_ID = cfg.CLOUDFLARE_ACCOUNT_ID;
+    return;
+  }
   const who = npx(['whoami'], { capture: true });
   if (DRY || /You are logged in|associated with the email/i.test(`${who.stdout}${who.stderr}`)) return;
   log('  Chưa đăng nhập Cloudflare → mở trình duyệt để BẠN đăng nhập (chỉ lần đầu trên máy này) ...');
@@ -132,7 +137,7 @@ async function stepPages(cfg) {
   const build = run(IS_WIN ? 'npm.cmd' : 'npm', ['run', 'build', '--prefix', 'frontend'],
     { env: { VITE_API_BASE_URL: `${cfg.API_URL}/api`, VITE_DEMO_MODE: 'false' } });
   if (build.status !== 0) throw new Error('Build giao diện lỗi.');
-  ensureWranglerLogin();
+  ensureWranglerLogin(cfg);
   npx(['pages', 'project', 'create', cfg.PAGES_PROJECT, '--production-branch', 'main'], { capture: true }); // đã có thì bỏ qua
   const dep = npx(['pages', 'deploy', join('frontend', 'dist'), '--project-name', cfg.PAGES_PROJECT, '--branch', 'main', '--commit-dirty=true']);
   if (dep.status !== 0) throw new Error('Đẩy giao diện lên Cloudflare Pages lỗi.');
@@ -140,7 +145,7 @@ async function stepPages(cfg) {
 
 async function stepKeepalive(cfg) {
   log('\n[4] Worker giữ API thức (gọi /health/live mỗi 10 phút)');
-  ensureWranglerLogin();
+  ensureWranglerLogin(cfg);
   const r = npx(['deploy', '--config', join('deploy', 'cloudflare', 'keepalive', 'wrangler.toml'), '--var', `API_HEALTH_URL:${cfg.API_URL}/health/live`]);
   if (r.status !== 0) throw new Error('Triển khai Worker giữ thức lỗi.');
 }
