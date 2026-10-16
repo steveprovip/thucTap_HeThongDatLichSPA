@@ -3,6 +3,17 @@
 Định dạng theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), phiên bản theo [Semantic Versioning](https://semver.org/lang/vi/).
 Launcher (biểu tượng Hương Sen Salon / `HoYoSalon.bat`) đọc tệp này cho mục **Có gì mới** và **Nhật ký cập nhật**.
 
+## [3.1.0] - 2026-10-16
+
+### Giao diện sáng Lotus Ivory & Champagne Luxe $10.000, Triển khai Cloudflare tự động & Đồng bộ toàn diện
+- **Giao diện sáng Lotus Ivory & Champagne Luxe ($10.000):** Toàn bộ luồng khách công khai chuyển sang tone sáng ngà ngọc (`#FAF7F2` / `#F6F3ED`), thẻ trắng ngọc trai, viền vàng champagne (`#C5A059`), nút bấm ngọc bích Sen (`#135D47`), đạt chuẩn tương phản WCAG AA/AAA.
+- **Thước đo khung giờ (Slot Radar):** Trực quan hóa tỷ lệ lấp đầy khung giờ với 4 màu: Xanh (còn chỗ), Hổ phách (sắp kín), Đỏ (đã kín), Xám (đã qua), luôn kèm nhãn chữ trợ năng.
+- **Dock nổi giữ chỗ & Trợ lý AI:** Kính sữa 90% blur 20px, vòng đếm ngược 10 phút, biểu tượng sen ngọc bích nổi bật.
+- **Tìm nhanh Command Palette (Ctrl + K):** Tra cứu tức thì lịch hẹn, khách hàng, chuyên viên và điều hướng nhanh mọi trang quản trị.
+- **Đồng bộ SWR Cache & Bảo mật phiên:** Xóa sạch bộ đệm khi đăng xuất/đăng nhập, chống tranh chấp dữ liệu khi tải lại danh sách.
+- **Triển khai tự động Cloudflare Pages 24/7:** Hỗ trợ `CLOUDFLARE_API_TOKEN` và `CLOUDFLARE_ACCOUNT_ID` triển khai headless không cần mở trình duyệt; cấu hình `public/_headers` cache 1 năm cho assets.
+- **Đồng bộ tài liệu kiểm định:** Báo cáo Word và Slide PowerPoint cập nhật đầy đủ 385 Unit tests (331 BE + 54 FE), 155 E2E tests trong 13 bộ PostgreSQL.
+
 ## [2.2.1] - 2026-10-13
 
 ### Triển khai đám mây miễn phí 24/7 & Khắc phục hoàn toàn kiểm thử chập chờn
