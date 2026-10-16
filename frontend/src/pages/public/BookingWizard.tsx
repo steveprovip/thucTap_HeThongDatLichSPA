@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, Check, Clock, Wallet } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, Clock } from 'lucide-react';
 import { getErrorField, getErrorMessage, publicApi } from '@/api';
 import type { BookingResult, Quote } from '@/types';
-import { BackButton, Button, CustomerAiAssistant } from '@/components';
+import { AnimatedNumber, BackButton, Button, CustomerAiAssistant } from '@/components';
 import { formatDuration, formatVnd, todayISO, VN_PHONE_MESSAGE, VN_PHONE_REGEX } from '@/utils/format';
 import { emailError } from '@/utils/validators';
 import { useSalonInfo } from '@/utils/salonInfo';
@@ -17,13 +17,15 @@ import { BookingSuccess } from './steps/BookingSuccess';
 import { SplitBookingWarning } from './steps/SplitBookingWarning';
 import { HoldBanner } from './steps/HoldBanner';
 import { useSlotHold } from './useSlotHold';
+import { playCue } from '@/utils/sound';
 
 const STEPS = [
-  { n: 1, label: 'Dịch vụ' },
-  { n: 2, label: 'Khung giờ' },
-  { n: 3, label: 'Chọn thợ' },
-  { n: 4, label: 'Xác nhận' },
+  { n: 1, label: 'Dịch vụ', title: 'Bạn muốn được chăm sóc', accent: 'điều gì?' },
+  { n: 2, label: 'Khung giờ', title: 'Chọn thời điểm', accent: 'thư thái nhất' },
+  { n: 3, label: 'Chọn thợ', title: 'Chuyên viên', accent: 'đồng hành cùng bạn' },
+  { n: 4, label: 'Xác nhận', title: 'Một bước nữa là', accent: 'xong' },
 ];
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 /** Luồng đặt lịch 4 bước, tối ưu cho màn hình rộng 360px và dùng một tay. */
 export function BookingWizard() {
@@ -53,27 +55,33 @@ export function BookingWizard() {
   }, [searchParams, booking, selected, toast]);
 
   // TASK v3 · NV1: trợ lý tư vấn chọn dịch vụ → điền giỏ theo giá / thời lượng HIỆN HÀNH rồi sang bước chọn giờ
-  const { replaceServices, setDate } = booking;
-  /** `date` (yyyy-MM-dd): ngày trợ lý vừa tra giờ trống → bước chọn giờ mở sẵn đúng ngày đó. */
-  const applyServices = useCallback(async (ids: string[], date?: string | null) => {
+  const { replaceServices, setDate, setTime } = booking;
+  /**
+   * `date` (yyyy-MM-dd): ngày trợ lý vừa tra giờ trống → bước chọn giờ mở sẵn đúng ngày đó.
+   * `time` (HH:mm): giờ trợ lý ĐÃ TRA THẬT còn trống → chọn sẵn; bước 2 tự bỏ chọn nếu giờ đó vừa bị đặt mất.
+   */
+  const applyServices = useCallback(async (ids: string[], date?: string | null, time?: string | null) => {
     try {
       const all = (await publicApi.catalog()).flatMap((g) => g.services);
       const list = ids.map((id) => all.find((s) => s.id === id)).filter((s): s is NonNullable<typeof s> => !!s);
       if (!list.length) { toast.warning('Dịch vụ vừa chọn hiện không còn nhận đặt online'); return; }
       replaceServices(list);
-      if (date && /^\d{4}-\d{2}-\d{2}$/.test(date) && date >= todayISO()) setDate(date);
+      const validDate = !!date && /^\d{4}-\d{2}-\d{2}$/.test(date) && date >= todayISO();
+      if (validDate) setDate(date);
+      if (validDate && time && TIME_RE.test(time)) setTime(time);
       setStep(2);
-      toast.success(`Đã điền ${list.length} dịch vụ — chọn ngày giờ phù hợp nhé`);
+      toast.success(validDate && time ? `Đã điền ${list.length} dịch vụ và chọn sẵn giờ ${time} — kiểm tra rồi bấm Tiếp tục nhé`
+        : `Đã điền ${list.length} dịch vụ — chọn ngày giờ phù hợp nhé`);
     } catch (e) {
       toast.error(getErrorMessage(e));
     }
-  }, [replaceServices, setDate, setStep, toast]);
+  }, [replaceServices, setDate, setTime, setStep, toast]);
   const servicesParam = searchParams.get('services');
   const appliedParam = useRef<string | null>(null);
   useEffect(() => {
     if (!servicesParam || appliedParam.current === servicesParam) return;
     appliedParam.current = servicesParam;
-    void applyServices(servicesParam.split(',').filter(Boolean).slice(0, 5), searchParams.get('date'));
+    void applyServices(servicesParam.split(',').filter(Boolean).slice(0, 5), searchParams.get('date'), searchParams.get('time'));
   }, [servicesParam, applyServices, searchParams]);
 
   // QA-01: hỏi máy chủ tổng thời lượng so với ca dài nhất trong tuần ngay khi giỏ thay đổi
@@ -139,6 +147,7 @@ export function BookingWizard() {
         holdToken: slotHold.token,
       });
       slotHold.forget();
+      playCue('confirm');
       setResult(res);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (e) {
@@ -167,50 +176,52 @@ export function BookingWizard() {
     );
   }
 
+  const current = STEPS[step - 1];
   return (
-    <div className={`space-y-4 ${quote?.exceedsLongestShift ? 'pb-60' : 'pb-28'} sm:pb-4`}>
+    <div className={`space-y-6 ${quote?.exceedsLongestShift ? 'pb-64' : 'pb-36'} sm:pb-6`}>
       {/* Lỗi 8: nút quay lại rõ ràng ở đầu wizard — lùi một bước, ở bước 1 thì về trang trước */}
-      <BackButton
-        label={step > 1 ? `Quay lại bước ${step - 1}` : 'Quay lại'}
-        onClick={step > 1 ? () => setStep(step - 1) : undefined}
-        to="/"
-      />
-      {/* Thanh bước */}
-      <div className="space-y-2">
-      <ol className="grid grid-cols-4 gap-1 sm:gap-2" aria-label="Các bước đặt lịch">
-        {STEPS.map((s) => {
-          const done = step > s.n;
-          const active = step === s.n;
-          return (
-            <li key={s.n} className="min-w-0">
-              <button
-                type="button"
-                onClick={() => booking.canGoToStep(s.n) && setStep(s.n)}
-                disabled={!booking.canGoToStep(s.n)}
-                className={`flex min-h-[48px] w-full min-w-0 flex-col items-center justify-center gap-1 rounded-xl border px-1 py-2 text-[11px] font-semibold
-                  transition-[color,background-color,border-color,transform] duration-200 ease-out active:scale-[0.97] sm:flex-row sm:gap-2 sm:px-3 sm:text-xs
-                  ${active ? 'border-teal-800 bg-teal-800 text-white' : done ? 'border-teal-200 bg-white text-teal-800 hover:border-teal-400' : 'border-ivory-line bg-white/70 text-slate-500'}
-                  ${booking.canGoToStep(s.n) ? '' : 'cursor-not-allowed opacity-60'}`}
-                aria-current={active ? 'step' : undefined}
-              >
-                <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] tabular-nums
-                  ${active ? 'bg-amber-100 text-teal-900' : done ? 'bg-teal-700 text-white' : 'bg-slate-100 text-slate-500'}`}>
-                  {done ? <Check size={12} strokeWidth={3} /> : s.n}
-                </span>
-                <span className="w-full truncate text-center sm:text-left">{s.label}</span>
-              </button>
-            </li>
-          );
-        })}
-      </ol>
-      {/* Thanh tiến độ mảnh: chỉ transform scaleX (chạy trên GPU, không reflow) */}
-      <div className="h-[3px] overflow-hidden rounded-full bg-ivory-line" aria-hidden>
-        <div className="h-full origin-left rounded-full bg-teal-700 transition-transform duration-300 ease-out"
-             style={{ transform: `scaleX(${(step - 1) / (STEPS.length - 1)})` }} />
-      </div>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <BackButton
+            label={step > 1 ? `Quay lại bước ${step - 1}` : 'Quay lại'}
+            onClick={step > 1 ? () => setStep(step - 1) : undefined}
+            to="/"
+          />
+          <p className="eyebrow mt-6">Đặt lịch · Bước <span className="tnum">{step}</span>/4</p>
+          <h1 key={step} className="animate-spring-in mt-2 font-display text-[2.1rem] font-medium leading-[1.05] text-slate-900 sm:text-[2.7rem]">
+            {current.title} <em className="italic text-gold">{current.accent}</em>
+          </h1>
+        </div>
       </div>
 
-      <div key={step} className={`rounded-2xl bg-white p-4 ring-1 ring-ivory-line sm:p-6 ${stepMotion}`}>
+      {/* Thanh bước: chấm số + nhãn, đường vàng chạy theo tiến độ (chỉ transform scaleX — GPU, không reflow) */}
+      <div className="relative">
+        <div aria-hidden className="absolute left-[12.5%] right-[12.5%] top-[17px] h-px bg-slate-200">
+          <div className="h-full origin-left bg-gold transition-transform duration-spring ease-spring"
+               style={{ transform: `scaleX(${(step - 1) / (STEPS.length - 1)})` }} />
+        </div>
+        <ol className="relative grid grid-cols-4" aria-label="Các bước đặt lịch">
+          {STEPS.map((s) => {
+            const done = step > s.n;
+            const active = step === s.n;
+            const reachable = booking.canGoToStep(s.n);
+            return (
+              <li key={s.n} className="min-w-0">
+                <button type="button" onClick={() => reachable && setStep(s.n)} disabled={!reachable} aria-current={active ? 'step' : undefined}
+                        className={`group flex w-full flex-col items-center gap-2 text-[11px] font-medium sm:text-xs ${reachable ? '' : 'cursor-not-allowed'}`}>
+                  <span className={`tnum flex h-[34px] w-[34px] items-center justify-center rounded-full border text-[13px] transition-[background-color,border-color,color,transform,box-shadow] duration-spring ease-spring
+                    ${active ? 'scale-110 border-transparent bg-teal-700 text-white shadow-glow' : done ? 'border-gold/60 bg-canvas text-gold group-hover:scale-105' : 'border-slate-200 bg-canvas text-slate-400'}`}>
+                    {done ? <Check size={15} strokeWidth={2.6} className="animate-spring-pop" /> : s.n}
+                  </span>
+                  <span className={`w-full truncate text-center ${active ? 'text-slate-900' : done ? 'text-slate-600' : 'text-slate-400'}`}>{s.label}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+      </div>
+
+      <div key={step} className={`rounded-[24px] border border-slate-200/70 bg-white/40 p-4 shadow-card backdrop-blur-sm sm:p-6 ${stepMotion}`}>
         {step === 1 && <Step1Services />}
         {step === 2 && <Step2Slot />}
         {step === 3 && <Step3Stylist />}
@@ -223,40 +234,39 @@ export function BookingWizard() {
         )}
       </div>
 
-      {/* Thanh tổng kết + điều hướng, dính đáy màn hình trên điện thoại */}
-      <div className="fixed inset-x-0 bottom-[calc(var(--bottom-nav-h)+1px+env(safe-area-inset-bottom))] z-20 border-t border-ivory-line bg-white/95 px-3 py-2.5 shadow-[0_-8px_24px_-12px_rgba(15,23,42,0.12)] backdrop-blur
-                      sm:sticky sm:bottom-4 sm:rounded-2xl sm:border sm:px-5 sm:py-3.5 sm:shadow-card">
-        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2">
-          {/* Cố định ngay trên giỏ dịch vụ và nút "Tiếp tục", ở mọi bước */}
-          <SplitBookingWarning quote={quote} className="w-full" />
-          <div className="flex items-center gap-3 text-xs">
-            <span className="inline-flex items-center gap-1 text-slate-600">
-              <Clock size={14} /> {selected.length} dịch vụ · {formatDuration(totalDuration)}
-            </span>
-            <span className="inline-flex items-center gap-1 text-base font-bold text-slate-900">
-              <Wallet size={15} className="text-teal-700" /> <span key={totalPrice} className="animate-fade-in-scale inline-block">{formatVnd(totalPrice)}</span>
-            </span>
+      {/* "Dynamic Island": thanh tóm tắt kính mờ nổi — điện thoại bám ngay trên dock điều hướng, máy tính là viên thuốc dính đáy */}
+      <div className="fixed inset-x-3 bottom-[calc(var(--bottom-nav-h)+10px+env(safe-area-inset-bottom))] z-20 sm:sticky sm:inset-x-auto sm:bottom-5">
+        <SplitBookingWarning quote={quote} className="mb-2" />
+        <div className="glass glass-strong mx-auto flex max-w-3xl flex-wrap items-center gap-x-4 gap-y-2.5 rounded-[22px] px-3.5 py-3 sm:flex-nowrap sm:rounded-full sm:py-2.5 sm:pl-6 sm:pr-2.5">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <div className="min-w-0 leading-tight">
+              <p className="tnum flex items-center gap-1.5 text-[11px] uppercase tracking-[0.14em] text-slate-500">
+                <Clock size={12} className="text-gold" /> {selected.length} dịch vụ · {formatDuration(totalDuration)}
+                {time && <span className="hidden normal-case tracking-normal text-slate-700 sm:inline">· {time} {date.slice(8, 10)}/{date.slice(5, 7)}</span>}
+              </p>
+              <AnimatedNumber value={totalPrice} format={formatVnd} className="font-display text-[1.65rem] font-semibold leading-none text-slate-900" />
+            </div>
           </div>
           <div className="flex w-full items-center gap-2 sm:w-auto [&>*]:flex-1 sm:[&>*]:flex-none">
             {/* Bước 1 vẫn có đường lui về trang chủ cho khách lỡ bấm nhầm vào */}
-            <Button variant="outline" size="sm" icon={<ArrowLeft size={15} />}
+            <Button variant="ghost" size="sm" className="rounded-full" icon={<ArrowLeft size={15} />}
                     onClick={() => (step > 1 ? setStep(step - 1) : navigate('/'))}>
               {step > 1 ? 'Quay lại' : 'Trang chủ'}
             </Button>
             {step < 4 ? (
-              <Button size="sm" disabled={!canNext} onClick={() => setStep(step + 1)}>
+              <Button size="sm" className="rounded-full px-5" disabled={!canNext} onClick={() => setStep(step + 1)}>
                 Tiếp tục <ArrowRight size={15} />
               </Button>
             ) : (
-              <Button size="sm" loading={submitting} onClick={submit}>
+              <Button size="sm" className="sheen rounded-full px-5 shadow-glow" loading={submitting} onClick={submit}>
                 Chốt lịch hẹn <Check size={15} />
               </Button>
             )}
           </div>
         </div>
       </div>
-      {/* Nâng nút tư vấn lên trên thanh "Tiếp tục" dính đáy trên điện thoại */}
-      <CustomerAiAssistant liftPx={110} onBook={(services, date) => void applyServices(services.map((s) => s.id), date)} />
+      {/* Nâng nút tư vấn lên trên thanh tóm tắt nổi trên điện thoại */}
+      <CustomerAiAssistant liftPx={124} onBook={(services, date, time) => void applyServices(services.map((s) => s.id), date, time)} />
     </div>
   );
 }

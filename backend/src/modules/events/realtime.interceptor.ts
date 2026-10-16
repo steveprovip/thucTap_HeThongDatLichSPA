@@ -2,7 +2,7 @@ import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nes
 import { ConfigService } from '@nestjs/config';
 import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
-import { EventsService } from './events.service';
+import { EventsService, LiveEventKind } from './events.service';
 
 /**
  * Đường dẫn API mà một thao tác GHI thành công lên đó làm thay đổi dữ liệu hiển thị ở màn hình nhân viên.
@@ -12,6 +12,20 @@ export const LIVE_PATH =
   /^\/(appointments|public\/(bookings|cancel)|customers|invoices|vouchers|services|service-categories|stylists|shifts|shift-requests|time-off|holidays|working-hours|users|reviews)(\/|$)/;
 
 const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+/**
+ * Sự kiện phát ra cho một thao tác ghi (đường dẫn đã bỏ tiền tố /api), hoặc null nếu thao tác không đổi dữ liệu dùng chung.
+ * Kênh được chia theo `scope` để mỗi màn hình chỉ tải lại phần dữ liệu của mình (lịch hẹn ≠ ca làm ≠ hoá đơn).
+ */
+export function liveEventFor(method: string, path: string): { scope: string; kind?: LiveEventKind } | null {
+  if (READ_METHODS.has(method.toUpperCase()) || !LIVE_PATH.test(path)) return null;
+  const head = path.split('/').filter(Boolean)[0];
+  if (head !== 'public') return { scope: head };
+  // Khách tự đặt lịch trên website (không gồm gửi lại email xác nhận /public/bookings/email) → chuông báo cho lễ tân
+  return method.toUpperCase() === 'POST' && /^\/public\/bookings\/?$/.test(path)
+    ? { scope: 'appointments', kind: 'booking.created' }
+    : { scope: 'appointments' };
+}
 
 /** Sau mỗi thao tác ghi THÀNH CÔNG (đã xong giao dịch CSDL) thì báo cho mọi thiết bị đang nối luồng trực tiếp. */
 @Injectable()
@@ -32,9 +46,8 @@ export class RealtimeInterceptor implements NestInterceptor {
 
     let path = (req.originalUrl ?? req.url).split('?')[0];
     if (path.startsWith(this.prefix)) path = path.slice(this.prefix.length);
-    if (!LIVE_PATH.test(path)) return next.handle();
-
-    const scope = path.split('/').filter(Boolean)[0] === 'public' ? 'appointments' : path.split('/').filter(Boolean)[0];
-    return next.handle().pipe(tap(() => this.events.publish(scope)));
+    const event = liveEventFor(req.method, path);
+    if (!event) return next.handle();
+    return next.handle().pipe(tap(() => this.events.publish(event.scope, event.kind)));
   }
 }

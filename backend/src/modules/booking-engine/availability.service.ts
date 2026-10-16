@@ -61,6 +61,11 @@ export interface AvailabilityResult {
   suggestedDates: string[];
   /** Cảnh báo nên tách thành hai lần hẹn (S2-04). */
   exceedsLongestShift: boolean;
+  /**
+   * Ngày hôm nay: mốc sớm nhất còn được đặt (phút kể từ 00:00 giờ tiệm, đã cộng thời gian đặt trước tối thiểu) — giao diện
+   * phân biệt buổi "đã qua" với buổi "đã kín". Ngày khác: null.
+   */
+  earliestStartMinutes: number | null;
 }
 
 export interface SmartSlotsResult {
@@ -427,6 +432,9 @@ export class AvailabilityService {
       now: params.now,
     });
     const frame = frames.get(params.date)!;
+    // Hữu hạn chỉ khi `date` là hôm nay (ngày mai trở đi: -∞, ngày đã qua: +∞)
+    const earliestRaw = this.earliestStartMinutes(params.date, params.ignoreLeadTime, params.now);
+    const earliest = Number.isFinite(earliestRaw) ? earliestRaw : null;
 
     const slotMap = new Map<string, string[]>();
     if (!frame.salonClosed) {
@@ -465,6 +473,7 @@ export class AvailabilityService {
       slots,
       suggestedDates,
       exceedsLongestShift: longest > 0 && totalDuration > longest,
+      earliestStartMinutes: earliest,
     };
   }
 

@@ -19,7 +19,9 @@ import {
   CatalogItem, CUSTOMER_SYSTEM_PROMPT, DialogState, customerContextForLlm, CustomerReply, customerRuleReply, SalonFacts,
   DIRECT_INTENTS, availabilityAnswer, isUnaccented, leadSentence, matchServices, sanitizeLlmAnswer, stripBookingNag, ungroundedClaim,
   buildRewriteMessages, faithfulRewrite, groupAvailabilityAnswer, LearnedPhrase, parseRewrite, repeatGuard,
+  AvailabilityData, bookTimeFor, nearestSlotNote, pickNearestSlot, VerifiedSlot,
 } from './customer-assistant-rules';
+import type { WhenQuery } from './customer-intent-parsers';
 import { callLlm, DEFAULT_LOCAL_AI_URL, LlmConfig, LlmMessage, pickModel, probeLocalServer } from './llm-client';
 
 /** Trạng thái trợ lý cho giao diện: đang trả lời bằng mô hình (local / cố định) hay bằng luật. */
@@ -87,6 +89,8 @@ export interface CustomerChatResult extends CustomerReply {
   understoodAs?: string;
   /** Ngày vừa tra giờ trống (yyyy-MM-dd) — nút "Đặt" mở phiếu đặt lịch đúng ngày này. */
   bookDate?: string;
+  /** Giờ (HH:mm) ĐÃ TRA THẬT còn trống — nút "Đặt" mở phiếu chọn sẵn đúng giờ này (không bao giờ là giờ suy đoán). */
+  bookTime?: string;
 }
 
 export interface AssistantChatResult {
@@ -587,7 +591,14 @@ export class AssistantService implements OnApplicationBootstrap {
           service: catalog.find((s) => s.id === id)!,
           data: await this.availability.getAvailability({ date: p.when.date, serviceIds: [id] }),
         })));
-        const g = groupAvailabilityAnswer(p.label, rows.filter((r) => r.service), p.when, today);
+        const known = rows.filter((r) => r.service);
+        const g = groupAvailabilityAnswer(p.label, known, p.when, today);
+        // Cả nhóm kín / tiệm nghỉ: báo đúng dịch vụ + ngày + giờ trống sớm nhất đã tra thật (không chỉ "thử ngày khác")
+        const best = g.open.length ? null : await this.nearestGroupSlot(known, p.when);
+        if (best) {
+          return { ...direct({ ...rule, answer: g.answer + nearestSlotNote(best.slot, today, best.service.name), suggestions: [best.service],
+            quickReplies: [best.service.name] }), bookDate: best.slot.date, bookTime: best.slot.time };
+        }
         return { ...direct({ ...rule, answer: g.answer, suggestions: g.open.slice(0, 3), quickReplies: g.open.slice(0, 3).map((x) => x.name) }), bookDate: p.when.date };
       } catch (e) {
         this.logger.warn(`Không tra được giờ trống theo nhóm cho trợ lý: ${(e as Error).message}`);
@@ -602,17 +613,24 @@ export class AssistantService implements OnApplicationBootstrap {
         const service = catalog.find((s) => s.id === p.serviceId);
         if (service) {
           let free = '';
+          let next: VerifiedSlot | null = null;
           if (p.date && capable.length) {
             const data = await this.availability.getAvailability({ date: p.date, serviceIds: [p.serviceId] });
             const ids = new Set(data.slots.flatMap((x) => x.stylistIds));
             const names = capable.filter((c) => ids.has(c.id)).map((c) => c.fullName);
             const day = toSalon(new Date(`${p.date}T00:00:00+07:00`)).toFormat('dd/MM');
-            free = names.length ? `\nNgày ${day} còn giờ trống với: ${names.join(', ')}.` : `\nNgày ${day} các thợ này đều đã kín lịch.`;
+            if (names.length) free = `\nNgày ${day} còn giờ trống với: ${names.join(', ')}.`;
+            else {
+              // Thợ kín cả ngày: báo đúng giờ trống gần nhất + thợ nào rảnh lúc đó (đã tra thật), không đoán
+              next = await this.nearestVerifiedSlot([p.serviceId], data, { part: null, time: null });
+              const who = next ? capable.filter((c) => next!.stylistIds.includes(c.id)).map((c) => c.fullName) : [];
+              free = `\nNgày ${day} các thợ này đều đã kín lịch.${next ? nearestSlotNote(next, today) : ''}${who.length ? `\nRảnh lúc đó: ${who.join(', ')}.` : ''}`;
+            }
           }
           const answer = capable.length
             ? `${capable.length} thợ làm được ${service.name}: ${capable.map((c) => c.fullName).join(', ')}.${free}\nKhi đặt lịch bạn chọn đích danh thợ hoặc "Thợ bất kỳ".`
             : `Hiện chưa có thợ nào nhận ${service.name}; bạn gọi ${facts.hotline} để tiệm sắp xếp nhé.`;
-          return direct({ ...rule, answer });
+          return next ? { ...direct({ ...rule, answer }), bookDate: next.date, bookTime: next.time } : direct({ ...rule, answer });
         }
       } catch (e) {
         this.logger.warn(`Không tra được thợ cho trợ lý: ${(e as Error).message}`);
@@ -626,7 +644,14 @@ export class AssistantService implements OnApplicationBootstrap {
       const service = catalog.find((s) => s.id === p.serviceId);
       try {
         const data = await this.availability.getAvailability({ date: p.when.date, serviceIds: [p.serviceId] });
-        if (service) return { ...direct({ ...rule, answer: availabilityAnswer(service, p.when, data, today) }), bookDate: p.when.date };
+        if (service) {
+          const answer = availabilityAnswer(service, p.when, data, today);
+          // Ngày kín / tiệm nghỉ → tra THẬT ngày gần nhất còn chỗ và nêu đúng giờ (ưu tiên buổi / giờ khách hỏi)
+          const next = pickNearestSlot(data, { part: null, time: null }) ? null : await this.nearestVerifiedSlot([p.serviceId], data, p.when);
+          if (next) return { ...direct({ ...rule, answer: answer + nearestSlotNote(next, today) }), bookDate: next.date, bookTime: next.time };
+          const bookTime = bookTimeFor(data, p.when);
+          return { ...direct({ ...rule, answer }), bookDate: p.when.date, ...(bookTime ? { bookTime } : {}) };
+        }
       } catch (e) {
         this.logger.warn(`Không tra được giờ trống cho trợ lý: ${(e as Error).message}`);
       }
@@ -693,6 +718,48 @@ export class AssistantService implements OnApplicationBootstrap {
       return direct();
     }
     return { ...rule, ...res, source: 'llm', model: cfg.model };
+  }
+
+  /**
+   * Ngày khách hỏi kín / tiệm nghỉ → tra THẬT các ngày gần nhất còn chỗ (`suggestedDates` của AvailabilityService, cùng luật
+   * ca làm, ngày nghỉ, giữ chỗ, đặt trước 60 phút) để nêu đúng NGÀY + GIỜ. Không tra được → null: trợ lý không bao giờ đưa giờ đoán.
+   */
+  private async nearestVerifiedSlot(serviceIds: string[], data: AvailabilityData, when: Pick<WhenQuery, 'part' | 'time'>): Promise<VerifiedSlot | null> {
+    for (const date of data.suggestedDates.slice(0, 2)) {
+      try {
+        const pick = pickNearestSlot(await this.availability.getAvailability({ date, serviceIds }), when);
+        if (pick) return { date, ...pick };
+      } catch (e) {
+        this.logger.warn(`Không tra được giờ trống gần nhất cho trợ lý: ${(e as Error).message}`);
+        return null;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Cả nhóm kín đúng giờ / buổi khách hỏi. Ngày đó còn dịch vụ trong nhóm có giờ trống → khung gần giờ khách hỏi nhất NGAY
+   * NGÀY ĐÓ (cùng luật pickNearestSlot của một dịch vụ, áp trên khung tốt nhất của từng dịch vụ). Chỉ khi cả nhóm kín cả ngày
+   * mới lấy dịch vụ có ngày còn chỗ SỚM NHẤT (tối đa 3 dịch vụ cùng ngày đó được tra giờ) → giờ sớm nhất.
+   */
+  private async nearestGroupSlot(
+    rows: { service: CatalogItem; data: AvailabilityData }[], when: Pick<WhenQuery, 'date' | 'part' | 'time'>,
+  ): Promise<{ service: CatalogItem; slot: VerifiedSlot } | null> {
+    const sameDay = rows.flatMap((r) => {
+      const pick = pickNearestSlot(r.data, when);
+      return pick ? [{ service: r.service, pick }] : [];
+    }).sort((a, b) => a.pick.time.localeCompare(b.pick.time));
+    const best = pickNearestSlot({ salonClosed: false, closedReason: null, suggestedDates: [], slots: sameDay.map((x) => x.pick) }, when);
+    const hit = sameDay.find((x) => x.pick === best);
+    if (hit) return { service: hit.service, slot: { date: when.date, ...hit.pick } };
+    const dates = rows.map((r) => r.data.suggestedDates[0]).filter((d): d is string => !!d).sort();
+    if (!dates.length) return null;
+    const found: { service: CatalogItem; slot: VerifiedSlot }[] = [];
+    for (const r of rows.filter((x) => x.data.suggestedDates[0] === dates[0]).slice(0, 3)) {
+      const slot = await this.nearestVerifiedSlot([r.service.id], { ...r.data, suggestedDates: [dates[0]] }, when);
+      if (slot) found.push({ service: r.service, slot });
+    }
+    return found.sort((a, b) => a.slot.time.localeCompare(b.slot.time))[0] ?? null;
   }
 
   // ------------------------------------------------------------- vòng tự cải tiến (viết lại câu + học có người duyệt)

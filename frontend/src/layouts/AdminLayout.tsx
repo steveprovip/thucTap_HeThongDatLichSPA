@@ -1,11 +1,15 @@
-import { Suspense, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   BarChart3, Bot, CalendarClock, CalendarDays, ClipboardList, Clock, FileText, Gauge, Home,
-  LogOut, Menu, Receipt, ScrollText, Scissors, Settings, Ticket, UserCircle2, Users, X,
+  LogOut, Menu, Moon, Receipt, ScrollText, Scissors, Search, Settings, Sun, Ticket, UserCircle2, Users, X,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { BackButton, ErrorBoundary, LiveStatus, NotificationBell, SmartAiAssistant, Spinner } from '@/components';
+import { BackButton, CommandPalette, ErrorBoundary, LiveStatus, LotusMark, NotificationBell, SmartAiAssistant, SoundToggle, Spinner } from '@/components';
+import { useToast } from '@/contexts/ToastContext';
+import { subscribeLiveChanges } from '@/utils/liveSync';
+import { playCue, primeAudioOnFirstGesture } from '@/utils/sound';
+import { setStaffTheme, useStaffTheme } from '@/utils/theme';
 import { ROLE_LABELS, ROLE_LANDING } from '@/utils/constants';
 import type { Role } from '@/types';
 
@@ -74,17 +78,62 @@ const NAV: { group: string; items: NavItem[] }[] = [
   },
 ];
 
+const CHIME_KEY = 'salon.chime.last';
+
+/**
+ * Chuông báo lịch khách tự đặt online (sự kiện SSE 'booking.created'): Lễ tân / Chủ tiệm / Quản trị nghe tiếng chuông
+ * ba nốt + thông báo nổi; danh sách đã tự làm mới qua đồng bộ ngầm. Nhiều tab cùng máy chỉ kêu MỘT lần (khoá theo seq).
+ */
+function useNewBookingChime(enabled: boolean): void {
+  const toast = useToast();
+  useEffect(() => {
+    if (!enabled) return undefined;
+    return subscribeLiveChanges((change) => {
+      if (change.kind !== 'booking.created') return;
+      if (change.seq !== undefined) {
+        try {
+          const [seq, at] = (localStorage.getItem(CHIME_KEY) ?? '').split('@');
+          if (seq === String(change.seq) && Date.now() - Number(at) < 10_000) return;
+          localStorage.setItem(CHIME_KEY, `${change.seq}@${Date.now()}`);
+        } catch { /* chế độ riêng tư: vẫn kêu */ }
+      }
+      playCue('alert');
+      toast.toast('Có lịch khách vừa đặt online — danh sách đã tự cập nhật', 'info');
+    });
+  }, [enabled, toast]);
+}
+
 export function AdminLayout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const theme = useStaffTheme();
+  useNewBookingChime(!!user && ['receptionist', 'owner', 'admin'].includes(user.role));
+  useEffect(() => primeAudioOnFirstGesture(), []);
+  // Ctrl / ⌘ + K mở bảng lệnh ở mọi trang quản trị
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const groups = useMemo(
     () =>
       NAV.map((g) => ({ ...g, items: g.items.filter((i) => user && i.roles.includes(user.role)) }))
         .filter((g) => g.items.length > 0),
     [user],
+  );
+
+  const paletteNav = useMemo(
+    () => groups.flatMap((g) => g.items.map((i) => ({ to: i.to, label: i.label, group: g.group, icon: i.icon }))),
+    [groups],
   );
 
   // TASK v4 · NV4: header gọn — tiêu đề trang hiện tại dạng "Nhóm / Trang" (khớp mục đang chọn ở menu trái)
@@ -143,8 +192,11 @@ export function AdminLayout() {
       {/* Sidebar cố định trên màn hình rộng */}
       <aside className="hidden w-64 shrink-0 border-r border-slate-200 bg-white lg:block">
         <div className="flex h-14 items-center gap-2.5 border-b border-slate-200 px-4">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-600 text-xs font-bold text-white shadow-sm">HS</span>
-          <span className="text-sm font-semibold text-slate-900">Quản lý tiệm</span>
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-600 text-white shadow-sm"><LotusMark className="h-5 w-5" /></span>
+          <span className="leading-tight">
+            <span className="block text-sm font-semibold text-slate-900">Quản lý tiệm</span>
+            <span className="block text-[10px] uppercase tracking-[0.18em] text-slate-400">Hương Sen</span>
+          </span>
         </div>
         {sidebar}
       </aside>
@@ -152,7 +204,7 @@ export function AdminLayout() {
       {/* Ngăn kéo trên điện thoại / máy tính bảng */}
       {mobileOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
-          <div className="animate-fade absolute inset-0 bg-slate-900/30 backdrop-blur-[2px]" onClick={() => setMobileOpen(false)} aria-hidden />
+          <div className="animate-fade absolute inset-0 bg-scrim/30 backdrop-blur-[2px]" onClick={() => setMobileOpen(false)} aria-hidden />
           <aside className="relative z-10 flex h-full w-72 max-w-[85vw] flex-col pb-[env(safe-area-inset-bottom)] bg-white shadow-pop animate-slide-in-left">
             <div className="flex h-14 items-center justify-between border-b border-slate-200 px-4">
               <span className="text-sm font-bold">Quản lý tiệm</span>
@@ -187,7 +239,18 @@ export function AdminLayout() {
           </div>
 
           <div className="flex items-center gap-1.5">
+            <button type="button" onClick={() => setPaletteOpen(true)} aria-label="Tìm nhanh (Ctrl + K)" title="Tìm nhanh lịch hẹn, khách, chuyên viên, trang (Ctrl + K)"
+                    className="tap-44 inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 px-2.5 text-xs text-slate-500 transition-colors hover:border-slate-300 hover:text-slate-900 md:min-w-[200px]">
+              <Search size={15} /> <span className="hidden md:inline">Tìm nhanh…</span>
+              <kbd className="ml-auto hidden rounded border border-slate-200 px-1.5 text-[10px] font-medium md:inline">Ctrl K</kbd>
+            </button>
             <LiveStatus />
+            <button type="button" onClick={() => setStaffTheme(theme === 'noir' ? 'light' : 'noir')} aria-pressed={theme === 'noir'}
+                    aria-label={theme === 'noir' ? 'Chuyển giao diện sáng' : 'Chuyển giao diện Lotus Noir'} title={theme === 'noir' ? 'Giao diện sáng' : 'Giao diện Lotus Noir'}
+                    className="tap-44 hidden h-9 w-9 items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 sm:inline-flex">
+              {theme === 'noir' ? <Sun size={18} /> : <Moon size={18} />}
+            </button>
+            <SoundToggle className="hidden rounded-xl sm:inline-flex" />
             <NotificationBell />
             <div className="hidden items-center gap-2 rounded-full py-1 pl-1 pr-2.5 sm:flex" title={user?.email}>
               <span className="flex h-8 w-8 items-center justify-center rounded-full bg-teal-50 text-xs font-bold text-teal-700 ring-1 ring-teal-100">
@@ -223,6 +286,8 @@ export function AdminLayout() {
         </main>
         {/* Part 5: trợ lý AI nổi góc phải dưới — tự ẩn với vai trò không phải Chủ tiệm / Lễ tân */}
         <SmartAiAssistant />
+        <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} role={user?.role}
+                        navItems={paletteNav} />
       </div>
     </div>
   );

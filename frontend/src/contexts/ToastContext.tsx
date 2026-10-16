@@ -25,11 +25,12 @@ const ICONS: Record<ToastKind, ReactNode> = {
   info: <Info size={18} className="shrink-0" />,
 };
 
+/** Giao diện sáng: nền đặc như cũ. Lotus Noir: thẻ kính tối, chỉ biểu tượng mang màu trạng thái (index.css `.toast`). */
 const STYLES: Record<ToastKind, string> = {
-  success: 'bg-green-600 text-white',
-  error: 'bg-red-600 text-white',
-  warning: 'bg-amber-500 text-white',
-  info: 'bg-slate-900 text-white',
+  success: 'toast toast-success bg-green-600 text-white',
+  error: 'toast toast-error bg-red-600 text-white',
+  warning: 'toast toast-warning bg-amber-500 text-white',
+  info: 'toast toast-info bg-slate-900 text-white',
 };
 
 export function ToastProvider({ children }: { children: ReactNode }) {

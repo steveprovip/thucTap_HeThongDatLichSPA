@@ -92,4 +92,21 @@ describe('Chống đặt trùng khi nhiều khách chốt cùng lúc (S2-08)', (
       ),
     ).rejects.toThrow(/appointments_no_overlap|exclusion/i);
   }, 60000);
+
+  it('mốc sớm nhất còn đặt được: hôm nay trả số phút (đã cộng thời gian đặt trước), ngày khác trả null', async () => {
+    const serviceId = '55555555-5555-4555-8555-000000000001';
+    const now = new Date(); // setup-app đặt TZ = giờ tiệm
+    const pad = (n: number): string => String(n).padStart(2, '0');
+    const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+    const res = await request(server).get('/api/public/availability').query({ date: today, serviceIds: serviceId }).expect(200);
+    const earliest = res.body.data.earliestStartMinutes as number;
+    expect(typeof earliest).toBe('number');
+    expect(earliest).toBeGreaterThanOrEqual(nowMinutes);
+    for (const s of res.body.data.slots as { time: string }[]) {
+      expect(Number(s.time.slice(0, 2)) * 60 + Number(s.time.slice(3, 5))).toBeGreaterThanOrEqual(earliest);
+    }
+    const later = await request(server).get('/api/public/availability').query({ date: tomorrowISO(3), serviceIds: serviceId }).expect(200);
+    expect(later.body.data.earliestStartMinutes).toBeNull();
+  });
 });

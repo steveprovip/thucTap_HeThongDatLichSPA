@@ -8,13 +8,15 @@ import { join } from 'path';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { EventsService } from '../src/modules/events/events.service';
-import { ACCOUNTS, createTestApp } from './setup-app';
+import { ACCOUNTS, createTestApp, tomorrowISO } from './setup-app';
 
 interface SseMessage { event: string; data: Record<string, unknown> }
 interface SseClient {
   status: number;
   headers: http.IncomingHttpHeaders;
   messages: SseMessage[];
+  /** Giá trị các dòng `id:` (số thứ tự sự kiện). */
+  ids: string[];
   comments: number;
   close: () => void;
   waitFor: (pred: (m: SseMessage) => boolean, ms?: number) => Promise<SseMessage>;
@@ -30,6 +32,7 @@ function openSse(port: number, token?: string): Promise<SseClient> {
           status: res.statusCode ?? 0,
           headers: res.headers,
           messages: [],
+          ids: [],
           comments: 0,
           close: () => req.destroy(),
           waitFor: (pred, ms = 3000) =>
@@ -57,6 +60,7 @@ function openSse(port: number, token?: string): Promise<SseClient> {
             let data = '';
             for (const line of block.split('\n')) {
               if (line.startsWith('event:')) event = line.slice(6).trim();
+              else if (line.startsWith('id:')) client.ids.push(line.slice(3).trim());
               else if (line.startsWith('data:')) data += line.slice(5).trim();
             }
             if (data) client.messages.push({ event, data: JSON.parse(data) });
@@ -124,6 +128,30 @@ describe('Đồng bộ trực tiếp giữa các thiết bị (SSE)', () => {
     // Chỉ có số thứ tự, nhóm dữ liệu và thời điểm — không tên khách, không số điện thoại, không nội dung ghi
     expect(Object.keys(change.data).sort()).toEqual(['at', 'scope', 'seq']);
     expect(JSON.stringify(change.data)).not.toContain('Nhóm thử đồng bộ');
+  });
+
+  it('khách tự đặt lịch trên website -> lễ tân nhận booking.created kèm id = seq (chuông báo), không có dữ liệu cá nhân', async () => {
+    const server = app.getHttpServer();
+    // Dịch vụ seed cố định (giống booking-concurrency): các suite khác thêm dịch vụ chưa có thợ / ca làm vào đầu danh mục
+    const serviceId = '55555555-5555-4555-8555-000000000001';
+    let date = '';
+    let slot: { time: string; stylistIds: string[] } | undefined;
+    for (let day = 2; day < 24 && !slot; day += 1) {
+      date = tomorrowISO(day);
+      const av = await request(server).get('/api/public/availability').query({ date, serviceIds: serviceId }).expect(200);
+      slot = av.body.data.slots.find((s: { stylistIds: string[] }) => s.stylistIds.length > 0);
+    }
+    if (!slot) throw new Error('Không có khung giờ trống để kiểm thử');
+    const reception = await connect(admin);
+    await reception.waitFor((m) => m.event === 'hello');
+    const phone = `097${String(Date.now()).slice(-7)}`;
+    await request(server).post('/api/public/bookings')
+      .send({ serviceIds: [serviceId], date, time: slot.time, fullName: 'Khach Chuong Bao', phone }).expect(201);
+    const change = await reception.waitFor((m) => m.event === 'change' && m.data.kind === 'booking.created');
+    expect(change.data.scope).toBe('appointments');
+    expect(Object.keys(change.data).sort()).toEqual(['at', 'kind', 'scope', 'seq']);
+    expect(JSON.stringify(change.data)).not.toContain(phone);
+    expect(reception.ids).toContain(String(change.data.seq));
   });
 
   it('thao tác ghi bị từ chối (400) hoặc chỉ đọc (GET) thì KHÔNG phát sự kiện', async () => {

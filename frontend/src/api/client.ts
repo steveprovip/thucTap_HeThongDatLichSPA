@@ -1,7 +1,7 @@
 import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import type { ApiError, ApiErrorDetails } from '@/types';
-import { DEMO_MODE, mockAdapter } from './mockBackend';
-import { affectsAppointments, notifyAppointmentsChanged } from '@/utils/liveSync';
+import { DEMO_MODE } from './demoMode';
+import { affectsAppointments, changeForRequest, notifyAppointmentsChanged } from '@/utils/liveSync';
 
 export const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
@@ -29,7 +29,8 @@ export const api: AxiosInstance = axios.create({
   baseURL: BASE_URL,
   timeout: 30_000,
   headers: { 'Content-Type': 'application/json' },
-  ...(DEMO_MODE ? { adapter: mockAdapter } : {}),
+  // Chế độ demo: nạp động CSDL giả lần gọi API đầu tiên (bản production không chứa mockBackend trong gói chính)
+  ...(DEMO_MODE ? { adapter: (config: InternalAxiosRequestConfig) => import('./mockBackend').then((m) => m.mockAdapter(config)) } : {}),
 });
 
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
@@ -65,7 +66,7 @@ export const onUnauthorized = { handler: (): void => undefined };
 api.interceptors.response.use(
   (res) => {
     // Lỗi 6: thao tác ghi thành công lên lịch hẹn → mọi màn hình liên quan tự làm mới ngay
-    if (affectsAppointments(res.config?.method, res.config?.url)) notifyAppointmentsChanged();
+    if (affectsAppointments(res.config?.method, res.config?.url)) notifyAppointmentsChanged(changeForRequest(res.config?.url));
     return res;
   },
   async (error: AxiosError<ApiError>) => {

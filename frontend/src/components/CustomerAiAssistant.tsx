@@ -1,14 +1,15 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Brush, CalendarCheck, Check, Clock3, Flower2, Gem, MessageCircleHeart, Plus, Scissors, Send, Sparkles, ThumbsDown, ThumbsUp, X } from 'lucide-react';
+import { Brush, CalendarCheck, Check, Clock3, Flower2, Gem, Plus, Scissors, Send, Sparkles, ThumbsDown, ThumbsUp, X } from 'lucide-react';
 import { assistantApi, getErrorMessage } from '@/api';
 import type { ChatTurn, CustomerAssistantService, CustomerDialogState } from '@/types';
 import { formatVnd } from '@/utils/format';
 import { serviceImage, serviceMediaKind } from '@/utils/images';
 import { SmartImage } from './Media';
+import { LotusMark } from './LotusMark';
 
 interface Line {
-  from: 'me' | 'bot'; text: string; suggestions?: CustomerAssistantService[]; meta?: string; bookDate?: string;
+  from: 'me' | 'bot'; text: string; suggestions?: CustomerAssistantService[]; meta?: string; bookDate?: string; bookTime?: string;
   /** Câu khách + ý định — để gửi 👍 / 👎; `understoodAs`: trợ lý đã viết lại câu khó hiểu thành câu này. */
   q?: string; intent?: string; understoodAs?: string; rated?: 'up' | 'down';
 }
@@ -35,7 +36,7 @@ const greeting = (): string => `Chào bạn, chúc bạn buổi ${partOfDay()} t
  *  - `liftPx`: nâng nút lên trên thanh thao tác dính đáy của wizard trên điện thoại.
  */
 export function CustomerAiAssistant({ onBook, liftPx = 0 }: {
-  onBook?: (services: CustomerAssistantService[], date?: string) => void;
+  onBook?: (services: CustomerAssistantService[], date?: string, time?: string) => void;
   liftPx?: number;
 }) {
   const navigate = useNavigate();
@@ -77,6 +78,7 @@ export function CustomerAiAssistant({ onBook, liftPx = 0 }: {
       dialog.current = r.state;
       setLines((l) => [...l, {
         from: 'bot', text: r.answer, suggestions: r.suggestions, meta: r.source === 'llm' ? 'AI tư vấn' : undefined, bookDate: r.bookDate,
+        bookTime: r.bookTime,
         q, intent: r.intent, understoodAs: r.understoodAs,
       }]);
       if (r.quickReplies?.length) setQuick(r.quickReplies);
@@ -87,13 +89,13 @@ export function CustomerAiAssistant({ onBook, liftPx = 0 }: {
     }
   };
 
-  /** `date`: ngày trợ lý vừa tra giờ trống → phiếu đặt lịch mở sẵn đúng ngày đó. */
-  const book = (services: CustomerAssistantService[], date?: string) => {
+  /** `date` / `time`: ngày + giờ trợ lý vừa TRA THẬT còn trống → phiếu đặt lịch mở sẵn đúng ngày giờ đó. */
+  const book = (services: CustomerAssistantService[], date?: string, time?: string) => {
     if (!services.length) return;
     setOpen(false);
     setPicked([]);
-    if (onBook) onBook(services, date);
-    else navigate(`/dat-lich?services=${services.map((s) => encodeURIComponent(s.id)).join(',')}${date ? `&date=${date}` : ''}`);
+    if (onBook) onBook(services, date, time);
+    else navigate(`/dat-lich?services=${services.map((s) => encodeURIComponent(s.id)).join(',')}${date ? `&date=${date}` : ''}${date && time ? `&time=${time}` : ''}`);
   };
   /** 👍 / 👎: câu bị chê vào báo cáo "Cải tiến AI" của chủ tiệm (phân tích lỗi trên hội thoại thật). */
   const rate = (i: number, helpful: boolean) => {
@@ -118,14 +120,14 @@ export function CustomerAiAssistant({ onBook, liftPx = 0 }: {
       {!open && (
         <button type="button" onClick={() => setOpen(true)} aria-label="Mở trợ lý tư vấn sắc đẹp"
                 style={{ bottom }}
-                className={`group fixed right-4 z-40 inline-flex min-h-[48px] items-center gap-2.5 rounded-full bg-white py-1.5 pl-1.5 ${compact ? 'pr-1.5 sm:pr-4' : 'pr-4'} text-sm font-semibold text-slate-800 shadow-[0_12px_32px_-12px_rgba(15,23,42,0.35)] ring-1 ring-ivory-line transition-[transform,box-shadow] duration-200 ease-out animate-fade-in hover:-translate-y-0.5 active:scale-[0.97] sm:!bottom-6`}>
-          <span className="relative flex h-9 w-9 items-center justify-center rounded-full bg-teal-800 text-amber-100">
-            <MessageCircleHeart size={18} />
-            <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-emerald-400 ring-2 ring-white" aria-hidden />
+                className={`glass group fixed right-4 z-40 inline-flex min-h-[52px] items-center gap-3 rounded-full py-1.5 pl-1.5 ${compact ? 'pr-1.5 sm:pr-5' : 'pr-5'} text-sm font-medium text-slate-800 transition-[transform,box-shadow] duration-spring ease-spring animate-spring-in hover:-translate-y-0.5 active:scale-[0.97] sm:!bottom-6`}>
+          <span className="relative flex h-10 w-10 items-center justify-center rounded-full bg-teal-700 text-white shadow-glow">
+            <LotusMark className="h-6 w-6" />
+            <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-jade ring-2 ring-canvas" aria-hidden />
           </span>
-          <span className={`leading-tight ${compact ? 'hidden sm:inline' : ''}`}>
+          <span className={`text-left leading-tight ${compact ? 'hidden sm:inline' : ''}`}>
             <span className="block">Tư vấn sắc đẹp</span>
-            <span className="hidden text-[11px] font-normal text-slate-500 sm:block">Gợi ý dịch vụ · báo giá ngay</span>
+            <span className="hidden text-[11px] font-normal text-slate-500 sm:block">Gợi ý dịch vụ · giờ trống thật</span>
           </span>
         </button>
       )}
@@ -134,33 +136,34 @@ export function CustomerAiAssistant({ onBook, liftPx = 0 }: {
         <section role="dialog" aria-label="Trợ lý tư vấn dịch vụ"
                  style={{ bottom: panelBottom, height: panelHeight }}
                  onKeyDown={(e) => { if (e.key === 'Escape') setOpen(false); }}
-                 className="animate-pop-in fixed inset-x-3 z-50 flex flex-col overflow-hidden rounded-2xl bg-white shadow-[0_24px_64px_-16px_rgba(15,23,42,0.35)] ring-1 ring-slate-900/[0.06] sm:inset-x-auto sm:right-6 sm:!bottom-6 sm:w-[400px]">
-          <header className="flex items-center gap-2.5 bg-teal-900 px-3.5 py-3 text-white">
-            <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10 text-amber-100 ring-1 ring-amber-100/30">
-              <Flower2 size={20} />
-              <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-400 ring-2 ring-teal-900" aria-hidden />
+                 className="glass animate-pop-in fixed inset-x-3 z-50 flex flex-col overflow-hidden rounded-[26px] sm:inset-x-auto sm:right-6 sm:!bottom-6 sm:w-[410px]">
+          <header className="relative flex items-center gap-3 border-b border-slate-200/60 px-4 py-3.5">
+            <div aria-hidden className="gold-rule absolute inset-x-8 bottom-0" />
+            <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-gold ring-1 ring-gold/35">
+              <LotusMark className="h-6 w-6" />
+              <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-jade ring-2 ring-canvas" aria-hidden />
             </span>
             <div className="min-w-0 leading-tight">
-              <p className="font-display text-lg font-semibold leading-none">Trợ lý tư vấn sắc đẹp</p>
-              <p className="mt-1 truncate text-[11px] text-teal-100/80">Trả lời ngay · giá đúng bảng giá tiệm</p>
+              <p className="font-display text-xl font-semibold italic leading-none text-slate-900">Trợ lý Hương Sen</p>
+              <p className="mt-1 truncate text-[11px] text-slate-500">Giá đúng bảng giá · giờ trống tra trên lịch thật</p>
             </div>
             <button type="button"
                     onClick={() => { if (picked.length) book(picked); else { setOpen(false); if (!onBook) navigate('/dat-lich'); } }}
                     title={picked.length ? 'Điền các dịch vụ đã chọn vào phiếu đặt lịch' : 'Mở phiếu đặt lịch'}
-                    className="ml-auto hidden shrink-0 whitespace-nowrap rounded-full bg-amber-100 px-3 py-1.5 text-xs font-semibold text-teal-900 transition-[background-color,transform] duration-150 ease-out hover:bg-white active:scale-[0.97] sm:inline-flex">
+                    className="ml-auto hidden min-h-[34px] shrink-0 items-center whitespace-nowrap rounded-full border border-gold/40 px-3.5 text-xs font-semibold text-slate-900 transition-[background-color,color,transform] duration-spring ease-spring hover:border-transparent hover:bg-teal-700 hover:text-white active:scale-[0.97] sm:inline-flex">
               Đặt lịch ngay
             </button>
             <button type="button" onClick={() => setOpen(false)} aria-label="Đóng trợ lý"
-                    className="hit-44 ml-auto inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg hover:bg-white/10 sm:ml-1"><X size={18} /></button>
+                    className="hit-44 ml-auto inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 sm:ml-1"><X size={18} /></button>
           </header>
 
-          <div ref={logRef} className="thin-scroll min-h-0 flex-1 space-y-2.5 overflow-y-auto overscroll-contain bg-ivory px-3 py-3 text-[13.5px] leading-relaxed">
+          <div ref={logRef} className="thin-scroll min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-3.5 py-4 text-[13.5px] leading-relaxed">
             {lines.length === 1 && (
               <div className="flex flex-wrap gap-1.5 pb-1" aria-label="Chủ đề tư vấn">
                 {TOPICS.map(([label, q, Icon]) => (
                   <button key={label} type="button" disabled={busy} onClick={() => void ask(q)}
-                          className="inline-flex min-h-[36px] items-center gap-1.5 rounded-full border border-ivory-line bg-white px-3 text-xs font-medium text-slate-700 transition-[color,border-color,transform] duration-150 ease-out hover:border-teal-400 hover:text-teal-800 active:scale-[0.97] disabled:opacity-50">
-                    <Icon size={13} className="text-teal-700" /> {label}
+                          className="inline-flex min-h-[36px] items-center gap-1.5 rounded-full border border-slate-200 px-3 text-xs font-medium text-slate-700 transition-[color,border-color,transform] duration-spring ease-spring hover:border-gold/60 hover:text-slate-900 active:scale-[0.96] disabled:opacity-50">
+                    <Icon size={13} className="text-gold" /> {label}
                   </button>
                 ))}
               </div>
@@ -168,45 +171,52 @@ export function CustomerAiAssistant({ onBook, liftPx = 0 }: {
             {lines.map((l, i) => (
               <div key={i} ref={i === lines.length - 1 && l.from === 'bot' ? lastBotRef : undefined}
                    className={`animate-bubble-in ${l.from === 'me' ? 'flex justify-end' : ''}`}>
-                <div className={`max-w-[88%] whitespace-pre-line break-words rounded-2xl px-3.5 py-2 ${l.from === 'me' ? 'rounded-br-md bg-teal-700 text-white' : 'rounded-bl-md bg-white text-slate-800 ring-1 ring-ivory-line'}`}>
+                <div className={`max-w-[88%] whitespace-pre-line break-words px-3.5 py-2.5 ${l.from === 'me' ? 'rounded-[18px] rounded-br-md bg-teal-700 text-white' : 'rounded-[18px] rounded-bl-md border border-slate-200/70 bg-white/70 text-slate-800'}`}>
                   {l.understoodAs && <span className="mb-1 block text-[11px] italic text-slate-500">Mình hiểu là: “{l.understoodAs}”</span>}
                   {l.text}
-                  {l.meta && <span className="mt-1 block text-[10px] opacity-50">{l.meta}</span>}
+                  {l.meta && <span className="mt-1 block text-[10px] uppercase tracking-[0.14em] opacity-50">{l.meta}</span>}
                   {l.from === 'bot' && l.q && (
-                    <span className="mt-1 flex items-center gap-1 text-[10px] text-slate-400">
+                    <span className="mt-1.5 flex items-center gap-1 text-[10px] text-slate-400">
                       {l.rated ? (l.rated === 'up' ? 'Cảm ơn bạn!' : 'Cảm ơn bạn — tiệm sẽ cải thiện câu này.') : (
                         <>
                           <span>Câu trả lời có giúp ích?</span>
-                          <button type="button" onClick={() => rate(i, true)} aria-label="Hữu ích" className="hit-44 rounded p-1 hover:bg-slate-100 hover:text-teal-700"><ThumbsUp size={12} /></button>
-                          <button type="button" onClick={() => rate(i, false)} aria-label="Chưa đúng ý" className="hit-44 rounded p-1 hover:bg-slate-100 hover:text-rose-600"><ThumbsDown size={12} /></button>
+                          <button type="button" onClick={() => rate(i, true)} aria-label="Hữu ích" className="hit-44 rounded p-1 transition-colors hover:text-gold"><ThumbsUp size={12} /></button>
+                          <button type="button" onClick={() => rate(i, false)} aria-label="Chưa đúng ý" className="hit-44 rounded p-1 transition-colors hover:text-rose-600"><ThumbsDown size={12} /></button>
                         </>
                       )}
                     </span>
                   )}
                 </div>
+                {l.from === 'bot' && l.bookDate && l.bookTime && !!l.suggestions?.length && (
+                  <button type="button" onClick={() => book(l.suggestions!.slice(0, 1), l.bookDate, l.bookTime)}
+                          className="animate-spring-in mt-2 inline-flex min-h-[40px] items-center gap-2 rounded-full bg-teal-700 px-4 text-xs font-semibold text-white shadow-glow transition-transform duration-spring ease-spring active:scale-[0.96]">
+                    <CalendarCheck size={14} /> Đặt lúc <span className="tnum">{l.bookTime} · {l.bookDate.slice(8, 10)}/{l.bookDate.slice(5, 7)}</span>
+                  </button>
+                )}
                 {!!l.suggestions?.length && (
                   // Gợi ý GỌN: mỗi dịch vụ một dòng (ảnh nhỏ · tên · giá · Chọn / Đặt), tối đa 3 — không lấn át câu trả lời
-                  <ul className="mt-1.5 max-w-[92%] divide-y divide-ivory-line overflow-hidden rounded-xl bg-white ring-1 ring-ivory-line" aria-label="Dịch vụ liên quan">
+                  <ul className="mt-2 max-w-[92%] divide-y divide-slate-200/60 overflow-hidden rounded-2xl border border-slate-200/70 bg-white/50" aria-label="Dịch vụ liên quan">
                     {l.suggestions.slice(0, 3).map((s) => {
                       const on = picked.some((x) => x.id === s.id);
                       return (
-                        <li key={s.id} className={`flex items-center gap-2 px-2 py-1.5 ${on ? 'bg-teal-50/70' : ''}`}>
+                        <li key={s.id} className={`flex items-center gap-2.5 px-2.5 py-2 transition-colors ${on ? 'bg-gold/[0.08]' : ''}`}>
                           <SmartImage src={serviceImage({ id: s.id, name: s.name, categoryName: s.categoryName, imageUrl: s.imageUrl })}
-                                      alt="" loading="lazy" seed={s.id} className="h-8 w-8 shrink-0 rounded-lg"
+                                      alt="" loading="lazy" seed={s.id} sizes="40px" className="h-9 w-9 shrink-0 rounded-xl"
                                       kind={serviceMediaKind({ name: s.name, categoryName: s.categoryName })} />
                           <div className="min-w-0 flex-1 leading-tight">
                             <p className="truncate text-[12.5px] font-medium text-slate-900" title={s.name}>{s.name}</p>
-                            <p className="flex items-center gap-1 text-[11px] text-slate-500">
-                              <span className="font-semibold text-teal-700">{s.priceText}</span> · <Clock3 size={10} /> {s.durationMinutes}′
+                            <p className="tnum mt-0.5 flex items-center gap-1 text-[11px] text-slate-500">
+                              <span className="font-semibold text-gold">{s.priceText}</span> · <Clock3 size={10} /> {s.durationMinutes}′
                             </p>
                           </div>
                           <button type="button" onClick={() => toggle(s)} aria-pressed={on}
                                   aria-label={on ? `Bỏ chọn ${s.name}` : `Chọn thêm ${s.name}`} title={on ? 'Bỏ chọn' : 'Chọn thêm để đặt chung'}
-                                  className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition-[color,background-color,border-color,transform] duration-150 ease-out active:scale-[0.92] sm:h-8 sm:w-8 ${on ? 'border-teal-600 bg-teal-50 text-teal-800' : 'border-slate-200 text-slate-500 hover:border-teal-400 hover:text-teal-700'}`}>
+                                  className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border transition-[color,background-color,border-color,transform] duration-spring ease-spring active:scale-[0.9] sm:h-8 sm:w-8 ${on ? 'border-transparent bg-teal-700 text-white' : 'border-slate-200 text-slate-500 hover:border-gold/60 hover:text-gold'}`}>
                             {on ? <Check size={14} /> : <Plus size={14} />}
                           </button>
-                          <button type="button" onClick={() => book([s], l.bookDate)} title={`Đặt lịch ${s.name}${l.bookDate ? ` ngày ${l.bookDate.slice(8, 10)}/${l.bookDate.slice(5, 7)}` : ''}`}
-                                  className="inline-flex h-9 shrink-0 items-center gap-1 rounded-lg bg-teal-700 px-2.5 text-[11px] font-semibold text-white transition-[background-color,transform] duration-150 ease-out hover:bg-teal-800 active:scale-[0.96] sm:h-8">
+                          <button type="button" onClick={() => book([s], l.bookDate, l.bookTime)}
+                                  title={`Đặt lịch ${s.name}${l.bookDate ? ` ngày ${l.bookDate.slice(8, 10)}/${l.bookDate.slice(5, 7)}` : ''}${l.bookTime ? ` lúc ${l.bookTime}` : ''}`}
+                                  className="inline-flex h-9 shrink-0 items-center gap-1 rounded-full border border-gold/40 px-3 text-[11px] font-semibold text-slate-900 transition-[background-color,color,border-color,transform] duration-spring ease-spring hover:border-transparent hover:bg-teal-700 hover:text-white active:scale-[0.95] sm:h-8">
                             <CalendarCheck size={12} /> Đặt
                           </button>
                         </li>
@@ -217,39 +227,39 @@ export function CustomerAiAssistant({ onBook, liftPx = 0 }: {
               </div>
             ))}
             {busy && (
-              <p role="status" className="animate-bubble-in inline-flex items-center gap-1 rounded-2xl rounded-bl-md bg-white px-3.5 py-3 ring-1 ring-ivory-line">
+              <p role="status" className="animate-bubble-in inline-flex items-center gap-1 rounded-[18px] rounded-bl-md border border-slate-200/70 bg-white/70 px-3.5 py-3">
                 <span className="sr-only">Đang trả lời…</span>
-                {[0, 1, 2].map((d) => <span key={d} aria-hidden className="typing-dot h-1.5 w-1.5 rounded-full bg-teal-700" />)}
+                {[0, 1, 2].map((d) => <span key={d} aria-hidden className="typing-dot h-1.5 w-1.5 rounded-full bg-gold" />)}
               </p>
             )}
           </div>
 
           {picked.length > 0 && (
-            <div className="animate-fade-in flex items-center gap-2 border-t border-teal-100 bg-teal-50 px-3 py-2 text-xs">
-              <span className="min-w-0 flex-1 leading-tight text-teal-900">
-                <span className="block truncate font-semibold">Đã chọn {picked.length} dịch vụ · {picked.reduce((a, p) => a + p.durationMinutes, 0)} phút</span>
-                <span className="block truncate">{formatVnd(picked.reduce((a, p) => a + p.price, 0))} · {picked.map((p) => p.name).join(', ')}</span>
+            <div className="animate-fade-in flex items-center gap-2 border-t border-gold/20 bg-gold/[0.06] px-3.5 py-2.5 text-xs">
+              <span className="min-w-0 flex-1 leading-tight text-slate-800">
+                <span className="tnum block truncate font-semibold">Đã chọn {picked.length} dịch vụ · {picked.reduce((a, p) => a + p.durationMinutes, 0)} phút</span>
+                <span className="tnum block truncate text-slate-500">{formatVnd(picked.reduce((a, p) => a + p.price, 0))} · {picked.map((p) => p.name).join(', ')}</span>
               </span>
               <button type="button" onClick={() => book(picked)}
-                      className="inline-flex min-h-[40px] shrink-0 items-center gap-1 rounded-xl bg-teal-700 px-3 font-semibold text-white transition-[background-color,transform] duration-150 ease-out hover:bg-teal-800 active:scale-[0.97]">
+                      className="inline-flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-full bg-teal-700 px-4 font-semibold text-white transition-transform duration-spring ease-spring active:scale-[0.96]">
                 <CalendarCheck size={14} /> Đặt lịch ngay
               </button>
             </div>
           )}
 
-          <div className="flex gap-1.5 overflow-x-auto border-t border-ivory-line px-2.5 pt-2 thin-scroll" aria-label="Câu hỏi nhanh">
+          <div className="flex gap-1.5 overflow-x-auto border-t border-slate-200/60 px-3 pt-2.5 thin-scroll [scrollbar-width:none]" aria-label="Câu hỏi nhanh">
             {quick.map((q) => (
               <button key={q} type="button" disabled={busy} onClick={() => void ask(q)}
-                      className="min-h-[36px] shrink-0 rounded-full border border-teal-200 bg-white px-3 text-xs font-medium text-teal-800 transition-[background-color,transform] duration-150 ease-out hover:bg-teal-50 active:scale-[0.97] disabled:opacity-50">
+                      className="min-h-[34px] shrink-0 rounded-full border border-gold/30 px-3 text-xs font-medium text-slate-800 transition-[background-color,border-color,transform] duration-spring ease-spring hover:border-gold/60 hover:bg-gold/10 active:scale-[0.96] disabled:opacity-50">
                 {q}
               </button>
             ))}
           </div>
-          <form onSubmit={onSubmit} className="flex items-center gap-1.5 px-2.5 pb-2.5 pt-2">
+          <form onSubmit={onSubmit} className="flex items-center gap-2 px-3 pb-3 pt-2.5">
             <input value={draft} onChange={(e) => setDraft(e.target.value)} maxLength={500} placeholder="VD: tóc khô xơ, muốn phục hồi…"
-                   aria-label="Câu hỏi cho trợ lý" className="field-input min-h-[38px] flex-1 py-1.5 text-sm" />
+                   aria-label="Câu hỏi cho trợ lý" className="field-input min-h-[42px] flex-1 rounded-full py-1.5 pl-4 text-sm" />
             <button type="submit" disabled={busy || !draft.trim()} aria-label="Gửi"
-                    className="tap-44 inline-flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-xl bg-teal-700 text-white transition-[background-color,transform,opacity] duration-150 ease-out hover:bg-teal-800 active:scale-[0.92] disabled:opacity-40"><Send size={16} /></button>
+                    className="tap-44 inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-full bg-teal-700 text-white transition-[transform,opacity] duration-spring ease-spring active:scale-[0.9] disabled:opacity-40"><Send size={16} /></button>
           </form>
         </section>
       )}

@@ -7,11 +7,18 @@ import { Observable, Subject } from 'rxjs';
  * CỐ Ý không mang dữ liệu cá nhân (không tên, không số điện thoại): thiết bị nhận được chỉ biết "có thay đổi" rồi tự
  * tải lại qua các API REST đã có kiểm tra quyền, nên kênh này không thể làm lộ thông tin khách.
  */
+/**
+ * Loại thay đổi đáng báo riêng cho màn hình nhân viên. 'booking.created' = khách vừa tự đặt lịch trên website (lễ tân nghe
+ * chuông báo). Vẫn KHÔNG kèm dữ liệu cá nhân: thiết bị nhận tự tải lại qua REST có kiểm tra quyền.
+ */
+export type LiveEventKind = 'booking.created';
+
 export interface LiveEvent {
   /** Số thứ tự tăng dần từ lúc máy chủ khởi động. */
   seq: number;
   /** Nhóm dữ liệu đổi (đoạn đầu của đường dẫn: appointments, customers, invoices...). */
   scope: string;
+  kind?: LiveEventKind;
   at: string;
 }
 
@@ -27,9 +34,9 @@ export class EventsService {
   private seq = 0;
   private clients = 0;
 
-  publish(scope: string): void {
+  publish(scope: string, kind?: LiveEventKind): void {
     this.seq += 1;
-    this.subject.next({ seq: this.seq, scope, at: new Date().toISOString() });
+    this.subject.next({ seq: this.seq, scope, ...(kind ? { kind } : {}), at: new Date().toISOString() });
   }
 
   stream(): Observable<LiveEvent> {

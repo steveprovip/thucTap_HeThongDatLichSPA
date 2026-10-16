@@ -7,8 +7,8 @@ import { BookingProvider } from '@/contexts/BookingContext';
 import { ErrorBoundary, Spinner, UpdateBanner } from '@/components';
 import { RoleSwitcher } from '@/components/RoleSwitcher';
 import { PublicLayout } from '@/layouts/PublicLayout';
-import { AdminLayout } from '@/layouts/AdminLayout';
 import type { Role } from '@/types';
+import { useRouteTheme } from '@/utils/theme';
 
 /**
  * Tách chunk theo trang: trang chủ + đăng nhập nạp ngay, còn lại nạp khi vào route
@@ -17,6 +17,9 @@ import type { Role } from '@/types';
 function lazyPage<K extends string>(loader: () => Promise<Record<K, ComponentType>>, name: K) {
   return lazy(() => loader().then((m) => ({ default: m[name] })));
 }
+
+// Khung khu nhân viên (menu, bảng lệnh Ctrl+K, trợ lý quản lý, chuông lịch mới): tách chunk — khách đặt lịch không tải
+const AdminLayout = lazyPage(() => import('@/layouts/AdminLayout'), 'AdminLayout');
 
 // Trang công khai
 import { HomePage } from '@/pages/public/HomePage';
@@ -92,10 +95,17 @@ function NotFound() {
   );
 }
 
+/** Đặt data-theme trên <html> theo khu vực đang mở (trang khách: Lotus Noir; khu nhân viên: lựa chọn đã lưu). */
+function ThemeController() {
+  useRouteTheme(useLocation().pathname);
+  return null;
+}
+
 export default function App() {
   return (
     <ToastProvider>
       <AuthProvider>
+        <ThemeController />
         <RoleSwitcher />
         <UpdateBanner />
         <ErrorBoundary>

@@ -234,7 +234,7 @@ export function LookupPage() {
   return (
     <div className="mx-auto max-w-2xl space-y-4">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+        <h1 className="font-display text-[2.4rem] font-medium leading-none text-slate-900">
           Tra cứu lịch hẹn
         </h1>
         <p className="mt-1 text-sm text-ink-muted">

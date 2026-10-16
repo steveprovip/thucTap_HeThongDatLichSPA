@@ -2,7 +2,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { UsersRound } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import type { Role } from '@/types';
-import { DEMO_MODE } from '@/api/mockBackend';
+import { DEMO_MODE } from '@/api/demoMode';
 
 const roles: { id: Role; label: string; route: string }[] = [
   { id: 'customer', label: 'Khách', route: '/' },

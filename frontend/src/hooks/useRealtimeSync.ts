@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { useRealtimeStatus } from '@/utils/realtime';
+import { getRealtimeStatus, useRealtimeStatus } from '@/utils/realtime';
+import { subscribeLiveChanges } from '@/utils/liveSync';
+import { shouldSync, type RealtimeDomain } from '@/utils/realtimeScopes';
 
-export type RealtimeDomain = 'appointments' | 'shifts' | 'invoices' | 'services' | 'general';
+export type { RealtimeDomain } from '@/utils/realtimeScopes';
 
 interface UseRealtimeSyncOptions {
   domains?: RealtimeDomain[];
@@ -9,11 +11,12 @@ interface UseRealtimeSyncOptions {
   debounceMs?: number;
 }
 
-const EVENT = 'salon:appointments-changed';
-
 /**
  * Hook đồng bộ dữ liệu thời gian thực (SSE + LiveSync) không làm giật giao diện (Silent Revalidation).
- * Gom nhịp sự kiện (debounce 150ms) và tự động đồng bộ lại khi người dùng mở lại tab (visibilitychange).
+ * - Chỉ tải lại khi thay đổi thuộc `domains` của màn hình (sự kiện mang phạm vi dữ liệu từ máy chủ).
+ * - Gom nhịp sự kiện (debounce 150ms): 10 thay đổi dồn dập = 1 lần tải.
+ * - Tab hiện lại: luồng trực tiếp tự nối lại và chỉ báo làm mới khi đã lỡ thay đổi; hook chỉ tự làm mới khi KHÔNG có
+ *   luồng trực tiếp (chế độ demo / chưa kết nối).
  */
 export function useRealtimeSync({
   domains = ['appointments', 'shifts', 'invoices'],
@@ -33,9 +36,11 @@ export function useRealtimeSync({
   const domainKey = domains.join(',');
 
   useEffect(() => {
+    const watched = domainKey.split(',') as RealtimeDomain[];
     const triggerSilentSync = () => {
       if (timerRef.current) window.clearTimeout(timerRef.current);
       timerRef.current = window.setTimeout(async () => {
+        timerRef.current = null;
         try {
           await onSyncRef.current();
           setLastSyncedAt(Date.now());
@@ -45,19 +50,20 @@ export function useRealtimeSync({
       }, debounceMs);
     };
 
-    const handleEvent = () => triggerSilentSync();
-    window.addEventListener(EVENT, handleEvent);
+    const unsubscribe = subscribeLiveChanges((change) => {
+      if (shouldSync(change, watched)) triggerSilentSync();
+    });
 
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        triggerSilentSync();
-      }
+      const status = getRealtimeStatus();
+      if (document.visibilityState === 'visible' && (status === 'idle' || status === 'offline')) triggerSilentSync();
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       if (timerRef.current) window.clearTimeout(timerRef.current);
-      window.removeEventListener(EVENT, handleEvent);
+      timerRef.current = null;
+      unsubscribe();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [debounceMs, domainKey]);

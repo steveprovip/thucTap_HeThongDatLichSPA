@@ -22,3 +22,8 @@ export * from './SmartAiAssistant';
 export * from './CustomerAiAssistant';
 export * from './MailStatusNotice';
 export * from './ThermalReceipt';
+export * from './AnimatedNumber';
+export * from './LotusMark';
+export * from './SoundToggle';
+export * from './SegmentedTabs';
+export * from './CommandPalette';

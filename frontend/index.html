@@ -3,12 +3,25 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#F8FAFC" />
+    <meta name="theme-color" content="#080C10" />
+    <script>
+      /* Chọn giao diện TRƯỚC lần vẽ đầu (không nháy trắng): trang khách = Lotus Noir; khu nhân viên = lựa chọn đã lưu (mặc định sáng).
+         Logic khớp src/utils/theme.ts. */
+      (function () {
+        try {
+          var staff = /^\/(quan-ly|dang-nhap|quen-mat-khau|dat-lai-mat-khau)(\/|$)/.test(location.pathname);
+          var t = staff ? (localStorage.getItem('salon.staffTheme') === 'noir' ? 'noir' : 'light') : 'noir';
+          document.documentElement.setAttribute('data-theme', t);
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', t === 'noir' ? '#080C10' : '#F8FAFC');
+        } catch (e) { document.documentElement.setAttribute('data-theme', 'noir'); }
+      })();
+    </script>
     <meta name="description" content="Đặt lịch salon - spa trực tuyến: chọn dịch vụ, chọn thợ, chốt khung giờ còn trống trong một phút." />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500;1,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <!-- Font tự host (src/fonts.css): nạp trước 3 tệp mà tiêu đề trang chủ (phần tử LCP) cần ngay -->
+    <link rel="preload" href="/fonts/cormorant-garamond-normal-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/cormorant-garamond-normal-vietnamese.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/inter-normal-latin.woff2" as="font" type="font/woff2" crossorigin />
     <title>Salon &amp; Spa Hương Sen — Đặt lịch trực tuyến</title>
   </head>
   <body>

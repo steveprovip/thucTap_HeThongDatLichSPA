@@ -46,14 +46,15 @@ export class EventsController {
     res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders();
 
-    const send = (event: string, data: unknown) => {
-      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    // `id:` = số thứ tự sự kiện: máy khách so với `seq` trong lời chào khi nối lại để biết có lỡ thay đổi nào không
+    const send = (event: string, data: unknown, id?: number) => {
+      res.write(`${id !== undefined ? `id: ${id}\n` : ''}event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
     };
     res.write('retry: 5000\n\n');
     send('hello', { bootId: this.events.bootId, seq: this.events.currentSeq, serverTime: new Date().toISOString() });
 
     this.events.clientConnected();
-    const sub: Subscription = this.events.stream().subscribe((e) => send('change', e));
+    const sub: Subscription = this.events.stream().subscribe((e) => send('change', e, e.seq));
     // Dòng bắt đầu bằng ":" là chú thích SSE: trình duyệt bỏ qua nhưng giữ cho kết nối không bị coi là rảnh
     const heartbeat = setInterval(() => res.write(': ping\n\n'), Number(process.env.SSE_HEARTBEAT_MS) || HEARTBEAT_MS);
     const lifetime = setTimeout(() => res.end(), MAX_STREAM_MS);

@@ -1,8 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, ReactNode } from 'react';
 import { authApi, onUnauthorized, tokenStore } from '@/api';
 import type { AuthUser, Role } from '@/types';
-import { DEMO_MODE, demoRole } from '@/api/mockBackend';
+import { DEMO_MODE } from '@/api/demoMode';
+import type { demoRole as DemoRoleApi } from '@/api/mockBackend';
 import { startRealtime, stopRealtime } from '@/utils/realtime';
+import { swrStore } from '@/utils/swrStore';
 
 interface AuthContextValue {
   user: AuthUser | null;
@@ -16,13 +18,18 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+/** Bộ chuyển vai trò của bản demo — chỉ nạp (động) khi DEMO_MODE; bản production không bao giờ tải mockBackend. */
+let demoRole: typeof DemoRoleApi | null = null;
+const loadDemoRole = async (): Promise<typeof DemoRoleApi> => (demoRole ??= (await import('@/api/mockBackend')).demoRole);
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(DEMO_MODE ? demoRole.user() : null);
-  const [loading, setLoading] = useState(!DEMO_MODE);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const refreshUser = useCallback(async () => {
     if (DEMO_MODE) {
-      setUser(demoRole.user()); setLoading(false); return;
+      const demo = await loadDemoRole();
+      setUser(demo.user()); setLoading(false); return;
     }
     if (!tokenStore.access) {
       setUser(null);
@@ -43,6 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void refreshUser();
     // Khi refresh token cũng hết hạn -> đưa về trang đăng nhập
     onUnauthorized.handler = () => {
+      swrStore.clear();
       setUser(null);
       if (!window.location.pathname.startsWith('/dang-nhap')) {
         window.location.assign('/dang-nhap');
@@ -52,6 +60,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     const result = await authApi.login(email, password);
+    // Đổi tài khoản trên cùng tab: bỏ bản đệm của người trước (lịch của chuyên viên khác, SĐT chưa che…)
+    swrStore.clear();
     setUser(result.user);
     return result.user;
   }, []);
@@ -62,7 +72,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await authApi.logout();
     } catch { /* token cục bộ đã được xoá trong authApi.logout */ }
-    if (DEMO_MODE) demoRole.set('customer');
+    if (DEMO_MODE) (await loadDemoRole()).set('customer');
+    // Đệm dữ liệu sống ở cấp module (không mất khi điều hướng SPA) → xoá để người đăng nhập sau không thấy dữ liệu cũ
+    swrStore.clear();
     setUser(null);
   }, []);
 
@@ -80,7 +92,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const setDemoRole = useCallback((role: Role) => {
+    if (!demoRole) return; // chỉ có ở chế độ demo (đã nạp khi khởi động AuthProvider)
     demoRole.set(role);
+    swrStore.clear();
     setUser(demoRole.user());
   }, []);
 

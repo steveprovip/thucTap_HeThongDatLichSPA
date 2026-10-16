@@ -13,6 +13,37 @@ import type { StylistGender } from '@/types';
 
 const u = (id: string, w = 800, q = 80) => `https://images.unsplash.com/photo-${id}?w=${w}&q=${q}&auto=format&fit=crop`;
 
+/**
+ * Biến thể ảnh của CDN Unsplash (imgix): `auto=format` đã trả AVIF / WebP theo trình duyệt; đây đổi bề rộng / chất lượng /
+ * độ mờ. Ảnh không phải Unsplash (ảnh tiệm tải lên /uploads) → null (giữ nguyên ảnh gốc).
+ */
+export function unsplashVariant(src: string | undefined, opts: { w: number; q?: number; blur?: number }): string | null {
+  if (!src || !src.startsWith('https://images.unsplash.com/')) return null;
+  try {
+    const url = new URL(src);
+    url.searchParams.set('w', String(opts.w));
+    url.searchParams.set('q', String(opts.q ?? url.searchParams.get('q') ?? 80));
+    url.searchParams.set('auto', 'format');
+    if (opts.blur) url.searchParams.set('blur', String(opts.blur));
+    else url.searchParams.delete('blur');
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+/** LQIP: bản 24px chất lượng 25, đã làm mờ ở CDN (~300 byte) — hiện ngay rồi ảnh thật hiện dần đè lên. */
+export const lqipOf = (src: string | undefined): string | null => unsplashVariant(src, { w: 24, q: 25, blur: 40 });
+
+/** srcset 400 / 800 / 1200 / 1600w cho ảnh Unsplash (trình duyệt chọn đúng cỡ theo `sizes` và mật độ điểm ảnh). */
+export function srcSetOf(src: string | undefined): string | undefined {
+  const list = [400, 800, 1200, 1600].map((w) => {
+    const v = unsplashVariant(src, { w });
+    return v ? `${v} ${w}w` : null;
+  });
+  return list.every(Boolean) ? list.join(', ') : undefined;
+}
+
 export const IMAGES = {
   hair_cut_men: u('1520338661084-680395057c93'),
   hair_cut_women: u('1700760934268-8aa0ef52ce0a'),

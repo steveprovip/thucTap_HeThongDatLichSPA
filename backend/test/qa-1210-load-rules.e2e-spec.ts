@@ -1,5 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import { AddressInfo } from 'net';
+import { DataSource } from 'typeorm';
 import { createTestApp } from './setup-app';
 import { fire, ipOf, summary } from './support/load';
 
@@ -13,6 +14,8 @@ describe('Chịu tải — 1000 khách hỏi trợ lý AI cùng lúc (chế đ�
 
   beforeAll(async () => {
     app = await createTestApp();
+    // Bộ đếm AI khách theo IP nằm trong CSDL dùng chung: câu khởi động (không X-Forwarded-For) không được 429 vì lượt của bộ khác
+    await app.get(DataSource).query(`DELETE FROM rate_limits WHERE scope = 'public_assistant_ip'`);
     // Mô phỏng 1000 khách ở 1000 địa chỉ khác nhau phía sau proxy tin cậy (Nginx / Vite dev proxy)
     app.getHttpAdapter().getInstance().set('trust proxy', 'loopback');
     await app.listen(0, '127.0.0.1');

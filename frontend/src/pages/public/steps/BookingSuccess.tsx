@@ -1,14 +1,16 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CalendarCheck, Copy, Mail, MailCheck, PartyPopper, Printer, ShieldCheck } from 'lucide-react';
+import { CalendarCheck, CalendarPlus, Copy, Download, Mail, MailCheck, Printer, ShieldCheck } from 'lucide-react';
 import type { BookingResult } from '@/types';
 import { getErrorMessage, publicApi } from '@/api';
-import { Button, Card, Input, VietQrCode } from '@/components';
+import { Button, Card, Input, LotusMark, VietQrCode } from '@/components';
 import { DEPOSIT_THRESHOLD, depositAmount, depositTransferNote } from '@/utils/opsHelpers';
 import { emailError } from '@/utils/validators';
 import { formatDuration, formatVnd } from '@/utils/format';
 import { SALON } from '@/utils/constants';
 import { useToast } from '@/contexts/ToastContext';
+import { useSalonInfo } from '@/utils/salonInfo';
+import { downloadIcs, googleCalendarUrl, type CalendarEvent } from '@/utils/calendarExport';
 
 export function BookingSuccess({ result, onBookAgain, phone, email }: {
   result: BookingResult; onBookAgain: () => void; phone: string; email?: string;
@@ -36,6 +38,20 @@ export function BookingSuccess({ result, onBookAgain, phone, email }: {
     }
   };
 
+  // Thêm vào lịch cá nhân: Google Calendar (liên kết) hoặc tệp .ics (Apple Calendar / Outlook / Samsung)
+  const info = useSalonInfo().info;
+  const salonName = info?.name ?? SALON.name;
+  const calendarEvent: CalendarEvent = {
+    uid: `${result.code}@huongsen-salon`,
+    title: `${salonName} — ${result.services.map((x) => x.name).join(', ')}`,
+    date: result.date,
+    start: result.startTime,
+    end: result.endTime,
+    location: info?.address ?? SALON.address,
+    details: `Mã tra cứu: ${result.code}\nChuyên viên: ${result.stylistName}\nTạm tính: ${formatVnd(result.estimatedTotal)}\n`
+      + `Đổi / huỷ lịch: ${window.location.origin}/tra-cuu?code=${result.code}\nHotline: ${info?.hotline ?? SALON.hotline}`,
+  };
+
   const copyCode = async () => {
     try {
       await navigator.clipboard.writeText(result.code);
@@ -47,21 +63,29 @@ export function BookingSuccess({ result, onBookAgain, phone, email }: {
 
   return (
     <div className="space-y-4">
-      <Card className="ticket-print overflow-hidden">
-        <div className="bg-gradient-to-br from-emerald-500 to-teal-600 px-5 py-7 text-center text-white">
-          <PartyPopper size={34} className="mx-auto" />
-          <h2 className="mt-2 text-xl font-bold">Tiệm đã nhận lịch của bạn</h2>
-          <p className="mt-1 text-sm text-white/85">
+      <Card className="ticket-print animate-spring-in overflow-hidden">
+        <div className="ticket-head relative overflow-hidden px-5 pb-8 pt-9 text-center">
+          <div aria-hidden className="absolute inset-0 bg-[radial-gradient(420px_220px_at_50%_0%,rgb(var(--gold)/0.18),transparent_70%)]" />
+          <span className="animate-spring-pop relative mx-auto flex h-16 w-16 items-center justify-center rounded-full text-gold ring-1 ring-gold/40">
+            <LotusMark className="h-9 w-9" />
+            <span aria-hidden className="absolute inset-1.5 rounded-full ring-1 ring-gold/15" />
+          </span>
+          <p className="eyebrow relative mt-5">{result.status === 'pending' ? 'Đã nhận lịch' : 'Đã xác nhận'}</p>
+          <h2 className="relative mt-2 font-display text-[2.2rem] font-medium leading-tight text-slate-900">
+            Hẹn gặp bạn tại <em className="italic text-gold">Hương Sen</em>
+          </h2>
+          <p className="relative mt-2 text-sm text-slate-500">
             {result.status === 'pending'
               ? 'Tiệm sẽ xác nhận trong thời gian sớm nhất.'
               : 'Lịch hẹn đã được xác nhận.'}
           </p>
+          <div aria-hidden className="gold-rule absolute inset-x-10 bottom-0" />
         </div>
 
         <div className="space-y-4 p-5">
-          <div className="rounded-2xl border-2 border-dashed border-teal-200 bg-teal-50/50 px-4 py-4 text-center">
-            <p className="text-xs font-medium uppercase tracking-wide text-brand-700">Mã tra cứu</p>
-            <p className="mt-1 text-3xl font-bold tracking-[0.2em] text-slate-900">{result.code}</p>
+          <div className="rounded-2xl border border-dashed border-gold/40 bg-gold/[0.05] px-4 py-5 text-center">
+            <p className="eyebrow">Mã tra cứu</p>
+            <p className="tnum mt-2 font-mono text-[2rem] font-semibold tracking-[0.28em] text-slate-900">{result.code}</p>
             <Button variant="ghost" size="sm" className="mt-1.5" onClick={copyCode} icon={<Copy size={14} />}>
               Sao chép mã
             </Button>
@@ -134,6 +158,16 @@ export function BookingSuccess({ result, onBookAgain, phone, email }: {
               Số điện thoại này đã có hồ sơ với tên khác. Tiệm giữ nguyên tên trên hồ sơ cũ và sẽ hỏi lại khi bạn tới.
             </p>
           )}
+
+          <div className="grid gap-2 print:hidden sm:grid-cols-2">
+            <a href={googleCalendarUrl(calendarEvent)} target="_blank" rel="noreferrer" className="btn-outline rounded-full">
+              <CalendarPlus size={16} className="text-gold" /> Thêm vào Google Calendar
+            </a>
+            <Button variant="outline" className="rounded-full" icon={<Download size={16} className="text-gold" />}
+                    onClick={() => downloadIcs(calendarEvent, `lich-hen-${result.code}.ics`)}>
+              Apple / Outlook (.ics)
+            </Button>
+          </div>
 
           <div className="flex flex-col gap-2 pt-1 sm:flex-row">
             <Link to={`/tra-cuu?code=${result.code}`} className="btn-primary flex-1">

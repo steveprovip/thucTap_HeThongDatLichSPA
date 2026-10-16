@@ -1,4 +1,16 @@
 /** @type {import('tailwindcss').Config} */
+
+/**
+ * RFC-2026-SPA-V3 · Design tokens. Mọi màu là biến CSS dạng "R G B" (src/index.css) để Tailwind ghép được độ trong suốt
+ * (`bg-teal-800/[0.06]`). Giá trị ở :root = ĐÚNG màu Tailwind mặc định → giao diện sáng không đổi một điểm ảnh;
+ * `html[data-theme='noir']` (Lotus Noir) đảo thang màu theo vai trò kiểu Radix: 50–100 nền nổi, 200–300 viền,
+ * 400–600 chữ phụ, 700–900 chữ chính / nền nút đặc; "teal" (màu hành động) trở thành Champagne Gold.
+ */
+const v = (name) => `rgb(var(--${name}) / <alpha-value>)`;
+const STEPS = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950];
+const scale = (name) => Object.fromEntries(STEPS.map((s) => [s, v(`${name}-${s}`)]));
+const THEMED = ['slate', 'gray', 'teal', 'amber', 'red', 'emerald', 'violet', 'rose', 'sky', 'pink', 'orange', 'blue', 'indigo', 'green', 'fuchsia', 'cyan', 'purple', 'lime', 'yellow'];
+
 export default {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   // Cảm ứng: tắt hover:* để phần tử không bị "kẹt" trạng thái hover/translate sau khi chạm
@@ -6,41 +18,55 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Fresha-style light luxury: airy slate surfaces, teal spa accent.
+        white: v('white'),
+        ...Object.fromEntries(THEMED.map((name) => [name, scale(name)])),
+        // Fresha-style light luxury: airy slate surfaces, teal spa accent (Noir: champagne gold).
         brand: {
-          DEFAULT: '#0D9488',
-          primary: '#0D9488',
-          light: '#F0FDFA',
-          50: '#F0FDFA', 100: '#CCFBF1', 200: '#99F6E4', 300: '#5EEAD4',
-          400: '#2DD4BF', 500: '#14B8A6', 600: '#0D9488', 700: '#0F766E',
-          800: '#115E59', 900: '#134E4A',
+          DEFAULT: v('teal-600'), primary: v('teal-600'), light: v('teal-50'),
+          50: v('teal-50'), 100: v('teal-100'), 200: v('teal-200'), 300: v('teal-300'), 400: v('teal-400'),
+          500: v('teal-500'), 600: v('teal-600'), 700: v('teal-700'), 800: v('teal-800'), 900: v('teal-900'),
         },
         accent: { gold: '#D97706', bright: '#F59E0B', glow: '#FEF3C7' },
-        ink: { DEFAULT: '#0F172A', soft: '#475569', muted: '#64748B' },
-        surface: { DEFAULT: '#FFFFFF', card: '#FFFFFF', alt: '#F8FAFC', page: '#F8FAFC' },
-        // Trang khách: nền ngà ấm + đường viền vàng sen (không đổi màn quản trị)
-        ivory: { DEFAULT: '#FBF8F3', deep: '#F4EEE4', line: '#E9DFCF' },
-        border: { subtle: '#E2E8F0' },
+        ink: { DEFAULT: v('slate-900'), soft: v('slate-600'), muted: v('slate-500') },
+        surface: { DEFAULT: v('white'), card: v('white'), alt: v('slate-50'), page: v('canvas'), raised: v('surface-raised') },
+        // Trang khách: nền ngà ấm + đường viền vàng sen (Noir: nền Obsidian + viền tóc mảnh)
+        ivory: { DEFAULT: v('ivory'), deep: v('ivory-deep'), line: v('ivory-line') },
+        border: { subtle: v('slate-200') },
+        // Ngữ nghĩa cho thành phần mới: dùng các tên này thay vì màu thô để tự đúng ở cả hai chế độ
+        canvas: v('canvas'),
+        fg: { DEFAULT: v('fg'), muted: v('fg-muted') },
+        line: v('line'),
+        gold: { DEFAULT: v('gold'), soft: v('gold-soft'), deep: v('gold-deep') },
+        bloom: v('bloom'),
+        jade: v('jade'),
+        lotus: v('lotus'),
+        // Lớp phủ sau hộp thoại / ngăn kéo: luôn tối (đảo thang slate ở Noir sẽ biến slate-900 thành sương trắng)
+        scrim: v('scrim'),
         status: {
           pending: '#D97706', confirmed: '#2563EB', arrived: '#7C3AED',
           progress: '#0891B2', completed: '#16A34A', cancelled: '#64748B', noshow: '#DC2626',
         },
       },
       fontFamily: {
+        // Inter: có bộ chữ tiếng Việt (Outfit / Geist chưa có → dấu tiếng Việt sẽ rơi về font khác, lệch nét)
         sans: ['Inter', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
         // Tiêu đề trang khách: serif cổ điển, đủ dấu tiếng Việt — chất "spa sen" thay vì sans mặc định
         display: ['"Cormorant Garamond"', 'Georgia', 'serif'],
       },
       boxShadow: {
-        card: '0 4px 20px -2px rgba(0, 0, 0, 0.05), 0 2px 6px -1px rgba(0, 0, 0, 0.02)',
-        'card-hover': '0 12px 32px -6px rgba(15, 23, 42, 0.10), 0 4px 10px -2px rgba(15, 23, 42, 0.04)',
-        pop: '0 24px 48px -12px rgba(15, 23, 42, 0.18)',
+        card: 'var(--shadow-card)',
+        'card-hover': 'var(--shadow-card-hover)',
+        pop: 'var(--shadow-pop)',
+        glow: '0 0 0 1px rgb(var(--gold) / 0.35), 0 12px 40px -12px rgb(var(--gold) / 0.45)',
       },
       transitionTimingFunction: {
         // Ease-out mạnh (emil-design-eng): phản hồi tức thì, dừng mềm, không nảy quá đà
         out: 'cubic-bezier(0.23, 1, 0.32, 1)',
         drawer: 'cubic-bezier(0.32, 0.72, 0, 1)',
+        // Lò xo thật (mass 1 · stiffness 320 · damping 26) dưới dạng linear() — xem --ease-spring trong index.css
+        spring: 'var(--ease-spring)',
       },
+      transitionDuration: { spring: '520ms' },
       screens: { xs: '360px' },
     },
   },

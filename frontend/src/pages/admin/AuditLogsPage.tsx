@@ -361,7 +361,7 @@ export function AuditLogsPage() {
                                   )}
                                   <details className="mt-1 text-[11px] text-slate-500">
                                     <summary className="cursor-pointer hover:text-teal-700 font-medium">Xem mã nguồn JSON kỹ thuật</summary>
-                                    <pre className="thin-scroll mt-1 max-h-36 overflow-auto rounded border border-slate-200 bg-slate-900 p-2 font-mono text-[10px] text-emerald-400">
+                                    <pre className="thin-scroll mt-1 max-h-36 overflow-auto rounded border border-slate-200 bg-black/90 p-2 font-mono text-[10px] text-emerald-400">
                                       {JSON.stringify(r.changes, null, 2)}
                                     </pre>
                                   </details>

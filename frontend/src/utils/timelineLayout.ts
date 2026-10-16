@@ -11,6 +11,11 @@ export interface PositionedItem<T extends OverlapItem> {
   endMinutes: number;
   laneIndex: number;
   totalLanes: number;
+  /**
+   * Số làn liền kề (tính từ laneIndex sang phải) thẻ được phép chiếm vì không trùng giờ với thẻ nào ở các làn đó —
+   * thẻ giãn rộng ra chỗ trống (kiểu Google Calendar) thay vì luôn hẹp 1/totalLanes. Luôn ≥ 1.
+   */
+  laneSpan: number;
 }
 
 /**
@@ -32,6 +37,7 @@ export function packOverlappingAppointments<T extends OverlapItem>(
       endMinutes,
       laneIndex: 0,
       totalLanes: 1,
+      laneSpan: 1,
     };
   });
 
@@ -74,6 +80,13 @@ export function packOverlappingAppointments<T extends OverlapItem>(
     const totalLanes = Math.max(1, laneEndTimes.length);
     for (const it of cluster) {
       it.totalLanes = totalLanes;
+      let span = 1;
+      for (let lane = it.laneIndex + 1; lane < totalLanes; lane += 1) {
+        const blocked = cluster.some((o) => o.laneIndex === lane && o.startMinutes < it.endMinutes && it.startMinutes < o.endMinutes);
+        if (blocked) break;
+        span += 1;
+      }
+      it.laneSpan = span;
       result.push(it);
     }
   }
