@@ -3,17 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#080C10" />
+    <meta name="theme-color" content="#FAF7F2" />
     <script>
-      /* Chọn giao diện TRƯỚC lần vẽ đầu (không nháy trắng): trang khách = Lotus Noir; khu nhân viên = lựa chọn đã lưu (mặc định sáng).
-         Logic khớp src/utils/theme.ts. */
+      /* Chọn giao diện TRƯỚC lần vẽ đầu (không nháy màu): trang khách = Lotus Ivory; khu nhân viên = lựa chọn đã lưu
+         (mặc định sáng, Lotus Noir khi trực đêm). Logic khớp src/utils/theme.ts. */
       (function () {
+        var colors = { ivory: '#FAF7F2', light: '#F8FAFC', noir: '#080C10' };
+        var t = 'ivory';
         try {
-          var staff = /^\/(quan-ly|dang-nhap|quen-mat-khau|dat-lai-mat-khau)(\/|$)/.test(location.pathname);
-          var t = staff ? (localStorage.getItem('salon.staffTheme') === 'noir' ? 'noir' : 'light') : 'noir';
-          document.documentElement.setAttribute('data-theme', t);
-          document.querySelector('meta[name="theme-color"]').setAttribute('content', t === 'noir' ? '#080C10' : '#F8FAFC');
-        } catch (e) { document.documentElement.setAttribute('data-theme', 'noir'); }
+          if (/^\/(quan-ly|dang-nhap|quen-mat-khau|dat-lai-mat-khau)(\/|$)/.test(location.pathname)) {
+            t = localStorage.getItem('salon.staffTheme') === 'noir' ? 'noir' : 'light';
+          }
+        } catch (e) { /* chế độ riêng tư chặn localStorage: dùng mặc định */ }
+        document.documentElement.setAttribute('data-theme', t);
+        document.querySelector('meta[name="theme-color"]').setAttribute('content', colors[t]);
       })();
     </script>
     <meta name="description" content="Đặt lịch salon - spa trực tuyến: chọn dịch vụ, chọn thợ, chốt khung giờ còn trống trong một phút." />

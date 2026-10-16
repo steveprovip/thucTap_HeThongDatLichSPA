@@ -7,9 +7,10 @@ import { build } from 'esbuild';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const load = async (file) => {
-  const out = await build({ entryPoints: [resolve(root, file)], bundle: true, write: false, platform: 'node', format: 'cjs', alias: { '@': resolve(root, 'src') } });
+  const out = await build({ entryPoints: [resolve(root, file)], bundle: true, write: false, platform: 'node', format: 'cjs', alias: { '@': resolve(root, 'src') }, external: ['react'] });
   const module = { exports: {} };
-  runInNewContext(out.outputFiles[0].text, { module, exports: module.exports, URL, URLSearchParams, TextEncoder });
+  // React chỉ cần cho hook — các hàm thuần được kiểm thử không gọi tới nó
+  runInNewContext(out.outputFiles[0].text, { module, exports: module.exports, URL, URLSearchParams, TextEncoder, require: () => ({}) });
   return module.exports;
 };
 const radar = await load('src/utils/slotRadar.ts');
@@ -137,4 +138,22 @@ test('Trạng thái mở cửa theo giờ tiệm thật', () => {
   assert.deepEqual(plain(clock.openState(hours, { dow: 1, minutes: 7 * 60 })), { kind: 'later-today', openTime: '08:30' });
   assert.deepEqual(plain(clock.openState(hours, { dow: 6, minutes: 21 * 60 })), { kind: 'closed', next: { dayLabel: 'T1', openTime: '08:30' } });
   assert.deepEqual(plain(clock.openState(hours, { dow: 2, minutes: 21 * 60 })), { kind: 'closed', next: { dayLabel: 'ngày mai', openTime: '08:30' } });
+});
+
+test('Slot Radar: màu theo mức trống — xanh còn chỗ, hổ phách sắp kín, đỏ đã kín, xám đã qua', () => {
+  assert.equal(radar.radarTone(0.8, 10), 'many');
+  assert.equal(radar.radarTone(0.4, 5), 'some');
+  assert.equal(radar.radarTone(0.1, 1), 'few');
+  assert.equal(radar.radarTone(0, 0), 'full');
+  assert.equal(radar.radarTone(0, 0, true), 'past');
+  assert.equal(radar.capacityLabel(0.1, 1), 'Sắp kín');
+});
+
+test('Giao diện theo trang: khách = Lotus Ivory (sáng), nhân viên = lựa chọn đã lưu (mặc định sáng, Noir khi trực đêm)', async () => {
+  const theme = await load('src/utils/theme.ts');
+  for (const path of ['/', '/dat-lich', '/tra-cuu', '/danh-gia/abc']) assert.equal(theme.themeForPath(path, 'noir'), 'ivory', path);
+  for (const path of ['/quan-ly', '/quan-ly/lich-hen', '/dang-nhap']) {
+    assert.equal(theme.themeForPath(path, 'light'), 'light', path);
+    assert.equal(theme.themeForPath(path, 'noir'), 'noir', path);
+  }
 });

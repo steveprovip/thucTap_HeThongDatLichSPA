@@ -70,11 +70,20 @@ export function buildRadar(slots: Slot[], opts: { open?: string; close?: string;
 
 /** Nhãn độ trống cho người đọc (thanh màu đi kèm chỉ là minh hoạ). */
 export function capacityLabel(capacity: number, count: number, past = false): string {
-  if (past) return 'Đã qua';
-  if (!count) return 'Đã kín';
-  if (capacity >= 0.6) return 'Còn nhiều chỗ';
-  if (capacity >= 0.3) return 'Còn vừa chỗ';
-  return 'Sắp kín';
+  return TONE_LABEL[radarTone(capacity, count, past)];
+}
+
+/** Mức độ trống của buổi — quyết định màu thanh radar: xanh (còn chỗ) · hổ phách (sắp kín) · đỏ (đã kín) · xám (đã qua). */
+export type RadarTone = 'many' | 'some' | 'few' | 'full' | 'past';
+const TONE_LABEL: Record<RadarTone, string> = {
+  many: 'Còn nhiều chỗ', some: 'Còn vừa chỗ', few: 'Sắp kín', full: 'Đã kín', past: 'Đã qua',
+};
+export function radarTone(capacity: number, count: number, past = false): RadarTone {
+  if (past) return 'past';
+  if (!count) return 'full';
+  if (capacity >= 0.6) return 'many';
+  if (capacity >= 0.3) return 'some';
+  return 'few';
 }
 
 /** Mức thợ rảnh của một khung (1–3 chấm) so với khung rảnh nhất trong ngày. */
