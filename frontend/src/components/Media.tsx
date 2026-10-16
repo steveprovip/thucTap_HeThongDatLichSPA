@@ -1,6 +1,6 @@
 import { ImgHTMLAttributes, ReactNode, useCallback, useEffect, useId, useState } from 'react';
 import { Droplets, Flower2, Gem, HandHeart, Leaf, Palette, Scissors, Sparkles, UserRound } from 'lucide-react';
-import { initials, KIND_ALTERNATES, stylistPhoto, type MediaKind } from '@/utils/images';
+import { initials, KIND_ALTERNATES, lqipOf, srcSetOf, stylistPhoto, type MediaKind } from '@/utils/images';
 import type { StylistGender } from '@/types';
 
 /**
@@ -30,13 +30,14 @@ function SeedGradient({ seed }: { seed: string }) {
     <svg aria-hidden className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
       <defs>
         <linearGradient id={gid} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor={`hsl(${h} 80% 94%)`} />
-          <stop offset="1" stopColor={`hsl(${(h + 40) % 360} 70% 86%)`} />
+          {/* Độ sáng / bão hoà lấy từ biến CSS: pastel ở giao diện sáng, sắc độ trầm trên nền Lotus Noir */}
+          <stop offset="0" style={{ stopColor: `hsl(${h} var(--seed-s1) var(--seed-l1))` }} />
+          <stop offset="1" style={{ stopColor: `hsl(${(h + 40) % 360} var(--seed-s2) var(--seed-l2))` }} />
         </linearGradient>
       </defs>
       <rect width="100" height="100" fill={`url(#${gid})`} />
-      <circle cx="88" cy="10" r="26" fill="#ffffff" fillOpacity="0.45" />
-      <circle cx="8" cy="96" r="22" fill="#ffffff" fillOpacity="0.35" />
+      <circle cx="88" cy="10" r="26" style={{ fill: 'rgb(var(--white))' }} fillOpacity="0.45" />
+      <circle cx="8" cy="96" r="22" style={{ fill: 'rgb(var(--white))' }} fillOpacity="0.35" />
     </svg>
   );
 }
@@ -90,7 +91,7 @@ const MAX_ALTERNATES = 2;
  * thì thử lần lượt ảnh dự phòng cùng chủ đề; mất mạng / tải quá lâu / hết ảnh dự phòng thì chuyển
  * mượt sang nền gradient theo chủ đề dịch vụ (kéo, giọt nước, lấp lánh…). Không bao giờ lộ ảnh vỡ.
  */
-export function SmartImage({ src, alt, className = '', imgClassName = '', kind = 'spa', fallbackLabel, seed, monogram, ...rest }:
+export function SmartImage({ src, alt, className = '', imgClassName = '', kind = 'spa', fallbackLabel, seed, monogram, sizes, ...rest }:
   ImgHTMLAttributes<HTMLImageElement> & {
     imgClassName?: string; kind?: MediaKind; fallbackLabel?: string;
     /** Mã dịch vụ / thợ để nền dự phòng mang màu riêng (QA-22). */
@@ -121,8 +122,14 @@ export function SmartImage({ src, alt, className = '', imgClassName = '', kind =
     return () => window.clearTimeout(timer);
   }, [state, trackedSrc, attempt]);
 
+  // LQIP (ảnh mờ 24px từ CDN) thay khung shimmer khi đang tải; srcset chỉ khi nơi dùng khai báo `sizes` (biết ảnh hiển thị to cỡ nào)
+  const lqip = state === 'loading' ? lqipOf(currentSrc) : null;
+  const srcSet = sizes ? srcSetOf(currentSrc) : undefined;
   return (
-    <div className={`relative overflow-hidden ${state === 'loading' ? 'skeleton-shimmer' : 'bg-slate-100'} ${className}`}>
+    <div className={`${/\b(absolute|fixed)\b/.test(className) ? '' : 'relative'} overflow-hidden ${state === 'loading' && !lqip ? 'skeleton-shimmer' : 'bg-slate-100'} ${className}`}>
+      {lqip && (
+        <span aria-hidden className="absolute inset-0 scale-110 bg-cover bg-center blur-xl" style={{ backgroundImage: `url("${lqip}")` }} />
+      )}
       {state === 'error' ? (
         <MediaFallback kind={kind} label={fallbackLabel} seed={seed} monogram={monogram} />
       ) : (
@@ -130,10 +137,12 @@ export function SmartImage({ src, alt, className = '', imgClassName = '', kind =
           key={currentSrc}
           ref={imgRef}
           src={currentSrc}
+          srcSet={srcSet}
+          sizes={srcSet ? sizes : undefined}
           alt={alt}
           onLoad={() => setState('ready')}
           onError={handleError}
-          className={`h-full w-full object-cover transition-[opacity,transform] duration-700 ease-out
+          className={`relative h-full w-full object-cover transition-[opacity,transform] duration-700 ease-out
             ${state === 'ready' ? 'opacity-100' : 'opacity-0'} ${imgClassName}`}
           {...rest}
         />

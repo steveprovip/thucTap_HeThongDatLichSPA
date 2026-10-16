@@ -152,7 +152,7 @@ export function AdminLayout() {
       {/* Ngăn kéo trên điện thoại / máy tính bảng */}
       {mobileOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
-          <div className="animate-fade absolute inset-0 bg-slate-900/30 backdrop-blur-[2px]" onClick={() => setMobileOpen(false)} aria-hidden />
+          <div className="animate-fade absolute inset-0 bg-scrim/30 backdrop-blur-[2px]" onClick={() => setMobileOpen(false)} aria-hidden />
           <aside className="relative z-10 flex h-full w-72 max-w-[85vw] flex-col pb-[env(safe-area-inset-bottom)] bg-white shadow-pop animate-slide-in-left">
             <div className="flex h-14 items-center justify-between border-b border-slate-200 px-4">
               <span className="text-sm font-bold">Quản lý tiệm</span>

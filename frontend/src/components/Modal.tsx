@@ -28,7 +28,7 @@ export function Modal({ open, title, onClose, children, footer, size = 'md' }: M
   if (!open) return null;
 
   return createPortal(
-    <div className="animate-fade fixed inset-0 z-50 flex items-end justify-center bg-slate-900/30 p-0 backdrop-blur-[2px] sm:items-center sm:p-4"
+    <div className="animate-fade fixed inset-0 z-50 flex items-end justify-center bg-scrim/30 p-0 backdrop-blur-[2px] sm:items-center sm:p-4"
          role="dialog" aria-modal="true" aria-label={title}>
       <div className="absolute inset-0" onClick={onClose} aria-hidden />
       <div className={`relative z-10 flex max-h-[92vh] max-h-[92dvh] w-full ${SIZES[size]} flex-col overflow-hidden

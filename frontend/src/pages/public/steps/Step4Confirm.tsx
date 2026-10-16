@@ -29,38 +29,32 @@ export function Step4Confirm({ errors, requireEmail = false }: { errors: Step4Er
 
   return (
     <div className="space-y-5">
-      <section className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 sm:p-5">
-        <h3 className="text-sm font-semibold text-slate-900">Tóm tắt lịch hẹn</h3>
-        <dl className="mt-2.5 space-y-1.5 text-sm">
-          <div className="flex justify-between gap-3">
-            <dt className="text-ink-muted">Thời gian</dt>
-            <dd className="text-right font-semibold">
-              {time} · {formatWeekdayDate(`${date}T00:00:00+07:00`)}
-            </dd>
-          </div>
-          <div className="flex justify-between gap-3">
-            <dt className="text-ink-muted">Tổng thời lượng</dt>
-            <dd className="font-semibold">{formatDuration(totalDuration)}</dd>
-          </div>
-        </dl>
-        <ul className="mt-3 space-y-1 border-t border-slate-200 pt-2.5 text-sm">
+      <section className="relative overflow-hidden rounded-2xl border border-gold/25 bg-white/40 p-4 sm:p-5">
+        <div aria-hidden className="gold-rule absolute inset-x-6 top-0" />
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h3 className="eyebrow">Tóm tắt lịch hẹn</h3>
+          <p className="tnum text-sm font-medium text-slate-900">{time} · {formatWeekdayDate(`${date}T00:00:00+07:00`)}</p>
+        </div>
+        <ul className="mt-3 space-y-2 text-sm">
           {selected.map((s) => (
-            <li key={s.id} className="flex justify-between gap-3">
-              <span className="min-w-0 truncate">{s.name} <span className="text-ink-muted">({s.durationMinutes}′)</span></span>
-              <span className="shrink-0 font-medium">{s.priceText}</span>
+            <li key={s.id} className="flex items-baseline gap-3">
+              <span className="min-w-0 truncate text-slate-800">{s.name}</span>
+              <span aria-hidden className="min-w-4 flex-1 translate-y-[-3px] border-b border-dotted border-slate-300" />
+              <span className="tnum shrink-0 text-slate-500">{s.durationMinutes}′</span>
+              <span className="tnum w-24 shrink-0 text-right font-medium text-slate-900">{s.priceText}</span>
             </li>
           ))}
         </ul>
-        <div className="mt-2.5 flex items-baseline justify-between border-t border-slate-200 pt-2.5">
-          <span className="text-sm font-semibold">Tạm tính</span>
-          <span className="text-xl font-bold text-slate-900">{formatVnd(totalPrice)}</span>
+        <div className="mt-4 flex items-end justify-between gap-3 border-t border-slate-200/70 pt-3">
+          <span className="text-sm text-slate-500">Tạm tính · <span className="tnum">{formatDuration(totalDuration)}</span></span>
+          <span className="tnum font-display text-[2rem] font-semibold leading-none text-slate-900">{formatVnd(totalPrice)}</span>
         </div>
-        <p className="mt-1.5 flex items-start gap-1.5 text-xs text-ink-muted">
+        <p className="mt-2 flex items-start gap-1.5 text-xs text-slate-500">
           <Info size={13} className="mt-0.5 shrink-0" />
           Đây là số tiền tạm tính, giá cuối do tiệm chốt khi thanh toán.
         </p>
         {depositAmount(totalPrice) > 0 && (
-          <p className="mt-2 flex items-start gap-1.5 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          <p className="mt-3 flex items-start gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
             <ShieldCheck size={14} className="mt-0.5 shrink-0" />
             <span>
               <strong>Chính sách cọc giữ lịch:</strong> lịch trên {formatVnd(DEPOSIT_THRESHOLD)} cọc 30%
@@ -113,7 +107,7 @@ export function Step4Confirm({ errors, requireEmail = false }: { errors: Step4Er
         />
       </Field>
       {!requireEmail && !customer.email.trim() && (
-        <p className="-mt-2 flex items-start gap-2 rounded-xl bg-amber-50 px-3.5 py-2.5 text-xs text-amber-900">
+        <p className="-mt-2 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs text-amber-900">
           <MailWarning size={15} className="mt-0.5 shrink-0" />
           <span>
             Không có email, bạn sẽ <strong>không nhận được mã tra cứu</strong> qua thư và <strong>không được báo</strong> khi

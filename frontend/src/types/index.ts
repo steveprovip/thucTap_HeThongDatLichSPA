@@ -724,6 +724,8 @@ export interface CustomerAssistantReply {
   model: string | null;
   /** Ngày trợ lý vừa tra giờ trống — "Đặt" mở phiếu đặt lịch đúng ngày này. */
   bookDate?: string;
+  /** Giờ (HH:mm) trợ lý ĐÃ TRA THẬT còn trống — "Đặt" chọn sẵn giờ này ở bước 2. */
+  bookTime?: string;
   /** Trạng thái hội thoại (đang tra giờ ngày nào, buổi nào, dịch vụ nào…) — gửi lại nguyên vẹn ở câu kế tiếp. */
   state?: CustomerDialogState;
   /** Câu khách gõ khó hiểu được trợ lý viết lại rõ nghĩa → hiện "Mình hiểu là: …". */

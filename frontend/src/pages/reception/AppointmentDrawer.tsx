@@ -154,7 +154,7 @@ export function AppointmentDrawer({ appointment, onClose, onChanged }: Appointme
 
   const drawer = (
     <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-label={`Lịch hẹn ${a.code}`}>
-      <div className={`absolute inset-0 bg-slate-900/25 backdrop-blur-[2px] transition-opacity duration-200 ${visible ? 'opacity-100' : 'opacity-0'}`}
+      <div className={`absolute inset-0 bg-scrim/25 backdrop-blur-[2px] transition-opacity duration-200 ${visible ? 'opacity-100' : 'opacity-0'}`}
            onClick={close} aria-hidden />
       <aside className={`relative flex h-full w-full max-w-xl flex-col border-l border-slate-200 bg-white shadow-pop
                          transition-transform duration-200 ease-out ${visible ? 'translate-x-0' : 'translate-x-full'}`}>

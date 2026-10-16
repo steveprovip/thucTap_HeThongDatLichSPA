@@ -93,7 +93,7 @@ export function ReviewPage() {
 
   return (
     <Card className="p-5 sm:p-6">
-      <h1 className="text-xl font-bold">Bạn thấy buổi dịch vụ thế nào?</h1>
+      <h1 className="font-display text-[2rem] font-medium leading-tight text-slate-900">Bạn thấy buổi dịch vụ thế nào?</h1>
       <p className="mt-1 text-sm text-ink-muted">
         Lịch <strong className="tracking-widest">{form.appointmentCode}</strong> ngày {form.dateText} — thợ{' '}
         <strong>{form.stylistName}</strong>

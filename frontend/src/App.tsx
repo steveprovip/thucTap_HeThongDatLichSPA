@@ -9,6 +9,7 @@ import { RoleSwitcher } from '@/components/RoleSwitcher';
 import { PublicLayout } from '@/layouts/PublicLayout';
 import { AdminLayout } from '@/layouts/AdminLayout';
 import type { Role } from '@/types';
+import { useRouteTheme } from '@/utils/theme';
 
 /**
  * Tách chunk theo trang: trang chủ + đăng nhập nạp ngay, còn lại nạp khi vào route
@@ -92,10 +93,17 @@ function NotFound() {
   );
 }
 
+/** Đặt data-theme trên <html> theo khu vực đang mở (trang khách: Lotus Noir; khu nhân viên: lựa chọn đã lưu). */
+function ThemeController() {
+  useRouteTheme(useLocation().pathname);
+  return null;
+}
+
 export default function App() {
   return (
     <ToastProvider>
       <AuthProvider>
+        <ThemeController />
         <RoleSwitcher />
         <UpdateBanner />
         <ErrorBoundary>

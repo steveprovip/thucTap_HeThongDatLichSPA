@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { CalendarCheck, Clock, Globe, Mail, MapPin, MessageCircle, Phone, Search, Star, ThumbsUp } from 'lucide-react';
 import { loadSalonInfo } from '@/utils/salonInfo';
 import type { SalonInfo } from '@/types';
-import { StylistAvatar } from '@/components';
+import { LotusMark, StylistAvatar } from '@/components';
 import { DOW_ORDER, SALON } from '@/utils/constants';
 
 /** Gom các ngày liền nhau có cùng giờ mở cửa: "Thứ hai – Thứ sáu 08:00–21:00". */
@@ -42,39 +42,42 @@ export function SiteFooter() {
   ].filter(Boolean) as { href: string; label: string; icon: JSX.Element }[];
 
   return (
-    <footer className="mt-6 bg-gradient-to-br from-slate-900 via-slate-900 to-teal-950 text-slate-300 print:hidden">
-      <div className="mx-auto grid max-w-7xl gap-8 px-4 pb-8 pt-10 sm:grid-cols-2 lg:grid-cols-[1.2fr_0.9fr_1.4fr_0.9fr]">
-        <section aria-label="Liên hệ">
-          <Link to="/" className="flex items-center gap-2.5">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-teal-500 text-sm font-bold text-white">HS</span>
-            <span className="text-base font-bold text-white">{name}</span>
+    <footer className="relative mt-10 overflow-hidden border-t border-slate-200/70 bg-ivory-deep text-slate-600 print:hidden">
+      <div aria-hidden className="gold-rule absolute inset-x-0 top-0" />
+      {/* Hoa sen chìm cỡ lớn làm nền chân trang — trang trí, không bắt mắt */}
+      <LotusMark className="pointer-events-none absolute -right-16 -top-10 h-80 w-80 text-gold/[0.05]" />
+      <div className="relative mx-auto grid max-w-7xl gap-10 px-4 pb-8 pt-12 sm:grid-cols-2 lg:grid-cols-[1.25fr_0.9fr_1.4fr_0.8fr]">
+        <section aria-label="Thông tin tiệm">
+          <Link to="/" className="inline-flex items-center gap-3">
+            <span className="flex h-11 w-11 items-center justify-center rounded-full text-gold ring-1 ring-gold/35"><LotusMark className="h-7 w-7" /></span>
+            <span className="font-display text-2xl font-semibold italic leading-none text-slate-900">{name}</span>
           </Link>
-          {info?.slogan && <p className="mt-2 text-sm text-slate-400">{info.slogan}</p>}
-          <ul className="mt-4 space-y-2 text-sm">
+          {info?.slogan && <p className="mt-3 max-w-xs font-display text-lg italic leading-snug text-slate-500">“{info.slogan}”</p>}
+          <ul className="mt-5 space-y-2.5 text-sm">
             <li>
-              <a href={mapUrl} target="_blank" rel="noreferrer" className="flex items-start gap-2 hover:text-white">
-                <MapPin size={16} className="mt-0.5 shrink-0 text-teal-400" /> <span>{address} <span className="text-teal-400">· Chỉ đường</span></span>
+              <a href={mapUrl} target="_blank" rel="noreferrer" className="flex items-start gap-2.5 transition-colors hover:text-slate-900">
+                <MapPin size={16} className="mt-0.5 shrink-0 text-gold" /> <span>{address} <span className="text-gold">· Chỉ đường</span></span>
               </a>
             </li>
             <li>
-              <a href={`tel:${hotline.replace(/\s/g, '')}`} className="flex items-center gap-2 font-semibold text-white hover:text-teal-300">
-                <Phone size={16} className="shrink-0 text-teal-400" /> Hotline {hotline}
+              <a href={`tel:${hotline.replace(/\s/g, '')}`} className="tnum flex items-center gap-2.5 font-semibold text-slate-900 transition-colors hover:text-gold">
+                <Phone size={16} className="shrink-0 text-gold" /> Hotline {hotline}
               </a>
             </li>
             {info?.email && (
               <li>
-                <a href={`mailto:${info.email}`} className="flex items-center gap-2 hover:text-white">
-                  <Mail size={16} className="shrink-0 text-teal-400" /> {info.email}
+                <a href={`mailto:${info.email}`} className="flex items-center gap-2.5 transition-colors hover:text-slate-900">
+                  <Mail size={16} className="shrink-0 text-gold" /> {info.email}
                 </a>
               </li>
             )}
           </ul>
           {socials.length > 0 && (
-            <div className="mt-4 flex flex-wrap gap-2">
-              {socials.map((s) => (
-                <a key={s.label} href={s.href} target="_blank" rel="noreferrer"
-                   className="inline-flex items-center gap-1.5 rounded-full border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-200 hover:border-teal-400 hover:text-white">
-                  {s.icon} {s.label}
+            <div className="mt-5 flex flex-wrap gap-2">
+              {socials.map((x) => (
+                <a key={x.label} href={x.href} target="_blank" rel="noreferrer"
+                   className="inline-flex min-h-[36px] items-center gap-1.5 rounded-full border border-slate-200 px-3.5 text-xs font-medium text-slate-700 transition-colors hover:border-gold/60 hover:text-slate-900">
+                  {x.icon} {x.label}
                 </a>
               ))}
             </div>
@@ -82,12 +85,12 @@ export function SiteFooter() {
         </section>
 
         <section aria-label="Giờ mở cửa">
-          <h3 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-white"><Clock size={15} className="text-teal-400" /> Giờ mở cửa</h3>
-          <ul className="mt-3 space-y-1.5 text-sm">
+          <h3 className="eyebrow flex items-center gap-2"><Clock size={13} /> Giờ mở cửa</h3>
+          <ul className="mt-4 space-y-2 text-sm">
             {info ? groupHours(info.openingHours).map((g) => (
-              <li key={g.label} className="flex justify-between gap-3">
+              <li key={g.label} className="flex justify-between gap-3 border-b border-slate-200/60 pb-2 last:border-0">
                 <span>{g.label}</span>
-                <span className={g.value === 'Nghỉ' ? 'text-rose-300' : 'font-medium text-white tabular-nums'}>{g.value}</span>
+                <span className={g.value === 'Nghỉ' ? 'text-rose-600' : 'tnum font-medium text-slate-900'}>{g.value}</span>
               </li>
             )) : <li className="text-slate-500">Đang cập nhật…</li>}
           </ul>
@@ -95,35 +98,35 @@ export function SiteFooter() {
         </section>
 
         <section aria-label="Đội ngũ chuyên viên">
-          <h3 className="text-sm font-semibold uppercase tracking-wider text-white">Đội ngũ chuyên viên</h3>
+          <h3 className="eyebrow">Đội ngũ chuyên viên</h3>
           {info?.team.length ? (
-            <ul className="mt-3 grid grid-cols-1 gap-2.5 xs:grid-cols-2">
+            <ul className="mt-4 grid grid-cols-1 gap-3 xs:grid-cols-2">
               {info.team.slice(0, 8).map((m) => (
                 <li key={m.id} className="flex items-center gap-2.5">
-                  <StylistAvatar id={m.id} name={m.fullName} url={m.avatarUrl} gender={m.gender} size="h-9 w-9" className="ring-slate-800" />
+                  <StylistAvatar id={m.id} name={m.fullName} url={m.avatarUrl} gender={m.gender} size="h-9 w-9" className="ring-gold/25" />
                   <span className="min-w-0">
-                    <span className="block truncate text-sm font-medium text-white">{m.fullName}</span>
-                    <span className="block truncate text-[11px] text-slate-400">
-                      {m.avgRating ? <><Star size={10} className="-mt-0.5 inline text-amber-400" /> {m.avgRating.toFixed(1)} · </> : null}
+                    <span className="block truncate text-sm font-medium text-slate-900">{m.fullName}</span>
+                    <span className="block truncate text-[11px] text-slate-500">
+                      {m.avgRating ? <><Star size={10} className="-mt-0.5 inline fill-current text-gold" /> <span className="tnum">{m.avgRating.toFixed(1)}</span> · </> : null}
                       {m.specialty ?? 'Chuyên viên'}
                     </span>
                   </span>
                 </li>
               ))}
             </ul>
-          ) : <p className="mt-3 text-sm text-slate-500">Đội ngũ chuyên viên tận tâm, giàu kinh nghiệm.</p>}
+          ) : <p className="mt-4 text-sm text-slate-500">Đội ngũ chuyên viên tận tâm, giàu kinh nghiệm.</p>}
         </section>
 
         <section aria-label="Liên kết nhanh">
-          <h3 className="text-sm font-semibold uppercase tracking-wider text-white">Dành cho khách</h3>
-          <ul className="mt-3 space-y-2 text-sm">
-            <li><Link to="/dat-lich" className="inline-flex items-center gap-2 hover:text-white"><CalendarCheck size={15} className="text-teal-400" /> Đặt lịch online</Link></li>
-            <li><Link to="/tra-cuu" className="inline-flex items-center gap-2 hover:text-white"><Search size={15} className="text-teal-400" /> Tra cứu / huỷ lịch</Link></li>
-            <li><Link to="/dang-nhap" className="inline-flex items-center gap-2 hover:text-white"><Globe size={15} className="text-teal-400" /> Cổng nhân viên</Link></li>
+          <h3 className="eyebrow">Dành cho khách</h3>
+          <ul className="mt-4 space-y-2.5 text-sm">
+            <li><Link to="/dat-lich" className="inline-flex items-center gap-2.5 transition-colors hover:text-slate-900"><CalendarCheck size={15} className="text-gold" /> Đặt lịch online</Link></li>
+            <li><Link to="/tra-cuu" className="inline-flex items-center gap-2.5 transition-colors hover:text-slate-900"><Search size={15} className="text-gold" /> Tra cứu / huỷ lịch</Link></li>
+            <li><Link to="/dang-nhap" className="inline-flex items-center gap-2.5 transition-colors hover:text-slate-900"><Globe size={15} className="text-gold" /> Cổng nhân viên</Link></li>
           </ul>
         </section>
       </div>
-      <div className="border-t border-slate-800">
+      <div className="relative border-t border-slate-200/60">
         <p className="mx-auto max-w-7xl px-4 pb-[calc(var(--bottom-nav-h)+1rem+env(safe-area-inset-bottom))] pt-4 text-xs text-slate-500 sm:pb-4">© {new Date().getFullYear()} {name}. Mọi quyền được bảo lưu.</p>
       </div>
     </footer>
