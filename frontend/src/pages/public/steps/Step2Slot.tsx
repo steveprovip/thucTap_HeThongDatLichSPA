@@ -4,7 +4,7 @@ import { getErrorMessage, publicApi } from '@/api';
 import type { Availability } from '@/types';
 import { Button, Skeleton } from '@/components';
 import { addDaysISO, formatDuration, formatWeekdayDate, todayISO } from '@/utils/format';
-import { buildRadar, capacityLabel, freeLevel, type SessionKey } from '@/utils/slotRadar';
+import { buildRadar, capacityLabel, freeLevel, radarTone, type RadarTone, type SessionKey } from '@/utils/slotRadar';
 import { salonNow } from '@/utils/salonClock';
 import { useSalonInfo } from '@/utils/salonInfo';
 import { playCue } from '@/utils/sound';
@@ -17,6 +17,13 @@ const SESSION_ICON: Record<SessionKey, ReactNode> = {
   evening: <Moon size={15} />,
 };
 const WEEKDAY = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+/** Màu thanh radar: thanh màu chỉ minh hoạ, nhãn chữ bên cạnh mới là thông tin (không chỉ dựa vào màu). */
+const TONE_BAR: Record<RadarTone, string> = {
+  many: 'bg-emerald-500', some: 'bg-emerald-400', few: 'bg-amber-500', full: 'bg-red-400', past: 'bg-slate-300',
+};
+const TONE_TEXT: Record<RadarTone, string> = {
+  many: 'text-emerald-700', some: 'text-emerald-700', few: 'text-amber-700', full: 'text-red-700', past: 'text-slate-500',
+};
 const dowOf = (d: string): number => new Date(`${d}T00:00:00Z`).getUTCDay();
 const cartKeyOf = (list: { id: string }[]): string => list.map((s) => s.id).join(',');
 
@@ -212,13 +219,20 @@ export function Step2Slot() {
                     </span>
                   </header>
                   {/* Thanh độ trống thật của buổi: chỉ transform scaleX (GPU), lò xo khi đổi ngày */}
-                  <div className="mt-3 flex items-center gap-2.5">
-                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
-                      <div className={`h-full origin-left rounded-full transition-transform duration-spring ease-spring ${session.capacity >= 0.3 ? 'bg-gold' : 'bg-amber-500'}`}
-                           style={{ transform: `scaleX(${Math.max(session.slots.length ? 0.04 : 0, session.capacity)})` }} />
-                    </div>
-                    <span className="shrink-0 text-[11px] font-medium text-slate-600">{capacityLabel(session.capacity, session.slots.length, session.past)}</span>
-                  </div>
+                  {(() => {
+                    const tone = radarTone(session.capacity, session.slots.length, session.past);
+                    // Đã kín / đã qua: thanh đầy màu đỏ nhạt / xám để khách thấy ngay lý do buổi không còn khung
+                    const fill = tone === 'full' || tone === 'past' ? 1 : Math.max(0.04, session.capacity);
+                    return (
+                      <div className="mt-3 flex items-center gap-2.5">
+                        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+                          <div className={`h-full origin-left rounded-full transition-transform duration-spring ease-spring ${TONE_BAR[tone]} ${tone === 'full' || tone === 'past' ? 'opacity-60' : ''}`}
+                               style={{ transform: `scaleX(${fill})` }} />
+                        </div>
+                        <span className={`shrink-0 text-[11px] font-semibold ${TONE_TEXT[tone]}`}>{capacityLabel(session.capacity, session.slots.length, session.past)}</span>
+                      </div>
+                    );
+                  })()}
                   {session.slots.length > 0 ? (
                     <div className="mt-3.5 grid grid-cols-3 gap-2 xs:grid-cols-4 lg:grid-cols-3">
                       {session.slots.map((s) => {

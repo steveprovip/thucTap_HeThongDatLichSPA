@@ -1,6 +1,6 @@
 /**
  * Dấu hiệu thương hiệu Hương Sen: hoa sen năm cánh nét mảnh trên mặt nước, vẽ bằng SVG (0 request, sắc nét mọi độ phân giải).
- * Màu theo `currentColor` → đặt `text-gold` (Noir) hoặc màu bất kỳ.
+ * Màu theo `currentColor` → đặt `text-gold`, `text-teal-700` (ngọc bích) hoặc màu bất kỳ.
  */
 export function LotusMark({ className = 'h-6 w-6', title }: { className?: string; title?: string }) {
   return (

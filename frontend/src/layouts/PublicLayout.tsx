@@ -22,7 +22,7 @@ const dockLink = ({ isActive }: { isActive: boolean }) =>
    ${isActive ? 'text-teal-700' : 'text-slate-500 hover:text-slate-900'}`;
 
 /**
- * Bố cục trang công khai — Lotus Noir (RFC-2026-SPA-V3 · Pillar I): thanh đầu kính mờ với dấu hoa sen, điều hướng dạng dock
+ * Bố cục trang công khai — Lotus Ivory (sáng nghỉ dưỡng): thanh đầu kính sữa với dấu hoa sen, điều hướng dạng dock
  * kính trên điện thoại (dùng một tay), chân trang biên tập. Tối ưu cho màn 360px trở lên.
  */
 export function PublicLayout() {
@@ -35,7 +35,7 @@ export function PublicLayout() {
 
   return (
     <div className="flex min-h-[100dvh] flex-col">
-      <header className="glass-soft sticky top-0 z-30 border-x-0 border-t-0">
+      <header className="glass-soft sticky top-0 z-30 !border-x-0 !border-t-0">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-3 px-4">
           <Link to="/" className="group flex items-center gap-3" aria-label={`${SALON.name} — trang chủ`}>
             <span className="relative flex h-10 w-10 items-center justify-center rounded-full text-gold ring-1 ring-gold/35 transition-transform duration-spring ease-spring group-hover:scale-105">
@@ -90,7 +90,7 @@ export function PublicLayout() {
       </main>
 
       {/* Dock điều hướng kính mờ cho điện thoại — chấm vàng dưới mục đang mở */}
-      <nav className="glass fixed inset-x-0 bottom-0 z-30 rounded-t-3xl border-b-0 px-2 pb-[env(safe-area-inset-bottom)] sm:hidden"
+      <nav className="glass fixed inset-x-0 bottom-0 z-30 rounded-t-3xl !border-b-0 px-2 pb-[env(safe-area-inset-bottom)] sm:hidden"
            aria-label="Điều hướng dưới">
         {/* Cao cố định var(--bottom-nav-h) để thanh hành động của trang đặt lịch bám đúng mép trên */}
         <div className="flex h-[var(--bottom-nav-h)] items-stretch gap-1 py-1.5">
