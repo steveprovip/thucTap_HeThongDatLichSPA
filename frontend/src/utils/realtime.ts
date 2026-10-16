@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react';
 import { api, BASE_URL, tokenStore } from '@/api/client';
 import { DEMO_MODE } from '@/api/mockBackend';
 import { dispatchRemoteChange } from './liveSync';
+import { missedSince, type LiveChange, type StreamCursor } from './realtimeScopes';
 
 /**
  * Đồng bộ trực tiếp GIỮA CÁC THIẾT BỊ: lễ tân tạo lịch ở máy bàn → laptop và điện thoại tự làm mới trong chưa tới 1 giây.
@@ -15,6 +16,9 @@ import { dispatchRemoteChange } from './liveSync';
  *
  * Khi luồng bị chặn (proxy đệm SSE, ví dụ Cloudflare Quick Tunnel) → tự chuyển sang "cập nhật định kỳ":
  * cứ 15 giây hỏi GET /api/events/version, đổi thì làm mới. Vẫn thử nối lại luồng trực tiếp mỗi phút.
+ *
+ * RFC-2026-SPA-V3 · Pillar II.3: sự kiện mang phạm vi dữ liệu (`scope`) để màn hình chỉ tải phần của mình; nối lại thì so
+ * mốc (bootId + seq) trong lời chào với mốc đã nhận — không lỡ gì thì KHÔNG tải lại (không nháy mỗi 20 phút / mỗi lần đổi tab).
  */
 export type RealtimeStatus = 'idle' | 'connecting' | 'live' | 'polling' | 'offline';
 
@@ -42,6 +46,9 @@ class StreamError extends Error {
   constructor(public readonly httpStatus: number, message: string) { super(message); }
 }
 
+/** `polled`: đã từng rơi về chế độ hỏi định kỳ (lần nối luồng sau phải làm mới vì mốc không còn chính xác). */
+interface PollState { version: string | null; polled: boolean }
+
 let running = false;
 let generation = 0;
 let current: AbortController | null = null;
@@ -57,16 +64,31 @@ const sleep = (ms: number): Promise<void> =>
 
 const wakeAll = (): void => { [...wakers].forEach((w) => w()); };
 
+/** Mốc dữ liệu đã nhận (lời chào / sự kiện cuối) — so với lời chào lần nối sau để biết có lỡ thay đổi không. */
+let cursor: StreamCursor | null = null;
+
 const onVisible = (): void => {
   if (document.visibilityState !== 'visible' || !running) return;
-  // Trình duyệt di động hay âm thầm đóng kết nối khi tab ở nền -> nối lại và làm mới dữ liệu ngay
-  dispatchRemoteChange();
+  // Trình duyệt di động hay âm thầm đóng kết nối khi tab ở nền -> nối lại NGAY; lời chào mới cho biết có lỡ thay đổi nào
+  // không (missedSince) — có thì làm mới, không thì giữ nguyên màn hình. Đang hỏi định kỳ thì hỏi ngay một lượt.
   current?.abort();
   wakeAll();
 };
 const onOnline = (): void => { if (running) wakeAll(); };
 
-async function readStream(res: Response, ctrl: AbortController, onMessage: (event: string) => void): Promise<void> {
+/** Tách một khối SSE thành tên sự kiện + dữ liệu JSON (dữ liệu hỏng → null, không làm sập luồng). */
+function parseBlock(block: string): { event: string; data: Record<string, unknown> | null } | null {
+  let event = '';
+  let raw = '';
+  for (const line of block.split('\n')) {
+    if (line.startsWith('event:')) event = line.slice(6).trim();
+    else if (line.startsWith('data:')) raw += line.slice(5).trim();
+  }
+  if (!event) return null;
+  try { return { event, data: raw ? (JSON.parse(raw) as Record<string, unknown>) : null }; } catch { return { event, data: null }; }
+}
+
+async function readStream(res: Response, ctrl: AbortController, onMessage: (event: string, data: Record<string, unknown> | null) => void): Promise<void> {
   const reader = res.body!.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
@@ -80,10 +102,9 @@ async function readStream(res: Response, ctrl: AbortController, onMessage: (even
       buffer += decoder.decode(value, { stream: true });
       let idx: number;
       while ((idx = buffer.indexOf('\n\n')) >= 0) {
-        const block = buffer.slice(0, idx);
+        const msg = parseBlock(buffer.slice(0, idx));
         buffer = buffer.slice(idx + 2);
-        const line = block.split('\n').find((l) => l.startsWith('event:'));
-        if (line) onMessage(line.slice(6).trim());
+        if (msg) onMessage(msg.event, msg.data);
       }
     }
   } finally {
@@ -93,7 +114,7 @@ async function readStream(res: Response, ctrl: AbortController, onMessage: (even
 }
 
 /** Mở luồng và chạy cho tới khi bị đóng. Trả true nếu đã từng nhận "hello" (kết nối thật sự hoạt động). */
-async function runStream(onHello: () => void): Promise<boolean> {
+async function runStream(onHello: (hello: StreamCursor | null) => void): Promise<boolean> {
   const ctrl = new AbortController();
   current = ctrl;
   let hello = false;
@@ -110,9 +131,19 @@ async function runStream(onHello: () => void): Promise<boolean> {
     if (!res.ok || !res.body || !type.includes('text/event-stream')) {
       throw new StreamError(res.status, `Luồng trực tiếp không khả dụng (${res.status})`);
     }
-    await readStream(res, ctrl, (event) => {
-      if (event === 'hello') { hello = true; window.clearTimeout(helloTimer); onHello(); }
-      else if (event === 'change') dispatchRemoteChange();
+    await readStream(res, ctrl, (event, data) => {
+      if (event === 'hello') {
+        hello = true;
+        window.clearTimeout(helloTimer);
+        onHello(typeof data?.bootId === 'string' && typeof data.seq === 'number' ? { bootId: data.bootId, seq: data.seq } : null);
+      } else if (event === 'change') {
+        const seq = typeof data?.seq === 'number' ? data.seq : undefined;
+        if (cursor && seq !== undefined) cursor = { ...cursor, seq };
+        const change: LiveChange = { seq };
+        if (typeof data?.scope === 'string') change.scope = data.scope;
+        if (data?.kind === 'booking.created') change.kind = 'booking.created';
+        dispatchRemoteChange(change);
+      }
     });
     return hello;
   } catch (e) {
@@ -126,7 +157,8 @@ async function runStream(onHello: () => void): Promise<boolean> {
   }
 }
 
-async function poll(id: number, ms: number, state: { version: string | null }): Promise<void> {
+async function poll(id: number, ms: number, state: PollState): Promise<void> {
+  state.polled = true;
   const end = Date.now() + ms;
   // Hỏi NGAY một lần để lấy mốc so sánh (nếu đợi 15 giây rồi mới hỏi, thay đổi xảy ra trong lúc đó sẽ bị coi là "mốc" và bị lỡ)
   while (running && id === generation && Date.now() < end) {
@@ -145,9 +177,8 @@ async function poll(id: number, ms: number, state: { version: string | null }): 
 
 async function loop(id: number): Promise<void> {
   let fails = 0;
-  let firstHello = true;
   let refreshedOnce = false;
-  const pollState: { version: string | null } = { version: null };
+  const pollState: PollState = { version: null, polled: false };
 
   while (running && id === generation) {
     if (!navigator.onLine) {
@@ -158,14 +189,17 @@ async function loop(id: number): Promise<void> {
     // Nối lại theo kế hoạch (máy chủ đóng luồng sau 20 phút) thì giữ nguyên trạng thái "Trực tiếp", không nháy
     if (!(status === 'live' && fails === 0)) setStatus(fails >= MAX_FAST_FAILS ? 'polling' : 'connecting');
     try {
-      const gotHello = await runStream(() => {
+      const gotHello = await runStream((hello) => {
         fails = 0;
         refreshedOnce = false;
         setStatus('live');
-        // Kết nối lại sau khi đứt: có thể đã lỡ thay đổi -> làm mới một lần. Lần nối đầu tiên màn hình vừa tải xong nên không cần.
-        if (!firstHello) dispatchRemoteChange();
-        firstHello = false;
+        // Lần nối đầu tiên: màn hình vừa tải xong, chỉ ghi mốc. Nối lại: chỉ làm mới khi đã lỡ thay đổi (máy chủ khởi động lại
+        // hoặc số thứ tự tăng trong lúc mất kết nối); lời chào thiếu mốc (máy chủ cũ) → làm mới cho chắc.
+        const first = cursor === null && !pollState.polled;
+        if (!first && (!hello || missedSince(cursor, hello))) dispatchRemoteChange();
+        cursor = hello;
         pollState.version = null;
+        pollState.polled = false;
       });
       if (!gotHello) { fails += 1; setStatus('connecting'); }
     } catch (e) {
@@ -194,6 +228,7 @@ async function loop(id: number): Promise<void> {
 export function startRealtime(): void {
   if (running || DEMO_MODE || typeof window === 'undefined') return;
   running = true;
+  cursor = null;
   generation += 1;
   document.addEventListener('visibilitychange', onVisible);
   window.addEventListener('online', onOnline);

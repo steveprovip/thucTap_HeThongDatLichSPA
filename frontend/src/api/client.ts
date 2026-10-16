@@ -1,7 +1,7 @@
 import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import type { ApiError, ApiErrorDetails } from '@/types';
 import { DEMO_MODE, mockAdapter } from './mockBackend';
-import { affectsAppointments, notifyAppointmentsChanged } from '@/utils/liveSync';
+import { affectsAppointments, changeForRequest, notifyAppointmentsChanged } from '@/utils/liveSync';
 
 export const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
@@ -65,7 +65,7 @@ export const onUnauthorized = { handler: (): void => undefined };
 api.interceptors.response.use(
   (res) => {
     // Lỗi 6: thao tác ghi thành công lên lịch hẹn → mọi màn hình liên quan tự làm mới ngay
-    if (affectsAppointments(res.config?.method, res.config?.url)) notifyAppointmentsChanged();
+    if (affectsAppointments(res.config?.method, res.config?.url)) notifyAppointmentsChanged(changeForRequest(res.config?.url));
     return res;
   },
   async (error: AxiosError<ApiError>) => {

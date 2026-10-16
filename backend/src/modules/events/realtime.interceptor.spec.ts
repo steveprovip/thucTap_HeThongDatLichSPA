@@ -1,4 +1,4 @@
-import { LIVE_PATH } from './realtime.interceptor';
+import { LIVE_PATH, liveEventFor } from './realtime.interceptor';
 
 describe('LIVE_PATH — thao tác ghi nào làm các thiết bị khác tải lại', () => {
   it.each([
@@ -36,4 +36,23 @@ describe('LIVE_PATH — thao tác ghi nào làm các thiết bị khác tải l�
     '/health',
     '/appointmentsX',
   ])('%s -> không phát sự kiện', (p) => expect(LIVE_PATH.test(p)).toBe(false));
+});
+
+describe('liveEventFor — chia kênh theo phạm vi dữ liệu + chuông báo lịch đặt online', () => {
+  it('khách đặt lịch trên website → booking.created (kênh lịch hẹn)', () => {
+    expect(liveEventFor('POST', '/public/bookings')).toEqual({ scope: 'appointments', kind: 'booking.created' });
+  });
+  it('gửi lại email, huỷ lịch công khai → chỉ làm mới kênh lịch hẹn, không chuông', () => {
+    expect(liveEventFor('POST', '/public/bookings/email')).toEqual({ scope: 'appointments' });
+    expect(liveEventFor('POST', '/public/cancel')).toEqual({ scope: 'appointments' });
+  });
+  it('kênh = đoạn đầu đường dẫn; lễ tân tạo lịch không bật chuông', () => {
+    expect(liveEventFor('POST', '/appointments/walk-in')).toEqual({ scope: 'appointments' });
+    expect(liveEventFor('PATCH', '/shifts/9')).toEqual({ scope: 'shifts' });
+    expect(liveEventFor('post', '/invoices/9a/pay')).toEqual({ scope: 'invoices' });
+  });
+  it('đọc dữ liệu / đường dẫn ngoài danh sách → không phát', () => {
+    expect(liveEventFor('GET', '/appointments')).toBeNull();
+    expect(liveEventFor('POST', '/public/lookup')).toBeNull();
+  });
 });
