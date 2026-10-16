@@ -1,6 +1,6 @@
 CHƯƠNG 1. TỔNG QUAN VỀ ĐỀ TÀI
 1.1. Bối cảnh đề tài
-1.1.1. Tên đề tài
+1.1.1. Tên đề tàii
 Hệ thống đặt lịch Salon – Spa Hương Sen
 Đề tài tập trung xây dựng một ứng dụng web hỗ trợ quản lý hoạt động đặt lịch và vận hành tại salon – spa. Hệ thống được định hướng giải quyết toàn bộ vòng đời của một lịch hẹn, bắt đầu từ thời điểm khách hàng lựa chọn dịch vụ và khung giờ trên trang đặt lịch công khai, tiếp tục qua các bước xác nhận lịch, check-in, thực hiện dịch vụ, thanh toán, đánh giá sau dịch vụ và kết thúc bằng việc tổng hợp dữ liệu phục vụ hoạt động quản lý của chủ tiệm.
 Khác với một website giới thiệu dịch vụ thông thường, hệ thống không chỉ cung cấp chức năng đặt lịch mà còn hướng đến việc số hóa quá trình vận hành hằng ngày của salon. Các thông tin về dịch vụ, thời lượng thực hiện, kỹ năng của từng thợ, ca làm việc, ngày nghỉ và những lịch hẹn đã tồn tại được sử dụng làm dữ liệu đầu vào cho bộ tính toán khung giờ trống. Nhờ đó, hệ thống có thể đề xuất những thời điểm mà salon thực sự có khả năng tiếp nhận khách thay vì chỉ hiển thị các mốc thời gian cố định.
