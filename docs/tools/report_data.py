@@ -183,8 +183,8 @@ RELEASES = [
     ("11/10/2026", "v2.0.0", "AI Local Spark-X2.5-4B, phân trang toàn diện, hoá đơn nhiệt K80"),
     ("12/10/2026", "v2.1.0 – v2.1.1", "AI local 1 chạm, vòng tự cải tiến có duyệt, tự chuyển CPU/GPU"),
     ("13/10/2026", "v2.2.0", "Kéo thả kiểu Jira cho lịch hẹn và bảng ca làm, QR chia sẻ link 1 chạm"),
-    ("15/10/2026", "v2.2.1", "Triển khai đám mây 24/7 (Cloudflare Pages https://huongsen-salon.pages.dev, Render API https://salon-spa-api-93d7.onrender.com, Supabase DB, Worker giữ thức)"),
-    ("16/10/2026", "v3.0.0", "Giao diện Lotus Ivory & Champagne Luxe $10.000, Slot Radar, Command Palette Ctrl+K, SWR cache chống race condition, rate-limit isolation, 385 Unit tests (331 BE + 54 FE), 155 E2E tests, Cloud 24/7 đồng bộ"),
+    ("16/10/2026", "v3.0.0", "Giao diện Lotus Noir 10.000$, Trợ lý AI nâng cao và tối ưu hiệu năng"),
+    ("16/10/2026", "v3.1.0", "Giao diện sáng Lotus Ivory & Champagne Luxe $10.000, Slot Radar, Ctrl+K, SWR cache, deploy headless Cloudflare Pages 24/7, 385 Unit tests, 155 E2E tests"),
 ]
 
 # ---------------------------------------------------------------- Góp ý Mentor Sprint 2 (06/10/2026) -> v1.4.0

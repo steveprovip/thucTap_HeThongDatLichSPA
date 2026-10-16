@@ -682,7 +682,7 @@ def s11_quality(prs):
     text(s, M, Inches(3.95), Inches(8), Inches(0.35), "Vòng phản hồi PO → phát hành có tag (Git Flow)", size=16, bold=True)
     rel = [("25/09", "v1.1.0", "Fresha Luxury"), ("02/10", "v1.3.0", "23 lỗi QA"),
            ("06/10", "v1.4.0", "11 góp ý Mentor"), ("11/10", "v2.0.0", "AI Local"),
-           ("15/10", "v2.2.1", "Cloud 24/7"), ("16/10", "v3.0.0", "Lotus Ivory $10k")]
+           ("15/10", "v2.2.1", "Cloud 24/7"), ("16/10", "v3.1.0", "Lotus Ivory $10k")]
     y = Inches(4.95)
     ln = s.shapes.add_connector(1, M + Inches(0.6), y, W - M - Inches(0.6), y)
     ln.line.color.rgb = rgb("99F6E4")
