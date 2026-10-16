@@ -16,9 +16,8 @@ services:
     # Gói Free KHÔNG có preDeployCommand (chỉ gói trả phí) -> chạy migration ngay trước khi bật máy chủ:
     #   1. migration:run:prod   chỉ thêm/sửa CẤU TRÚC, tuyệt đối không nạp dữ liệu mẫu, không xoá dữ liệu khách
     #   2. bootstrap:prod       CSDL trống thì tạo admin đầu tiên từ BOOTSTRAP_ADMIN_*; đã có người dùng thì bỏ qua
-    #   3. security:lock:prod   khoá tài khoản mẫu còn mật khẩu mặc định (nếu ai lỡ nạp seed.sql vào CSDL này)
     # Một bước lỗi (&&) thì máy chủ KHÔNG khởi động và Render giữ nguyên bản đang chạy trước đó.
-    startCommand: npm run migration:run:prod && npm run bootstrap:prod && npm run security:lock:prod && npm run start:prod
+    startCommand: npm run migration:run:prod && npm run bootstrap:prod && npm run start:prod
     # /health/live KHÔNG truy vấn CSDL → CSDL miễn phí (Neon / Supabase) được ngủ khi tiệm vắng; /health (có CSDL) vẫn dùng cho giám sát
     healthCheckPath: /health/live
     envVars:
