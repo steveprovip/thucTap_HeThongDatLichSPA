@@ -5,6 +5,12 @@ export const SALON = {
   name: import.meta.env.VITE_SALON_NAME || 'Salon & Spa Hương Sen',
   address: import.meta.env.VITE_SALON_ADDRESS || '128 Nguyễn Văn Cừ, Quận 5, TP. Hồ Chí Minh',
   hotline: import.meta.env.VITE_SALON_HOTLINE || '028 3838 6868',
+  /** Số Zalo CSKH hiện ở chân trang khi máy chủ chưa cấu hình SALON_ZALO. */
+  zalo: import.meta.env.VITE_SALON_ZALO || '0909 686 868',
+  /** Chứng chỉ / cam kết chuyên môn ở chân trang — đổi bằng VITE_SALON_CREDENTIALS (ngăn cách bởi dấu ;). */
+  credentials: (import.meta.env.VITE_SALON_CREDENTIALS
+    || 'Chuyên viên được đào tạo và có chứng chỉ nghề chăm sóc sắc đẹp;Mỹ phẩm chính hãng, có phiếu công bố của Bộ Y tế;Dụng cụ tiệt trùng riêng cho từng khách')
+    .split(';').map((x: string) => x.trim()).filter(Boolean),
 };
 
 export const STATUS_LABELS: Record<AppointmentStatus, string> = {
@@ -55,6 +61,15 @@ export const ROLE_LABELS: Record<string, string> = {
   receptionist: 'Lễ tân',
   owner: 'Chủ tiệm',
   admin: 'Quản trị hệ thống',
+};
+
+/** Màu nhận diện vai trò (QA Sprint 4 · mục 8) — dùng chung cho huy hiệu trên thanh trên cùng. */
+export const ROLE_BADGE: Record<string, { pill: string; dot: string; avatar: string }> = {
+  admin: { pill: 'border-slate-800 bg-slate-900 text-amber-200', dot: 'bg-amber-300', avatar: 'bg-slate-900 text-amber-200 ring-amber-300/60' },
+  owner: { pill: 'border-amber-300 bg-amber-50 text-amber-900', dot: 'bg-amber-500', avatar: 'bg-amber-50 text-amber-800 ring-amber-300' },
+  receptionist: { pill: 'border-teal-300 bg-teal-50 text-teal-800', dot: 'bg-teal-500', avatar: 'bg-teal-50 text-teal-700 ring-teal-300' },
+  stylist: { pill: 'border-violet-300 bg-violet-50 text-violet-800', dot: 'bg-violet-500', avatar: 'bg-violet-50 text-violet-700 ring-violet-300' },
+  customer: { pill: 'border-slate-200 bg-white text-slate-700', dot: 'bg-slate-400', avatar: 'bg-slate-50 text-slate-700 ring-slate-200' },
 };
 
 export const DOW_LABELS = ['Chủ nhật', 'Thứ hai', 'Thứ ba', 'Thứ tư', 'Thứ năm', 'Thứ sáu', 'Thứ bảy'];

@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { MoreThan, Repository } from 'typeorm';
 import * as nodemailer from 'nodemailer';
+import { networkInterfaces } from 'node:os';
 import { EmailKind, EmailQueueItem, EmailStatus } from '../../database/entities/email-queue.entity';
 import { SalonInfo } from './mail-templates';
 
@@ -33,6 +34,24 @@ export function explainMailError(e: unknown): string {
     return `Không kết nối được máy chủ gửi thư (${msg.slice(0, 120)}). Kiểm tra mạng / tường lửa, hoặc MailDev chưa chạy.`;
   }
   return msg.slice(0, 300);
+}
+
+/**
+ * QA Sprint 4 · mục 4 ("liên kết gửi cho khách qua mail không hoạt động"): FRONTEND_URL = localhost chỉ mở được trên
+ * chính máy chạy tiệm; khách / tester mở thư trên điện thoại, máy khác → "không thể kết nối localhost".
+ * Ưu tiên MAIL_LINK_BASE_URL; còn localhost thì thay bằng IP mạng LAN (Vite đã mở `host: true`) để thiết bị cùng Wi-Fi mở được.
+ */
+export function mailLinkBase(frontendUrl: string, env: NodeJS.ProcessEnv = process.env,
+  nets: ReturnType<typeof networkInterfaces> = networkInterfaces()): string {
+  if (env.MAIL_LINK_BASE_URL) return env.MAIL_LINK_BASE_URL.replace(/\/+$/, '');
+  let url: URL;
+  try { url = new URL(frontendUrl); } catch { return frontendUrl; }
+  if (env.NODE_ENV === 'test' || !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) return frontendUrl.replace(/\/+$/, '');
+  const lan = Object.values(nets).flat()
+    .find((n) => n && n.family === 'IPv4' && !n.internal && !n.address.startsWith('169.254.'));
+  if (!lan) return frontendUrl.replace(/\/+$/, '');
+  url.hostname = lan.address;
+  return url.toString().replace(/\/+$/, '');
 }
 
 export interface EnqueueMailInput {
@@ -83,13 +102,20 @@ export class MailService implements OnModuleInit {
       name: this.config.get<string>('app.salonName')!,
       address: this.config.get<string>('app.salonAddress')!,
       hotline: this.config.get<string>('app.salonHotline')!,
-      frontendUrl: this.config.get<string>('app.frontendUrl')!,
+      frontendUrl: mailLinkBase(this.config.get<string>('app.frontendUrl')!),
     };
   }
 
   /** Đưa email vào hàng đợi. Trả về bản ghi để nơi gọi có thể theo dõi trạng thái. */
   async enqueue(input: EnqueueMailInput): Promise<EmailQueueItem> {
     const scheduledAt = input.scheduledAt ?? new Date();
+    // QA Sprint 4 · mục 5: cùng một thư (y hệt nội dung) tới cùng người trong 2 phút = bấm đúp / gọi lặp → không xếp hàng lần 2.
+    const recent = await this.queueRepo.find({
+      where: { kind: input.kind, toEmail: input.toEmail, subject: input.subject, createdAt: MoreThan(new Date(Date.now() - 120_000)) },
+    });
+    const dup = recent.find((r) => r.bodyHtml === input.html && r.status !== EmailStatus.CANCELLED
+      && (r.appointmentId ?? null) === (input.appointmentId ?? null));
+    if (dup) return dup;
     const item = this.queueRepo.create({
       kind: input.kind,
       toEmail: input.toEmail,

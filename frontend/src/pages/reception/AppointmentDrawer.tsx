@@ -142,7 +142,9 @@ export function AppointmentDrawer({ appointment, onClose, onChanged }: Appointme
 
   if (!appointment || !current || !timing) return null;
   const a = current;
-  const isStaff = !!user && ['receptionist', 'owner'].includes(user.role);
+  /** QA Sprint 4 · mục 6: MỘT ghi chú chung cho lượt dịch vụ — thợ, lễ tân, chủ tiệm cùng thấy & sửa tiếp (không mở ô trống ghi đè). */
+  const currentNote = history.find((h) => h.appointmentId === a.id)?.technicalNote ?? '';
+  const isStaff =!!user && ['receptionist', 'owner'].includes(user.role);
   const isOwnStylist = user?.role === 'stylist' && user.stylistId === a.stylist.id;
   const canOperate = isStaff || isOwnStylist;
   const terminal = a.status === 'cancelled' || a.status === 'no_show';
@@ -248,6 +250,13 @@ export function AppointmentDrawer({ appointment, onClose, onChanged }: Appointme
             </Notice>
           )}
 
+          {currentNote && (
+            <section>
+              <p className="field-label flex items-center gap-1.5"><NotebookPen size={13} /> Ghi chú kỹ thuật của lượt này</p>
+              <p className="whitespace-pre-line rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-800">{currentNote}</p>
+            </section>
+          )}
+
           {history.length > 0 && (
             <details className="rounded-xl border border-slate-200 p-3.5">
               <summary className="flex cursor-pointer items-center gap-2 text-sm font-semibold">
@@ -346,7 +355,7 @@ export function AppointmentDrawer({ appointment, onClose, onChanged }: Appointme
                 </Button>
               )}
               {['in_progress', 'completed'].includes(a.status) && (
-                <Button size="sm" variant="outline" icon={<NotebookPen size={15} />} onClick={() => { setNote(''); setNoteOpen(true); }}>
+                <Button size="sm" variant="outline" icon={<NotebookPen size={15} />} onClick={() => { setNote(currentNote); setNoteOpen(true); }}>
                   Ghi chú kỹ thuật
                 </Button>
               )}
@@ -419,7 +428,14 @@ export function AppointmentDrawer({ appointment, onClose, onChanged }: Appointme
              footer={<div className="flex justify-end gap-2">
                <Button variant="ghost" onClick={() => setNoteOpen(false)}>Đóng</Button>
                <Button disabled={!note.trim()} loading={busy === 'note'}
-                       onClick={async () => { await run('note', () => appointmentsApi.serviceNote(a.id, note.trim()), 'Đã lưu ghi chú'); setNoteOpen(false); }}>
+                       onClick={async () => {
+                         const text = note.trim();
+                         await run('note', async () => {
+                           await appointmentsApi.serviceNote(a.id, text);
+                           setHistory((hs) => hs.map((h) => (h.appointmentId === a.id ? { ...h, technicalNote: text } : h)));
+                         }, 'Đã lưu ghi chú');
+                         setNoteOpen(false);
+                       }}>
                  Lưu ghi chú
                </Button>
              </div>}>

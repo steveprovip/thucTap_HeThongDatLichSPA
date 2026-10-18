@@ -256,8 +256,39 @@ export function DayTimelinePage() {
     hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Ho_Chi_Minh',
   });
 
+  // QA Sprint 3 · mục 4: Lịch làm vượt quá thời lượng chuẩn 20 phút thì cảnh báo lễ tân vì các lịch sau có nguy cơ trễ
+  const overrunAlerts = useMemo(() => {
+    if (!data || date !== todayISO()) return [];
+    const alerts: Array<{ id: string; customerName: string; stylistName: string; overMinutes: number }> = [];
+    for (const col of data.columns) {
+      for (const a of col.appointments) {
+        const over = overrunInfo(a, clock);
+        if (over.level === 'danger') {
+          alerts.push({
+            id: a.id,
+            customerName: a.customer.fullName,
+            stylistName: col.stylistName,
+            overMinutes: over.overMinutes,
+          });
+        }
+      }
+    }
+    return alerts;
+  }, [data, date, clock]);
+
   return (
     <div className="space-y-3">
+      {overrunAlerts.length > 0 && (
+        <div className="flex flex-col gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-900 shadow-sm animate-pulse-subtle">
+          {overrunAlerts.map((alt) => (
+            <div key={alt.id} className="flex items-center gap-2">
+              <span className="flex h-2.5 w-2.5 rounded-full bg-red-600 animate-ping" />
+              <strong>Cảnh báo trễ lịch:</strong>
+              <span>Thợ <b>{alt.stylistName}</b> đang làm quá thời lượng chuẩn <b>{alt.overMinutes} phút</b> (khách: <b>{alt.customerName}</b>). Lễ tân lưu ý: các lịch hẹn kế tiếp của thợ này có nguy cơ bị trễ giờ!</span>
+            </div>
+          ))}
+        </div>
+      )}
       <SectionTitle
         title="Lịch hẹn trong ngày"
         description={view === 'board'

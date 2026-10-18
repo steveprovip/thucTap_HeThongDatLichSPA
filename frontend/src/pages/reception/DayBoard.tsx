@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type KeyboardEventHandler, type ReactNode } from 'react';
 import {
   DndContext, DragOverlay, KeyboardSensor, PointerSensor, TouchSensor, pointerWithin, useDraggable, useDroppable, useSensor, useSensors,
   type DragEndEvent, type DragStartEvent,
@@ -29,6 +29,10 @@ const HEAD: Record<AppointmentStatus, string> = {
 };
 
 interface Card extends Appointment { stylistAvatar: string | null; stylistGender: TimelineColumn['gender'] }
+
+/** Số phút đã qua giờ hẹn (âm = chưa tới giờ) — giờ tiệm Asia/Ho_Chi_Minh. */
+const minutesSince = (a: Pick<Appointment, 'date' | 'startTime'>) =>
+  (Date.now() - new Date(`${a.date}T${a.startTime}:00+07:00`).getTime()) / 60_000;
 
 /** Phần hiển thị của thẻ (dùng cả cho thẻ trong cột lẫn thẻ đang kéo theo con trỏ). */
 function CardView({ a, onOpen, handle, faded = false, lifted = false }: {
@@ -61,21 +65,33 @@ function CardView({ a, onOpen, handle, faded = false, lifted = false }: {
 
 const GRIP = 'mt-0.5 -ml-1 shrink-0 rounded p-0.5 text-slate-300';
 
+/**
+ * QA Sprint 4 — "kéo kiểu Jira dùng được nhưng còn khó": giờ nắm được CẢ THẺ bằng chuột / cảm ứng (không phải nhắm
+ * đúng nút ⋮⋮ 14px). Bấm nhả tại chỗ vẫn mở chi tiết vì cảm biến chỉ kích hoạt khi rê quá 6px. Bàn phím vẫn dùng nút ⋮⋮
+ * (Enter trên thẻ = mở chi tiết, không vô tình bắt đầu kéo).
+ */
 function BoardCard({ a, onOpen }: { a: Card; onOpen: (a: Appointment) => void }) {
   const movable = a.status !== 'completed' && a.status !== 'cancelled';
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: a.id, data: { status: a.status }, disabled: !movable });
+  const { onKeyDown, ...pointer } = listeners ?? {};
   const handle = movable ? (
-    <button type="button" {...listeners} {...attributes} aria-label={`Kéo lịch của ${a.customer.fullName}`}
-            className={`${GRIP} cursor-grab touch-none hover:bg-slate-100 hover:text-slate-500 active:cursor-grabbing`}>
+    <button type="button" onKeyDown={onKeyDown as KeyboardEventHandler | undefined} {...attributes} aria-label={`Kéo lịch của ${a.customer.fullName}`}
+            className={`${GRIP} cursor-grab hover:bg-slate-100 hover:text-slate-500 active:cursor-grabbing`}>
       <GripVertical size={14} />
     </button>
   ) : undefined;
-  return <div ref={setNodeRef}><CardView a={a} onOpen={onOpen} handle={handle} faded={isDragging} /></div>;
+  return (
+    <div ref={setNodeRef} {...(movable ? pointer : {})} className={movable ? 'cursor-grab touch-manipulation select-none active:cursor-grabbing' : undefined}>
+      <CardView a={a} onOpen={onOpen} handle={handle} faded={isDragging} />
+    </div>
+  );
 }
 
-function BoardColumn({ status, cards, from, onOpen }: { status: AppointmentStatus; cards: Card[]; from: AppointmentStatus | null; onOpen: (a: Appointment) => void }) {
+function BoardColumn({ status, cards, from, sinceStart, onOpen }: {
+  status: AppointmentStatus; cards: Card[]; from: AppointmentStatus | null; sinceStart?: number; onOpen: (a: Appointment) => void;
+}) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
-  const move = from ? boardMove(from, status) : null;
+  const move = from ? boardMove(from, status, sinceStart) : null;
   const target = !!move?.ok;
   const blocked = from !== null && from !== status && !target;
   const narrow = status === 'no_show' || status === 'cancelled';
@@ -83,13 +99,14 @@ function BoardColumn({ status, cards, from, onOpen }: { status: AppointmentStatu
     <section ref={setNodeRef} aria-label={STATUS_LABELS[status]}
              className={`flex min-h-[320px] shrink-0 flex-col rounded-xl border border-t-4 bg-slate-50/80 transition
                          ${narrow ? 'w-[200px]' : 'w-[250px] lg:min-w-[220px] lg:flex-1'} ${HEAD[status]}
-                         ${isOver && target ? 'border-teal-400 bg-teal-50 ring-2 ring-teal-300' : target ? 'border-teal-200 bg-teal-50/40' : 'border-slate-200'}
-                         ${blocked ? 'opacity-45' : ''}`}>
+                         ${isOver && target ? 'scale-[1.01] border-teal-400 bg-teal-50 shadow-lg ring-2 ring-teal-300' : target ? 'border-dashed border-teal-300 bg-teal-50/40' : 'border-slate-200'}
+                         ${isOver && blocked ? 'ring-2 ring-rose-300' : ''} ${blocked ? 'opacity-45' : ''} duration-150 ease-out`}>
       <header className="flex items-center gap-1.5 px-2.5 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
         <span className={`h-2 w-2 rounded-full ${STATUS_DOT[status]}`} /> {STATUS_LABELS[status]}
         <span className="ml-auto rounded-full bg-white px-1.5 py-0.5 text-[11px] tabular-nums text-slate-500 ring-1 ring-slate-200">{cards.length}</span>
       </header>
       {target && <p className="px-2.5 pb-1 text-[11px] font-medium text-teal-700">Thả vào đây: {move.ok && move.label}</p>}
+      {isOver && blocked && move && !move.ok && <p className="px-2.5 pb-1 text-[11px] font-medium text-rose-700">{move.reason}</p>}
       <div className="thin-scroll flex-1 space-y-1.5 overflow-y-auto px-2 pb-2">
         {cards.map((a) => <BoardCard key={a.id} a={a} onOpen={onOpen} />)}
         {!cards.length && <p className="px-1 py-6 text-center text-[11px] text-slate-400">Trống</p>}
@@ -151,7 +168,7 @@ export function DayBoard({ columns, onOpen, onChanged }: { columns: TimelineColu
     const card = cards.find((c) => c.id === e.active.id);
     const to = e.over?.id as AppointmentStatus | undefined;
     if (!card || !to) return;
-    const move = boardMove(card.status, to);
+    const move = boardMove(card.status, to, minutesSince(card));
     if (!move) return;
     if (!move.ok) { toast.warning(move.reason); return; }
     if (move.needsReason) { setReason(''); setAsk({ card, to, actions: move.actions, label: move.label }); return; }
@@ -175,10 +192,11 @@ export function DayBoard({ columns, onOpen, onChanged }: { columns: TimelineColu
       <DndContext sensors={sensors} collisionDetection={pointerWithin} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={() => setActiveId(null)}>
         <div className="thin-scroll flex gap-2 overflow-x-auto pb-2">
           {BOARD_COLUMNS.map((s) => (
-            <BoardColumn key={s} status={s} cards={visible.filter((a) => a.status === s)} from={active?.status ?? null} onOpen={onOpen} />
+            <BoardColumn key={s} status={s} cards={visible.filter((a) => a.status === s)} from={active?.status ?? null}
+                         sinceStart={active ? minutesSince(active) : undefined} onOpen={onOpen} />
           ))}
         </div>
-        <DragOverlay dropAnimation={null}>{active && <CardView a={active} lifted handle={<span className={GRIP}><GripVertical size={14} /></span>} />}</DragOverlay>
+        <DragOverlay dropAnimation={{ duration: 180, easing: 'cubic-bezier(0.2, 0, 0, 1)' }}>{active && <CardView a={active} lifted handle={<span className={GRIP}><GripVertical size={14} /></span>} />}</DragOverlay>
       </DndContext>
 
       <Modal open={!!ask} onClose={() => setAsk(null)} title={ask ? `${ask.label} — ${ask.card.customer.fullName}` : ''}

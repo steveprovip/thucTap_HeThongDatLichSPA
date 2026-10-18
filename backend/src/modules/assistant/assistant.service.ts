@@ -10,8 +10,10 @@ import { WorkingHoursService } from '../working-hours/working-hours.service';
 import { AvailabilityService } from '../booking-engine/availability.service';
 import {
   AssistantContext, AssistantIntent, ComboInsight, contextForLlm, detectIntent, DOW_VI, fold, GoldenHour, hourLabel,
-  HolidayLite, quickReplies, ruleAnswer, ShiftGapSuggestion, SYSTEM_PROMPT, TodaySnapshot, WorkingStylist,
+  HolidayLite, parsePeriod, quickReplies, ruleAnswer, ShiftGapSuggestion, StaffFacts, SYSTEM_PROMPT, TodaySnapshot, topN,
+  WorkingStylist,
 } from './assistant-rules';
+import { APPOINTMENT_STATUS_LABELS } from '../../common/constants/messages.constant';
 import { findLocalAiDir, isLoopbackUrl, launchLocalAi } from './local-ai-launcher';
 import { LlmGate, SingleFlight, TtlCache } from './llm-gate';
 import { EventsService } from '../events/events.service';
@@ -105,7 +107,9 @@ export interface AssistantChatResult {
 
 const CACHE_MS = 5 * 60_000;
 /** Câu hỏi số liệu của trợ lý nhân sự trả lời thẳng bằng dữ liệu thật (không qua mô hình ngôn ngữ). */
-const STAFF_FACT_INTENTS: ReadonlySet<AssistantIntent> = new Set<AssistantIntent>(['today', 'working_stylists']);
+const STAFF_FACT_INTENTS: ReadonlySet<AssistantIntent> = new Set<AssistantIntent>([
+  'today', 'working_stylists', 'top_customers', 'next_appointment', 'closed_days', 'service_count', 'revenue', 'stylist_load',
+]);
 const INSIGHT_DAYS = 90;
 /** Dò lại máy chủ AI local sau: 30 giây khi đang chạy, 10 giây khi chưa thấy / vừa lỗi (bật model lên là dùng ngay). */
 const PROBE_OK_MS = 30_000;
@@ -438,6 +442,115 @@ export class AssistantService implements OnApplicationBootstrap {
     return [...byStylist.values()];
   }
 
+  /**
+   * QA Sprint 3 · mục 6 — số liệu thật cho câu hỏi tra cứu (top khách, lịch gần nhất, ngày nghỉ, số dịch vụ, doanh thu
+   * theo kỳ, thợ ít / nhiều việc). Chỉ đọc khi đúng ý định → không tốn truy vấn cho câu khác. Trả thẳng bằng luật, KHÔNG
+   * gửi tên khách cho mô hình ngôn ngữ.
+   */
+  async staffFacts(intent: AssistantIntent, message: string): Promise<StaffFacts> {
+    const today = todaySalon();
+    switch (intent) {
+      case 'top_customers': {
+        const rows: { full_name: string; visits: number; spent: string }[] = await this.dataSource.query(
+          `SELECT c.full_name, count(*)::int AS visits,
+                  COALESCE((SELECT sum(i.total) FROM invoices i WHERE i.customer_id = c.id AND i.status = 'closed'), 0)::bigint AS spent
+             FROM appointments a JOIN customers c ON c.id = a.customer_id
+            WHERE a.status = 'completed'
+            GROUP BY c.id, c.full_name ORDER BY visits DESC, spent DESC, c.full_name LIMIT $1`, [topN(message)]);
+        return { topCustomers: rows.map((r) => ({ fullName: r.full_name, visits: r.visits, spentText: formatVnd(Number(r.spent)) })) };
+      }
+      case 'next_appointment': {
+        const rows: { full_name: string; start_at: Date; status: string; stylist: string; services: string | null }[] = await this.dataSource.query(
+          `SELECT c.full_name, a.start_at, a.status::text AS status, st.full_name AS stylist,
+                  (SELECT string_agg(x.name_snapshot, ', ' ORDER BY x.position) FROM appointment_services x WHERE x.appointment_id = a.id) AS services
+             FROM appointments a JOIN customers c ON c.id = a.customer_id JOIN stylists st ON st.id = a.stylist_id
+            WHERE a.start_at >= now() AND a.status IN ('pending', 'confirmed')
+            ORDER BY a.start_at LIMIT 3`);
+        return {
+          upcoming: rows.map((r) => {
+            const t = toSalon(new Date(r.start_at));
+            return {
+              fullName: r.full_name, services: r.services ?? 'dịch vụ', stylist: r.stylist,
+              whenText: `${t.toFormat('HH:mm')} ${DOW_VI[t.weekday % 7]} ${t.toFormat('dd/MM')}`,
+              statusLabel: APPOINTMENT_STATUS_LABELS[r.status] ?? r.status,
+              minutesUntil: Math.max(0, Math.round((new Date(r.start_at).getTime() - Date.now()) / 60_000)),
+            };
+          }),
+        };
+      }
+      case 'closed_days': {
+        const [hours, upcoming] = await Promise.all([
+          this.workingHours.list(),
+          this.dataSource.query(
+            `SELECT reason, to_char(start_date, 'YYYY-MM-DD') AS start_date, to_char(end_date, 'YYYY-MM-DD') AS end_date
+               FROM salon_holidays WHERE end_date >= $1 ORDER BY start_date LIMIT 8`, [today]) as Promise<{ reason: string; start_date: string; end_date: string }[]>,
+        ]);
+        const DOW_FULL = ['Chủ nhật', 'Thứ hai', 'Thứ ba', 'Thứ tư', 'Thứ năm', 'Thứ sáu', 'Thứ bảy'];
+        return {
+          closed: {
+            weeklyClosed: hours.filter((h) => h.isClosed).map((h) => DOW_FULL[h.dayOfWeek]),
+            upcoming: upcoming.map((h) => ({ reason: h.reason, startDate: h.start_date, endDate: h.end_date })),
+          },
+        };
+      }
+      case 'service_count': {
+        const rows: { name: string; n: number; min: string; max: string }[] = await this.dataSource.query(
+          `SELECT g.name, count(*)::int AS n, min(s.price)::bigint AS min, max(s.price)::bigint AS max
+             FROM services s JOIN service_categories g ON g.id = s.category_id
+            WHERE s.is_active GROUP BY g.id, g.name, g.display_order ORDER BY g.display_order, g.name`);
+        const min = rows.length ? Math.min(...rows.map((r) => Number(r.min))) : 0;
+        const max = rows.length ? Math.max(...rows.map((r) => Number(r.max))) : 0;
+        return {
+          services: {
+            total: rows.reduce((a, r) => a + r.n, 0), byCategory: rows.map((r) => ({ name: r.name, count: r.n })),
+            minPriceText: formatVnd(min), maxPriceText: formatVnd(max),
+          },
+        };
+      }
+      case 'revenue': {
+        const period = parsePeriod(message, today);
+        const days = Math.round((Date.parse(period.to) - Date.parse(period.from)) / 86_400_000) + 1;
+        const prevFrom = addDays(period.from, -days);
+        const prevTo = addDays(period.from, -1);
+        const sumOf = (from: string, to: string) => this.dataSource.query(
+          `SELECT COALESCE(sum(total), 0)::bigint AS total, count(*)::int AS n FROM invoices
+            WHERE status = 'closed' AND closed_at >= $1 AND closed_at <= $2`, [startOfDay(from), endOfDay(to)]) as Promise<{ total: string; n: number }[]>;
+        const [[cur], [prev], best] = await Promise.all([
+          sumOf(period.from, period.to), sumOf(prevFrom, prevTo),
+          this.dataSource.query(
+            `SELECT to_char((closed_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date, 'DD/MM') AS day, sum(total)::bigint AS total FROM invoices
+              WHERE status = 'closed' AND closed_at >= $1 AND closed_at <= $2 GROUP BY 1 ORDER BY 2 DESC LIMIT 1`,
+            [startOfDay(period.from), endOfDay(period.to)]) as Promise<{ day: string; total: string }[]>,
+        ]);
+        const total = Number(cur.total);
+        const prevTotal = Number(prev.total);
+        return {
+          revenue: {
+            label: period.label, totalText: formatVnd(total), invoices: cur.n, avgText: formatVnd(cur.n ? Math.round(total / cur.n) : 0),
+            changePct: prevTotal > 0 ? Math.round(((total - prevTotal) / prevTotal) * 100) : null,
+            bestDay: best[0] && days > 1 ? `${best[0].day} (${formatVnd(Number(best[0].total))})` : null,
+          },
+        };
+      }
+      case 'stylist_load': {
+        const period = parsePeriod(message, today);
+        const order = /(nhieu|ban|cham chi)/.test(fold(message)) && !/it/.test(fold(message)) ? 'desc' : 'asc';
+        const rows: { full_name: string; done: number; minutes: number }[] = await this.dataSource.query(
+          `SELECT st.full_name, count(a.id)::int AS done,
+                  COALESCE(sum(EXTRACT(EPOCH FROM (a.end_at - a.start_at)) / 60), 0)::int AS minutes
+             FROM stylists st
+             LEFT JOIN appointments a ON a.stylist_id = st.id AND a.status = 'completed' AND a.start_at >= $1 AND a.start_at <= $2
+            WHERE st.is_active
+            GROUP BY st.id, st.full_name
+            ORDER BY done ${order === 'asc' ? 'ASC' : 'DESC'}, minutes ${order === 'asc' ? 'ASC' : 'DESC'}, st.full_name`,
+          [startOfDay(period.from), endOfDay(period.to)]);
+        return { stylistLoad: { label: period.label, order, rows: rows.map((r) => ({ fullName: r.full_name, done: r.done, minutes: r.minutes })) } };
+      }
+      default:
+        return {};
+    }
+  }
+
   /** Lịch sử hội thoại gần nhất (tối đa 6 lượt) để mô hình hiểu câu hỏi nối tiếp ("thế còn thứ 7?"). */
   private history(history: ChatTurn[] = []): LlmMessage[] {
     return history.slice(-6).map((h) => ({ role: h.role === 'assistant' ? 'assistant' : 'user', content: h.content.slice(0, 500) }));
@@ -445,10 +558,11 @@ export class AssistantService implements OnApplicationBootstrap {
 
   async chat(message: string, opts: { userName?: string | null; history?: ChatTurn[] } = {}): Promise<AssistantChatResult> {
     const intent = detectIntent(message);
-    const [cached, today, workingToday] = await Promise.all([
+    const [cached, today, workingToday, facts] = await Promise.all([
       this.context(), this.todaySnapshot().catch(() => null), this.workingToday().catch(() => null),
+      this.staffFacts(intent, message).catch((e: unknown) => { this.logger.warn(`Tra cứu "${intent}" lỗi: ${(e as Error).message}`); return null; }),
     ]);
-    const ctx: AssistantContext = { ...cached, today, workingToday };
+    const ctx: AssistantContext = { ...cached, today, workingToday, facts };
     const fallback = ruleAnswer(intent, ctx, { userName: opts.userName, now: new Date() });
     const base = { intent, quickReplies: quickReplies(intent) };
     // Số liệu hôm nay / danh sách thợ đã chính xác → trả thẳng, không để mô hình nhỏ diễn đạt lại (hay sai số, rơi tên)

@@ -114,9 +114,11 @@ export function ShiftsPage() {
         workingHoursApi.list(),
       ]);
       setStylists(sty); setShifts(sh); setTimeOff(off); setHolidays(hol); setHours(wh);
-      // Hộp yêu cầu là phần phụ: lỗi tải (vd. máy chủ cũ chưa có API) không được làm hỏng bảng ca
+      // Hộp yêu cầu là phần phụ: lỗi tải (vd. máy chủ cũ chưa có API) không được làm hỏng bảng ca.
+      // QA Sprint 3 · mục 1: lấy MỌI yêu cầu đang chờ từ hôm nay trở đi (không chỉ tuần đang xem) — trước đây xin nghỉ
+      // tuần sau không hiện ở hộp duyệt nên quản lý tưởng phải tự khai báo ca nghỉ bằng tay.
       setRequests(canSeeRequests
-        ? await shiftRequestsApi.list({ status: 'pending', from: weekStart, to }).catch(() => [] as ShiftRequest[])
+        ? await shiftRequestsApi.list({ status: 'pending', from: todayISO() }).catch(() => [] as ShiftRequest[])
         : []);
       setCoverage(canSeeRequests
         ? await stylistsApi.coverage({ from: weekStart, to, minStaff }).catch(() => null)

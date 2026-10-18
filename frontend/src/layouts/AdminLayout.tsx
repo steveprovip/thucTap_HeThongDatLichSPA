@@ -10,7 +10,7 @@ import { useToast } from '@/contexts/ToastContext';
 import { subscribeLiveChanges } from '@/utils/liveSync';
 import { playCue, primeAudioOnFirstGesture } from '@/utils/sound';
 import { setStaffTheme, useStaffTheme } from '@/utils/theme';
-import { ROLE_LABELS, ROLE_LANDING } from '@/utils/constants';
+import { ROLE_BADGE, ROLE_LABELS, ROLE_LANDING } from '@/utils/constants';
 import type { Role } from '@/types';
 
 interface NavItem {
@@ -55,7 +55,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
     items: [
       { to: '/quan-ly/doanh-thu', label: 'Doanh thu', icon: <BarChart3 size={18} />, roles: ['owner', 'admin', 'receptionist'] },
       { to: '/quan-ly/phan-bo-khung-gio', label: 'Khung giờ & no-show', icon: <Clock size={18} />, roles: ['owner', 'admin'] },
-      { to: '/quan-ly/cai-tien-ai', label: 'Cải tiến Trợ lý AI', icon: <Bot size={18} />, roles: ['owner', 'admin', 'receptionist'] },
+      { to: '/quan-ly/cai-tien-ai', label: 'Cải tiến Trợ lý AI', icon: <Bot size={18} />, roles: ['admin'] },
     ],
   },
   {
@@ -252,14 +252,21 @@ export function AdminLayout() {
             </button>
             <SoundToggle className="hidden rounded-xl sm:inline-flex" />
             <NotificationBell />
-            <div className="hidden items-center gap-2 rounded-full py-1 pl-1 pr-2.5 sm:flex" title={user?.email}>
-              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-teal-50 text-xs font-bold text-teal-700 ring-1 ring-teal-100">
+            {/* QA Sprint 4 · mục 8: nhìn rõ đang ở vai trò nào — huy hiệu màu theo vai trò, hiện cả trên điện thoại */}
+            <div className="flex items-center gap-2 rounded-full py-1 pl-1 pr-1 sm:pr-2.5" title={`${user?.fullName ?? ''} · ${user?.email ?? ''}`}>
+              <span className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold ring-2 ${user ? ROLE_BADGE[user.role]?.avatar ?? '' : ''}`}>
                 {initialsOf(user?.fullName)}
               </span>
-              <span className="text-left leading-tight">
+              <span className="hidden text-left leading-tight sm:block">
                 <span className="block max-w-[160px] truncate text-sm font-semibold">{user?.fullName}</span>
-                <span className="block text-[11px] text-ink-muted">{user ? ROLE_LABELS[user.role] : ''}</span>
               </span>
+              {user && (
+                <span data-role={user.role}
+                      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${ROLE_BADGE[user.role]?.pill ?? ''}`}>
+                  <span className={`h-1.5 w-1.5 rounded-full ${ROLE_BADGE[user.role]?.dot ?? ''}`} />
+                  {ROLE_LABELS[user.role]}
+                </span>
+              )}
             </div>
             <Link to="/quan-ly/doi-mat-khau" className="tap-44 inline-flex items-center justify-center rounded-xl p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
                   aria-label="Đổi mật khẩu">

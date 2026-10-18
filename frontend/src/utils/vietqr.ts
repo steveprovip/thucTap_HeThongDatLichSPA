@@ -79,3 +79,14 @@ export const BANK = {
   accountNo: import.meta.env.VITE_BANK_ACCOUNT_NO?.trim() ?? '',
   accountName: import.meta.env.VITE_BANK_ACCOUNT_NAME?.trim() ?? '',
 };
+
+/**
+ * QA Sprint 4 · mục 2 — nội dung CK chuẩn hoá cú pháp `SPA <SĐT> <MÃ LỊCH>` (VD "SPA 0915103844 8SGE9AJ2" = 23 ký tự,
+ * vừa giới hạn 25 của tag 62-08) để kế toán đối soát 1-1 theo khách + lịch. Thiếu SĐT/mã lịch → dùng mã phiếu.
+ */
+export function invoiceTransferContent(inv: { code: string; customerPhone?: string | null; appointmentCode?: string | null }): string {
+  const phone = (inv.customerPhone ?? '').replace(/\D/g, '');
+  const appt = (inv.appointmentCode ?? '').replace(/[^0-9A-Za-z]/g, '').toUpperCase();
+  const content = phone && appt ? `SPA ${phone} ${appt}` : `SPA ${inv.code.replace(/[^0-9A-Za-z]/g, '').toUpperCase()}`;
+  return toBankText(content);
+}

@@ -49,7 +49,8 @@ describe('AI tư vấn khách — luật dựa trên danh mục thật (TASK v3 
     const book = customerRuleReply('đặt lịch nhuộm thời trang', catalog, [], facts);
     expect(book.intent).toBe('book');
     expect(book.suggestions[0].id).toBe('dye');
-    expect(customerRuleReply('mấy giờ mở cửa', catalog, [], facts).answer).toContain('Chủ nhật: nghỉ');
+    // Ghim ngày thường (T4 14/10): chạy test đúng Chủ nhật thì bot đáp "Hôm nay tiệm nghỉ" thay vì cả lịch tuần
+    expect(customerRuleReply('mấy giờ mở cửa', catalog, [], facts, new Date('2026-10-14T03:00:00Z')).answer).toContain('Chủ nhật: nghỉ');
     expect(customerRuleReply('địa chỉ ở đâu', catalog, [], facts).answer).toContain('0909 123 456');
   });
 

@@ -52,21 +52,22 @@ export class AssistantController {
    * Vòng tự cải tiến của trợ lý tư vấn: câu chưa trả lời được + đề xuất học (mô hình viết lại / khách diễn đạt lại) chờ duyệt
    * + phản hồi 👍/👎 của khách. Chủ tiệm duyệt đề xuất → trợ lý hiểu câu đó ngay, không cần mô hình.
    */
+  // QA Sprint 4: "Cải tiến Trợ lý AI" CHỈ dành cho Quản trị hệ thống — chặn cả ở API, không chỉ ẩn menu
   @Get('improvement')
-  @Roles(Role.OWNER, Role.ADMIN, Role.RECEPTIONIST)
+  @Roles(Role.ADMIN)
   improvement() {
     return this.service.improvementReport(30);
   }
 
   @Get('learning')
-  @Roles(Role.OWNER, Role.ADMIN, Role.RECEPTIONIST)
+  @Roles(Role.ADMIN)
   learning(@Query('status') status?: string) {
     const s = status === 'approved' || status === 'rejected' ? status : 'suggested';
     return this.service.learningList(s);
   }
 
   @Patch('learning/:id')
-  @Roles(Role.OWNER, Role.ADMIN)
+  @Roles(Role.ADMIN)
   async learningUpdate(@Param('id', ParseUUIDPipe) id: string, @Body() dto: LearningUpdateDto) {
     try {
       const row = await this.service.learningUpdate(id, dto);
@@ -79,7 +80,7 @@ export class AssistantController {
   }
 
   @Post('learning')
-  @Roles(Role.OWNER, Role.ADMIN)
+  @Roles(Role.ADMIN)
   async learningAdd(@Body() dto: LearningAddDto) {
     try {
       return await this.service.learningAdd(dto.kind, dto.phrase, dto.rewrite);

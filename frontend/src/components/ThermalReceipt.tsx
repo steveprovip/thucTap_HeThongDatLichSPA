@@ -5,9 +5,10 @@ import { formatDateTime, formatVnd } from '@/utils/format';
 import { PAYMENT_LABELS, SALON } from '@/utils/constants';
 import { useSalonInfo } from '@/utils/salonInfo';
 import { VietQrCode } from './VietQrCode';
+import { invoiceTransferContent } from '@/utils/vietqr';
 
-/** Nội dung chuyển khoản = mã phiếu viết liền (khớp ghi chú đối soát ở màn hình tính tiền). */
-export const receiptTransferRef = (code: string) => code.replace(/[^0-9A-Za-z]/g, '').toUpperCase();
+/** Nội dung chuyển khoản `SPA <SĐT> <MÃ LỊCH>` (khớp ghi chú đối soát ở màn hình tính tiền). */
+export const receiptTransferRef = (inv: Pick<Invoice, 'code' | 'customerPhone' | 'appointmentCode'>) => invoiceTransferContent(inv);
 
 /**
  * Hoá đơn khổ in nhiệt 80 mm (K80) cho máy POS: logo, thông tin tiệm, khách, thợ, dịch vụ, chiết khấu voucher,
@@ -56,7 +57,7 @@ export function ThermalReceipt({ invoice }: { invoice: Invoice }) {
       {showQr && (
         <div className="tr-center tr-qr">
           <p>Quét mã VietQR để thanh toán {formatVnd(invoice.total)}</p>
-          <VietQrCode amount={invoice.total} addInfo={receiptTransferRef(invoice.code)} />
+          <VietQrCode amount={invoice.total} addInfo={receiptTransferRef(invoice)} />
         </div>
       )}
       <hr />

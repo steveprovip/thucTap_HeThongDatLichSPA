@@ -8,6 +8,7 @@ import { formatNumber, formatVnd, parseNumber } from '@/utils/format';
 import { useToast } from '@/contexts/ToastContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { SALON } from '@/utils/constants';
+import { invoiceTransferContent } from '@/utils/vietqr';
 
 interface Line {
   serviceId?: string;
@@ -46,8 +47,8 @@ export function InvoicePage() {
   const locked = invoice?.status === 'closed' || invoice?.status === 'adjusted';
   const isPaid = invoice?.status === 'paid';
   const editLocked = locked && !adjusting;
-  /** Nội dung CK = mã phiếu (ASCII, không gạch nối) → khớp 1-1 với ghi chú đối soát. */
-  const transferRef = invoice ? invoice.code.replace(/[^0-9A-Za-z]/g, '').toUpperCase() : '';
+  /** Nội dung CK chuẩn `SPA <SĐT> <MÃ LỊCH>` (ASCII) → khớp 1-1 với ghi chú đối soát. */
+  const transferRef = invoice ? invoiceTransferContent(invoice) : '';
 
   const load = useCallback(async () => {
     if (!appointmentId) return;
@@ -56,7 +57,7 @@ export function InvoicePage() {
       const appt = await appointmentsApi.detail(appointmentId);
       setAppointment(appt);
       let inv = await invoicesApi.byAppointment(appointmentId);
-      if (!inv && appt.status === 'completed') inv = await invoicesApi.create(appointmentId);
+      if (!inv && appt.status === 'completed') inv = await invoicesApi.ensureForAppointment(appointmentId);
       if (inv) {
         setInvoice(inv);
         setLines(inv.items.map((i) => ({

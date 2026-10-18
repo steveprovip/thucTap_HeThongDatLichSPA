@@ -14,7 +14,7 @@ runInNewContext(bundled.outputFiles[0].text, { module, exports: module.exports }
 const m = module.exports;
 // Mảng / đối tượng tạo trong vm khác "realm" → chuẩn hoá qua JSON trước khi so sánh sâu
 const plain = (v) => (v == null ? v : JSON.parse(JSON.stringify(v)));
-const boardMove = (a, b) => plain(m.boardMove(a, b));
+const boardMove = (a, b, mins) => plain(m.boardMove(a, b, mins));
 const { snapStart, minutesToHHmm } = m;
 const TIMELINE_DRAGGABLE = plain(m.TIMELINE_DRAGGABLE);
 
@@ -55,4 +55,12 @@ test('Lịch ngày: kéo dọc bắt bước 15 phút, không ra ngoài giờ m�
   assert.equal(snapStart(600, 5000, 30, 15, 480, 1200, 60), 1140); // kết thúc không quá giờ đóng
   assert.equal(minutesToHHmm(615), '10:15');
   assert.deepEqual([...TIMELINE_DRAGGABLE], ['pending', 'confirmed', 'arrived']);
+});
+
+test('Kanban: cột "Không đến" chỉ mở sau giờ hẹn 30 phút (QA Sprint 3 · mục 3)', () => {
+  assert.equal(boardMove('confirmed', 'no_show', 10).ok, false);
+  assert.match(boardMove('confirmed', 'no_show', 10).reason, /30 phút \(còn 20 phút/);
+  assert.equal(boardMove('confirmed', 'no_show', -5).ok, false);
+  assert.deepEqual(boardMove('confirmed', 'no_show', 30).actions, ['noShow']);
+  assert.deepEqual(boardMove('confirmed', 'arrived', 5).actions, ['checkIn']);
 });

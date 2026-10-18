@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Check, CheckCheck, Inbox, Pencil, X } from 'lucide-react';
 import { getErrorMessage, shiftRequestsApi } from '@/api';
 import type { ShiftRequest } from '@/types';
@@ -18,6 +18,8 @@ export function ShiftRequestsPanel({ requests, canApprove, timeOffOnly = false, 
 }) {
   const toast = useToast();
   const [busy, setBusy] = useState<string | null>(null);
+  // Mở từ chuông thông báo (/quan-ly/ca-lam#yeu-cau) → cuộn thẳng tới hộp duyệt
+  useEffect(() => { if (window.location.hash === '#yeu-cau') document.getElementById('yeu-cau')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, []);
   const [edit, setEdit] = useState<{ req: ShiftRequest; start: string; end: string } | null>(null);
   const [reject, setReject] = useState<{ req: ShiftRequest; note: string } | null>(null);
   const [force, setForce] = useState<{ req: ShiftRequest; warning: string; codes: string[] } | null>(null);
@@ -74,7 +76,7 @@ export function ShiftRequestsPanel({ requests, canApprove, timeOffOnly = false, 
   const editInvalid = !!edit && timeToMinutes(edit.end) <= timeToMinutes(edit.start);
 
   return (
-    <section className="rounded-2xl border border-amber-200 bg-amber-50/50 p-3" aria-label="Yêu cầu đăng ký ca chờ duyệt">
+    <section id="yeu-cau" className="scroll-mt-20 rounded-2xl border border-amber-200 bg-amber-50/50 p-3" aria-label="Yêu cầu đăng ký ca chờ duyệt">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <h3 className="flex items-center gap-2 text-sm font-semibold text-amber-900">
           <Inbox size={16} /> {requests.length} yêu cầu thợ tự đăng ký đang chờ duyệt

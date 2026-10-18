@@ -620,6 +620,8 @@ export interface TodayDashboard {
   revenueText: string;
   invoiceCount: number;
   workingStylists: number;
+  /** QA Sprint 4 · mục 7 — thợ đang làm / đang rảnh (lúc này) và tổng thợ theo ca. */
+  staffing?: { busyNow: number; freeNow: number; morningShift: number; afternoonShift: number };
   refreshedAt: string;
 }
 

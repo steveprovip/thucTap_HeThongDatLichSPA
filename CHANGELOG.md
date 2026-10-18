@@ -3,6 +3,21 @@
 Định dạng theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), phiên bản theo [Semantic Versioning](https://semver.org/lang/vi/).
 Launcher (biểu tượng Hương Sen Salon / `HoYoSalon.bat`) đọc tệp này cho mục **Có gì mới** và **Nhật ký cập nhật**.
 
+## [3.2.0] - 2026-10-18
+
+### Xử lý 17 lỗi QA Sprints 2–4, Chân trang Luxury Emerald, Cảnh báo trễ ca 20m & Độc lập Cloudflare Pages 24/7
+- **Độc lập Cloudflare Pages 24/7 (`_redirects`):** Tạo cấu hình proxy rewrite mã 200 chuyển toàn bộ request `/api/*` sang Render backend 24/7. Trang công khai `https://huongsen-salon.pages.dev` hoạt động độc lập không còn phụ thuộc chạy `HoYoSalon.bat` trước.
+- **Chân trang phong cách Luxury Emerald ($10.000):** Chuyển SiteFooter sang dải xanh ngọc hoàng gia Imperial Emerald (`#061E1A`) kết hợp viền vàng champagne, hiển thị cố định số Zalo (0909 686 868), địa chỉ tiệm và khối chứng chỉ y tế/chuyên môn.
+- **Cảnh báo trễ ca 20 phút cho Lễ tân:** Thêm banner nhấp nháy đỏ nổi bật trên đầu trang Lịch ngày khi thợ đang làm vượt thời lượng chuẩn quá 20 phút, cảnh báo các lịch hẹn sau có nguy cơ trễ hẹn.
+- **Khoá chức năng Cải tiến AI cho riêng Quản trị viên (Admin):** Ẩn trên menu và chặn nghiêm ngặt ở cả backend API (`Role.ADMIN` trên `/assistant/improvement` và `/assistant/learning`, chặn 403 Forbidden với owner/receptionist/stylist).
+- **Khắc phục lỗi thông báo nhảy khi bấm Tạo phiếu:** Chặn lỗi trùng lặp do React StrictMode chạy effect 2 lần, thêm cơ chế in-flight request deduplication và fallback 409 nhẹ nhàng.
+- **Chuẩn hoá hàng đợi Email:** Khoá hàng đợi bằng `FOR UPDATE SKIP LOCKED` + hợp đồng thuê 5 phút (ngăn 2 tiến trình API cùng gửi 1 mail), sửa link trong email trỏ về đúng domain công khai thay vì `localhost:5173`.
+- **Đồng bộ ghi chú Thợ - Lễ tân - Chủ tiệm:** Ngăn kéo lễ tân tự động điền sẵn ghi chú hiện có và hiển thị inline, không còn tình trạng mở ô trống ghi đè mất ghi chú của thợ.
+- **Cải tiến kéo thả Kanban kiểu Jira:** Cho phép nắm kéo cả thẻ (rê > 6px mới kích hoạt kéo, bấm mở chi tiết), cột đích viền đứt phóng nhẹ, khoá cột "Không đến" nếu chưa đủ 30 phút.
+- **Trợ lý AI trả lời 7 câu hỏi nghiệp vụ:** Bổ sung 6 ý định (intents) truy vấn dữ liệu thực tế (top khách hàng, lịch gần nhất, ngày nghỉ tiệm, số dịch vụ, doanh thu theo kỳ, tải việc thợ).
+- **Chỉ số nhân sự trên Dashboard & Nhận diện vai trò:** Dải thống kê real-time thợ đang làm / đang rảnh / theo ca và huy hiệu màu hiển thị vai trò trên header.
+- **HoYoSalon Launcher ổn định Windows 11:** Tự động fallback chạy bằng Node.js khi VBScript bị chặn, sửa mở trình duyệt mặc định bằng `cmd.exe /c start`.
+
 ## [3.1.0] - 2026-10-16
 
 ### Giao diện sáng Lotus Ivory & Champagne Luxe $10.000, Triển khai Cloudflare tự động & Đồng bộ toàn diện

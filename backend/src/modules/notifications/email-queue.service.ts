@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { backgroundAllowed } from '../../common/utils/activity';
 import { InjectRepository } from '@nestjs/typeorm';
-import { LessThanOrEqual, Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { EmailQueueItem, EmailStatus } from '../../database/entities/email-queue.entity';
 import { MailService } from './mail.service';
 
@@ -39,11 +39,19 @@ export class EmailQueueService {
     const maxAttempts = this.config.get<number>('mail.maxAttempts')!;
     const retryMinutes = this.config.get<number>('mail.retryMinutes')!;
 
-    const due = await this.repo.find({
-      where: { status: EmailStatus.PENDING, nextAttemptAt: LessThanOrEqual(new Date()) },
-      order: { nextAttemptAt: 'ASC' },
-      take: batchSize,
-    });
+    // QA Sprint 4 · mục 5 (gửi lặp 1 thư 2 lần): khoá `running` chỉ có tác dụng trong MỘT tiến trình. Khi 2 bản API cùng trỏ
+    // một CSDL (máy local + đám mây, hoặc dev watch khởi động lại) thì cả 2 cron cùng lấy một thư. Giành quyền gửi nguyên tử:
+    // đẩy next_attempt_at lên 5 phút (hợp đồng thuê) với FOR UPDATE SKIP LOCKED → tiến trình khác không thấy thư này nữa;
+    // tiến trình chết giữa chừng thì 5 phút sau thư tự quay lại hàng đợi.
+    const claimed: Array<{ id: string }> = await this.repo.query(
+      `UPDATE email_queue SET next_attempt_at = now() + interval '5 minutes'
+        WHERE id IN (SELECT id FROM email_queue WHERE status = $1 AND next_attempt_at <= now()
+                      ORDER BY next_attempt_at ASC LIMIT $2 FOR UPDATE SKIP LOCKED)
+        RETURNING id`,
+      [EmailStatus.PENDING, batchSize],
+    ).then((r: unknown) => (Array.isArray(r) && Array.isArray(r[0]) ? r[0] : r) as Array<{ id: string }>);
+    if (!claimed.length) return { sent: 0, failed: 0 };
+    const due = await this.repo.find({ where: { id: In(claimed.map((c) => c.id)) }, order: { nextAttemptAt: 'ASC' } });
 
     let sent = 0;
     let failed = 0;

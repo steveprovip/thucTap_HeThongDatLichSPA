@@ -1,5 +1,8 @@
-import { api, unwrap } from './client';
+import { api, getErrorStatus, unwrap } from './client';
 import type { Invoice, PaymentMethod, Voucher } from '@/types';
+
+/** QA Sprint 4 · mục 1: chặn 2 lệnh lập phiếu song song cho cùng lịch (StrictMode / bấm 2 lần) → không còn toast "đã có phiếu". */
+const creating = new Map<string, Promise<Invoice>>();
 
 export interface InvoiceItemPayload {
   serviceId?: string;
@@ -22,6 +25,20 @@ export const invoicesApi = {
   },
   async create(appointmentId: string, items?: InvoiceItemPayload[]): Promise<Invoice> {
     return unwrap<Invoice>(await api.post('/invoices', { appointmentId, items }));
+  },
+  /** Lấy phiếu của lịch, chưa có thì lập — gộp lệnh đang chạy và coi 409 (phiếu vừa được lập) là thành công. */
+  ensureForAppointment(appointmentId: string): Promise<Invoice> {
+    const inflight = creating.get(appointmentId);
+    if (inflight) return inflight;
+    const p = invoicesApi.create(appointmentId)
+      .catch(async (e) => {
+        const existing = getErrorStatus(e) === 409 ? await invoicesApi.byAppointment(appointmentId) : null;
+        if (!existing) throw e;
+        return existing;
+      })
+      .finally(() => creating.delete(appointmentId));
+    creating.set(appointmentId, p);
+    return p;
   },
   async update(id: string, items: InvoiceItemPayload[], voucherCode?: string | null): Promise<Invoice> {
     return unwrap<Invoice>(await api.patch(`/invoices/${id}`, { items, voucherCode: voucherCode || undefined }));

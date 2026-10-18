@@ -1,4 +1,5 @@
 import type { AppointmentStatus } from '@/types';
+import { NO_SHOW_AFTER_MIN } from './opsHelpers';
 
 /**
  * Ghi chú test 13/10 — kéo thả kiểu Jira. Luật THUẦN (không gọi API) để bảng Kanban và Lịch ngày dùng chung và kiểm thử được.
@@ -27,10 +28,17 @@ const MOVES: Partial<Record<`${AppointmentStatus}>${AppointmentStatus}`, { actio
   'no_show>confirmed': { actions: ['undoNoShow'], label: 'Hoàn tác "không đến"' },
 };
 
-/** Kéo một lịch từ cột `from` sang cột `to`: làm gì, hay vì sao không được. */
-export function boardMove(from: AppointmentStatus, to: AppointmentStatus): BoardMove | null {
+/**
+ * Kéo một lịch từ cột `from` sang cột `to`: làm gì, hay vì sao không được.
+ * `minutesSinceStart` (tuỳ chọn) = số phút đã qua giờ hẹn → cột "Không đến" chỉ sáng sau 30′ (QA Sprint 3 · mục 3),
+ * khỏi kéo vào rồi mới bị máy chủ trả lỗi.
+ */
+export function boardMove(from: AppointmentStatus, to: AppointmentStatus, minutesSinceStart?: number): BoardMove | null {
   if (from === to) return null;
   const move = MOVES[`${from}>${to}`];
+  if (move && move.actions.includes('noShow') && minutesSinceStart !== undefined && minutesSinceStart < NO_SHOW_AFTER_MIN) {
+    return { ok: false, reason: `Chỉ báo "Không đến" sau giờ hẹn ${NO_SHOW_AFTER_MIN} phút (còn ${NO_SHOW_AFTER_MIN - Math.max(0, Math.floor(minutesSinceStart))} phút nữa).` };
+  }
   if (move) return { ok: true, actions: move.actions, needsReason: !!move.needsReason, label: move.label };
   if (from === 'completed') return { ok: false, reason: 'Lịch đã hoàn tất — muốn sửa tiền thì mở phiếu tính tiền và lập phiếu điều chỉnh.' };
   if (from === 'cancelled') return { ok: false, reason: 'Lịch đã huỷ không mở lại được — hãy tạo lịch mới cho khách.' };

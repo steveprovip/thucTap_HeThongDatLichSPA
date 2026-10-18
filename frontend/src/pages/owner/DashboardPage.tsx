@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { ReactNode } from 'react';
-import { Banknote, CheckCircle2, RefreshCw, UserX, Users2 } from 'lucide-react';
+import { Banknote, CheckCircle2, RefreshCw, Scissors, UserX, Users2 } from 'lucide-react';
 import { analyticsApi, appointmentsApi, customersApi, getErrorMessage } from '@/api';
 import type { Appointment, AppointmentStatus, TodayDashboard } from '@/types';
 import { Button, Card, EmptyState, MailStatusNotice, SectionTitle, Skeleton, StatGridSkeleton, ContentSkeleton } from '@/components';
@@ -83,6 +83,23 @@ export function DashboardPage() {
           hint={`${data.statuses.no_show} lượt trong ngày`} />
       </div>
 
+      {/* QA Sprint 4 · mục 7: thiếu số thợ đang làm theo ca trên trang tổng quan */}
+      {data.staffing && (
+        <Card className="p-4">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900"><Scissors size={16} className="text-teal-700" /> Nhân sự lúc này</h3>
+            <StaffStat dot="bg-cyan-500 animate-pulse" value={data.staffing.busyNow} label="Thợ đang làm" />
+            <StaffStat dot="bg-emerald-500" value={data.staffing.freeNow} label="Thợ đang rảnh (trong ca)" />
+            <span className="hidden h-8 w-px bg-slate-200 sm:block" />
+            <StaffStat dot="bg-amber-400" value={data.staffing.morningShift} label="Thợ ca sáng" />
+            <StaffStat dot="bg-violet-500" value={data.staffing.afternoonShift} label="Thợ ca chiều" />
+            <StaffStat dot="bg-slate-400" value={data.workingStylists} label="Tổng thợ có ca hôm nay" />
+            <button type="button" onClick={() => navigate('/quan-ly/lich-ngay')}
+                    className="ml-auto text-xs font-semibold text-teal-700 hover:underline">Mở lịch ngày →</button>
+          </div>
+        </Card>
+      )}
+
       <Card className="p-5">
         <h3 className="mb-3 text-sm font-semibold text-slate-900">Hoạt động gần đây</h3>
         <ol className="stagger divide-y divide-slate-100">
@@ -108,6 +125,16 @@ export function DashboardPage() {
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+function StaffStat({ dot, value, label }: { dot: string; value: number; label: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className={`h-2.5 w-2.5 rounded-full ${dot}`} />
+      <span className="text-xl font-bold tabular-nums text-slate-900">{value}</span>
+      <span className="text-xs text-slate-500">{label}</span>
     </div>
   );
 }

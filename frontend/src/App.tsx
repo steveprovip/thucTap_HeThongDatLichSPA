@@ -166,7 +166,7 @@ export default function App() {
             <Route path="phan-bo-khung-gio" element={
               <RequireAuth roles={['owner', 'admin']}><SlotDensityPage /></RequireAuth>} />
             <Route path="cai-tien-ai" element={
-              <RequireAuth roles={['owner', 'admin', 'receptionist']}><AiImprovementPage /></RequireAuth>} />
+              <RequireAuth roles={['admin']}><AiImprovementPage /></RequireAuth>} />
 
             <Route path="dich-vu" element={
               <RequireAuth roles={['owner', 'admin', 'receptionist', 'stylist']}><ServicesPage /></RequireAuth>} />

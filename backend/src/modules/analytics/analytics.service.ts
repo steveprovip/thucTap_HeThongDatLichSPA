@@ -212,6 +212,24 @@ export class AnalyticsService {
       [day],
     );
 
+    // QA Sprint 4 · mục 7: số thợ đang làm / đang rảnh ngay lúc này + tổng thợ theo ca (sáng: vào trước 12h, chiều: từ 12h)
+    const [staffRow] = await this.dataSource.query(
+      `WITH now_vn AS (SELECT (now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::time AS t),
+            on_shift AS (
+              SELECT DISTINCT s.stylist_id FROM stylist_shifts s JOIN stylists st ON st.id = s.stylist_id AND st.is_active, now_vn
+               WHERE s.work_date = $1 AND s.start_time <= now_vn.t AND now_vn.t < s.end_time
+                 AND NOT (s.break_start IS NOT NULL AND s.break_start <= now_vn.t AND now_vn.t < s.break_end)),
+            busy AS (
+              SELECT DISTINCT stylist_id FROM appointments
+               WHERE status = 'in_progress' AND start_at >= $2 AND start_at <= $3)
+       SELECT (SELECT COUNT(*) FROM busy)::int AS busy_now,
+              (SELECT COUNT(*) FROM on_shift WHERE stylist_id NOT IN (SELECT stylist_id FROM busy))::int AS free_now,
+              (SELECT COUNT(DISTINCT stylist_id) FROM stylist_shifts WHERE work_date = $1 AND start_time < '12:00')::int AS morning,
+              (SELECT COUNT(DISTINCT stylist_id) FROM stylist_shifts WHERE work_date = $1 AND end_time > '12:00')::int AS afternoon`,
+      [day, startOfDay(day), endOfDay(day)],
+    );
+    const isToday = day === todaySalon();
+
     const revenue = Number(revenueRow.revenue);
     return {
       date: day,
@@ -229,6 +247,12 @@ export class AnalyticsService {
       revenueText: formatVnd(revenue),
       invoiceCount: Number(revenueRow.invoices),
       workingStylists: Number(shiftRow.working_stylists),
+      staffing: {
+        busyNow: isToday ? Number(staffRow.busy_now) : 0,
+        freeNow: isToday ? Number(staffRow.free_now) : 0,
+        morningShift: Number(staffRow.morning),
+        afternoonShift: Number(staffRow.afternoon),
+      },
       refreshedAt: new Date(),
     };
   }

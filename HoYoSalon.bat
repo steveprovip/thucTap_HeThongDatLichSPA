@@ -3,7 +3,12 @@ rem HoYoSalon - mở Launcher KHÔNG có cửa sổ đen: chuyển cho scripts\w
 rem Lần đầu sẽ tạo lối tắt "Hương Sen Salon" trên màn hình: bấm lối tắt đó thì không thấy cửa sổ đen nào.
 rem   HoYoSalon.bat --console    chạy Launcher ngay trong cửa sổ này (xem lỗi trực tiếp khi cần hỗ trợ kỹ thuật)
 if /i "%~1"=="--console" goto console
-start "" wscript.exe //nologo "%~dp0scripts\windows\HoYoSalon.vbs" %*
+
+where wscript.exe >nul 2>nul
+if errorlevel 1 goto console
+
+start "" "%SystemRoot%\System32\wscript.exe" //nologo "%~dp0scripts\windows\HoYoSalon.vbs" %*
+if errorlevel 1 goto console
 exit /b 0
 
 :console

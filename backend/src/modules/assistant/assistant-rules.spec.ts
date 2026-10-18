@@ -1,4 +1,4 @@
-import { AssistantContext, contextForLlm, detectIntent, hourLabel, quickReplies, ruleAnswer } from './assistant-rules';
+import { AssistantContext, contextForLlm, detectIntent, hourLabel, parsePeriod, quickReplies, ruleAnswer, topN } from './assistant-rules';
 
 const ctx: AssistantContext = {
   goldenHours: [{ dow: 6, dayLabel: 'T7', hour: 10, label: hourLabel(6, 10), bookings: 42 }],
@@ -112,5 +112,56 @@ describe('Trợ lý AI — luật dự phòng khi không có mô hình ngôn ng�
     const text = contextForLlm(ctx);
     expect(text).toContain('Giờ vàng: T7 10:00–11:00 (42 lượt)');
     expect(text).not.toMatch(/0\d{9}|@/); // không SĐT / email
+  });
+});
+
+describe('QA Sprint 3 · mục 6 — các câu trợ lý từng trả "chưa hiểu"', () => {
+  it('nhận đúng ý định của 7 câu hỏi trong biên bản QA', () => {
+    expect(detectIntent('liệt kê 5 khách sử dụng dịch vụ nhiều nhất cùng số lượng')).toBe('top_customers');
+    expect(detectIntent('khách có lịch gần nhất tính từ thời điểm hiện tại')).toBe('next_appointment');
+    expect(detectIntent('tiệm nghỉ vào ngày nào')).toBe('closed_days');
+    expect(detectIntent('tiệm có bao nhiêu dịch vụ')).toBe('service_count');
+    expect(detectIntent('báo cáo doanh thu tuần vừa rồi')).toBe('revenue');
+    expect(detectIntent('thợ nào làm ít nhất tuần vừa rồi')).toBe('stylist_load');
+    expect(detectIntent('các ngày lễ tiệm nghỉ')).toBe('holidays');
+    // không phá các ý định cũ
+    expect(detectIntent('Đang có thợ nào làm việc vậy?')).toBe('working_stylists');
+    expect(detectIntent('ca nào thiếu thợ nhất')).toBe('shifts');
+    expect(detectIntent('doanh thu hôm nay')).toBe('today');
+    expect(detectIntent('Ngày lễ sắp tới?')).toBe('holidays');
+  });
+
+  it('kỳ báo cáo & số lượng trong câu hỏi', () => {
+    // 18/10/2026 là Chủ nhật → tuần trước = T2 05/10 – CN 11/10
+    expect(parsePeriod('doanh thu tuần vừa rồi', '2026-10-18')).toMatchObject({ from: '2026-10-05', to: '2026-10-11' });
+    expect(parsePeriod('tuần này', '2026-10-18')).toMatchObject({ from: '2026-10-12', to: '2026-10-18' });
+    expect(parsePeriod('tháng trước', '2026-10-18')).toMatchObject({ from: '2026-09-01', to: '2026-09-30' });
+    expect(parsePeriod('30 ngày qua', '2026-10-18')).toMatchObject({ from: '2026-09-19', to: '2026-10-18' });
+    expect(parsePeriod('doanh thu', '2026-10-18')).toMatchObject({ from: '2026-10-12', to: '2026-10-18' });
+    expect(topN('liệt kê 5 khách sử dụng dịch vụ nhiều nhất')).toBe(5);
+    expect(topN('top 10 khách')).toBe(10);
+    expect(topN('khách thân thiết')).toBe(5);
+  });
+
+  it('trả lời bằng số liệu thật, không rơi vào câu "chưa hiểu"', () => {
+    const facts = {
+      topCustomers: [{ fullName: 'Lê Bảo Quyên', visits: 17, spentText: '4.250.000 ₫' }],
+      upcoming: [{ fullName: 'Đỗ Quỳnh Giang', whenText: '19:30 T7 17/10', services: 'Đắp móng bột', stylist: 'Phan Thuỳ Linh', statusLabel: 'Đã xác nhận', minutesUntil: 75 }],
+      closed: { weeklyClosed: [], upcoming: [{ reason: 'Nghỉ Tết', startDate: '2027-02-05', endDate: '2027-02-09' }] },
+      services: { total: 32, byCategory: [{ name: 'Tóc', count: 12 }, { name: 'Móng', count: 8 }], minPriceText: '50.000 ₫', maxPriceText: '1.200.000 ₫' },
+      revenue: { label: 'tuần trước (05/10–11/10)', totalText: '12.500.000 ₫', invoices: 40, avgText: '312.500 ₫', changePct: 8, bestDay: '10/10 (3.100.000 ₫)' },
+      stylistLoad: { label: 'tuần trước', order: 'asc' as const, rows: [{ fullName: 'Bùi Gia Huy', done: 3, minutes: 135 }] },
+    };
+    const c = { ...ctx, facts };
+    expect(ruleAnswer('top_customers', c)).toContain('1. Lê Bảo Quyên — 17 lượt');
+    expect(ruleAnswer('next_appointment', c)).toContain('còn 1 giờ 15 phút');
+    expect(ruleAnswer('closed_days', c)).toMatch(/mở cửa tất cả.*Nghỉ Tết \(05\/02–09\/02\).*Quốc khánh/);
+    expect(ruleAnswer('service_count', c)).toContain('32 dịch vụ trong 2 nhóm: Tóc (12), Móng (8)');
+    expect(ruleAnswer('revenue', c)).toContain('12.500.000 ₫ từ 40 phiếu');
+    expect(ruleAnswer('revenue', c)).toContain('+8%');
+    expect(ruleAnswer('stylist_load', c)).toContain('• Bùi Gia Huy: 3 lượt · 2h15 phục vụ');
+    for (const k of ['top_customers', 'next_appointment', 'closed_days', 'service_count', 'revenue', 'stylist_load'] as const) {
+      expect(ruleAnswer(k, c)).not.toContain('chưa chắc đã hiểu');
+    }
   });
 });

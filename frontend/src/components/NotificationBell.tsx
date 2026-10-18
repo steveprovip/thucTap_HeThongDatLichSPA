@@ -81,6 +81,9 @@ export function NotificationBell() {
                 onClick={() => {
                   setOpen(false);
                   if (n.appointmentId) navigate(`/quan-ly/lich-hen/${n.appointmentId}`);
+                  // QA Sprint 3 · mục 1: bấm thông báo đăng ký ca / xin nghỉ → mở thẳng hộp duyệt ở Bảng ca làm
+                  else if (n.type === 'shift_request_new') navigate('/quan-ly/ca-lam#yeu-cau');
+                  else if (n.type === 'shift_request_reviewed') navigate('/quan-ly/dang-ky-ca');
                 }}
                 className="block w-full border-b border-slate-100 px-4 py-3 text-left hover:bg-brand-50/60"
               >

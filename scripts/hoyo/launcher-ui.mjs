@@ -241,8 +241,13 @@ function openUrl(url, { appWindow = false } = {}) {
         return;
       }
     }
-    const [cmd, args] = IS_WIN ? ['rundll32', ['url.dll,FileProtocolHandler', url]]
-      : process.platform === 'darwin' ? ['open', [url]] : ['xdg-open', [url]];
+    if (IS_WIN) {
+      const child = spawn('cmd.exe', ['/c', 'start', '""', url], { detached: true, stdio: 'ignore', windowsHide: true });
+      child.on('error', () => undefined);
+      child.unref();
+      return;
+    }
+    const [cmd, args] = process.platform === 'darwin' ? ['open', [url]] : ['xdg-open', [url]];
     const child = spawn(cmd, args, { detached: true, stdio: 'ignore', windowsHide: true });
     child.on('error', () => undefined);
     child.unref();

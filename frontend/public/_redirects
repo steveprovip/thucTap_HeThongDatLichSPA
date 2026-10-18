@@ -1,0 +1,6 @@
+# Cloudflare Pages — Reverse Proxy cho API và cấu hình SPA
+# Chuyển tiếp toàn bộ request /api/* sang Render backend 24/7 với mã 200 (Proxy Rewrite)
+/api/*  https://salon-spa-api-93d7.onrender.com/api/:splat  200
+
+# SPA fallback cho React Router
+/*      /index.html                                          200
